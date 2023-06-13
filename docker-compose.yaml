@@ -1,0 +1,42 @@
+version: '3'
+
+services:
+  nginx-proxy:
+    image: jwilder/nginx-proxy
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./certs:/etc/nginx/certs:ro  # Cache SSL certificates on the host
+    networks:
+      - braingeneers-net
+
+  letsencrypt:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    container_name: letsencrypt
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./certs:/etc/nginx/certs:rw  # Shared with nginx-proxy
+    depends_on:
+      - nginx-proxy
+    networks:
+      - braingeneers-net
+
+  dashboard:
+    image: braingeneers/dashboard:v1.5
+    expose:
+      - "8050"
+    environment:
+      - VIRTUAL_HOST=braingeneers.gi.ucsc.edu
+      - LETSENCRYPT_HOST=braingeneers.gi.ucsc.edu
+      - LETSENCRYPT_EMAIL=dfparks@ucsc.edu
+    volumes:
+      - ~/.aws/credentials:/root/.aws/credentials:ro  # AWS credentials for your application
+    networks:
+      - braingeneers-net
+
+networks:
+  braingeneers-net:
+    driver: bridge
