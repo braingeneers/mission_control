@@ -1,82 +1,91 @@
-# An Overview of Reverse Proxies and Their Usage in Our Infrastructure
+# Adding and maintaining web services in `braingeneers` infrastructure
 
-A reverse proxy is a type of server that retrieves resources on behalf of a client from one or more servers. These resources are then returned to the client as though they originated from the reverse proxy itself. 
+## Basic usage:
+Starting/stopping all services:
+```bash
+# Prerequisite: Download your personal (or service account) kubeconfig file from the cluster, place it in ~/.kube/config
+git clone git@github.com:braingeneers/mission_control.git
+cd mission_control
+docker-compose up -d
+```
 
-In our infrastructure, we use `nginx-proxy`, a Docker container running Nginx and `docker-gen`. `docker-gen` generates reverse proxy configurations for Nginx and reloads Nginx when containers are started and stopped. This setup allows us to route incoming requests to different Docker containers (our services), each possibly running a different application, all on the same host machine.
+Importantly you can add a service to our infrastructure without updating any of the configurations described here.
 
-Here's how it works:
+## An Overview of Our Infrastructure
 
-1. A client makes a request to a certain URL, e.g., `https://my-service.braingeneers.gi.ucsc.edu`.
-2. This request hits our server where the `nginx-proxy` is running.
-3. The `nginx-proxy` checks its configuration and sees that requests to this URL should be routed to the `my-service` Docker container.
-4. The `nginx-proxy` forwards the client's request to the `my-service` container.
-5. The `my-service` container processes the request and sends a response back to the `nginx-proxy`.
-6. The `nginx-proxy` sends this response back to the client.
+A reverse proxy is a type of server that retrieves resources on behalf of a client from one or more servers. These resources are then returned to the client as though they originated from the reverse proxy itself. In our infrastructure, we use a multi-service Docker Compose setup, which includes two reverse proxy's (for authentication and for routing to different containers) and a shared secrets fetcher.
 
-This approach allows us to have a single point of entry (the `nginx-proxy`) for all incoming requests, simplifying our network configuration, and providing an easy way to add SSL support (via Let's Encrypt) and other features. 
+## OAuth2 Proxy for CILogon
+The oauth2-proxy is an integral part of our Docker Compose setup, providing a unified interface for OAuth2 authentication via the CILogon service. It intercepts all incoming requests, gating access to our web services by redirecting unauthenticated users to CILogon for login.
 
-The following is a basic flow diagram of this process:
+Upon successful login, the user is redirected back to the oauth2-proxy, which in turn forwards the original request to the appropriate service, appending HTTP headers with authenticated user's information. This OAuth2 flow is completely handled by the oauth2-proxy, relieving individual services from managing this process.
+
+This setup ensures that all requests to our services are authenticated, providing a secure and efficient method of managing user access in our infrastructure.
+
+## Nginx Reverse Proxy
+The `nginx-proxy` is a Docker container running Nginx and `docker-gen`. `docker-gen` generates reverse proxy configurations for Nginx and reloads Nginx when containers are started and stopped. This setup allows us to route incoming requests to different Docker containers (our services), each possibly running a different application, all on the same host machine.
+
+## Shared Secrets Fetcher
+The `secret-fetcher` service is a special Docker container that fetches shared secrets from a Kubernetes secret store. It does this on behalf of the other services running in the same Docker Compose setup. The secrets are retrieved when the services are started and stored in an in-memory volume accessible to all services. This ensures that each service has access to the same secrets without requiring them to retrieve the secrets individually. The only requirement is that the user running the Docker Compose stack has access to the Kubernetes namespace containing the secrets.
+
+## Let's Encrypt for SSL Certificates
+
+The LetsEncrypt container automates the creation and renewal of SSL certificates used by the oauth2-proxy. It communicates with the Let's Encrypt service to generate valid certificates for the domains specified via environment variables. The generated SSL certificates are stored in a shared volume and used by the oauth2-proxy to secure the client communication via HTTPS. This streamlines the management of our SSL certificates and enhances the security of our user-facing services.
+
+## Best Practices
+
+To ensure security and maintainability:
+
+1. The services are designed to be stateless except for the `~/.kube/config` requirement to retrieve the secrets.
+2. Services can rely on the Kubernetes secrets and can access any state files via our standard S3 service at `s3://braingeneers/` or other buckets.
+3. Services can cache files on the host OS, such as the generated certificates, but should be able to start cleanly if those files are lost. This could happen occasionally, but not regularly.
+
+The following diagram shows the process:
 
 ```mermaid
 graph LR
-    A[Client] -- Request --> B(nginx-proxy)
-    B -- Forwarded Request --> C[my-service Container]
-    C -- Response --> B
-    B -- Forwarded Response --> A
+    A[Client] --> B(oauth2-proxy for CILogon)
+    F(LetsEncrypt) -.-> B
+    E(secret-fetcher) -.-> B
+    B --> C(nginx-proxy)
+    E -.-> C
+    C --> D[my-service Containers]
+    E -.-> D
+    D --> C
+    C --> B
+    B --> A
+
 ```
 
-# How to Add a New Service to the Nginx Reverse Proxy Configuration
-
-This document will guide you on how to add a new service to our existing nginx-proxy configuration managed with Docker Compose.
+# How to Add a New Service to the Nginx Reverse Proxy Configuration with Shared Secrets
 
 ## Procedure
 
-    Clone the Repository: Clone the mission_control repository where our Docker Compose configuration resides.
+1. Clone the repository where our Docker Compose configuration resides (assuming GitHub/SSH keys configured).
 
 ```bash
-git clone https://github.com/Braingeneers/mission_control.git
+git clone git@github.com:braingeneers/mission_control.git
 ```
 
-1. Edit the Docker Compose file: Open the docker-compose.yml file located in the mission_control directory in a text editor.
-2. Add a new service: Under the services section, add a new service definition for your container. A typical service definition looks like this:
+2. Edit the Docker Compose file: Open the `docker-compose.yml` file located in the `mission_control` directory in a text editor. Add a new service definition for your container under the `services` section, similar to the existing services.
+  - Note: The `VIRTUAL_HOST` environment variable in your service's definition determines the subdomain your service will be accessible from. For instance, if `VIRTUAL_HOST` is set to `my-service`, your service will be accessible from `https://my-service.braingeneers.gi.ucsc.edu`.
+  - Remember to also add a volume mount from the shared secrets volume to your service if it requires access to the shared secrets. The secrets will be available in the /secrets directory in your service's file system.
 
-```yaml
-  # Replace 'my-service' with the name of your service
-  my-service:
-    # Replace 'my-service-image' with the Docker image your service will use
-    image: my-service-image
-    # Expose the necessary port(s) your service uses. Replace '8000' with your port number
-    expose: 
-      - "8000"
-    networks:
-      - braingeneers-net
-    environment:
-      # Replace 'my-service' with your service's desired subdomain
-      - VIRTUAL_HOST=my-service.braingeneers.gi.ucsc.edu
-      # Replace 'my-service' with your service's desired subdomain
-      - LETSENCRYPT_HOST=my-service.braingeneers.gi.ucsc.edu
-      # Replace 'example@email.com' with your email address
-      - LETSENCRYPT_EMAIL=example@email.com
-```
+3. Remember to also add a volume mount from the shared `secrets` volume to your service if it requires access to the shared secrets. The secrets will be available in the `/secrets` directory in your service's file system.
 
-3. Save and exit: Save the docker-compose.yml file and exit the text editor.
-4. Restart the Docker Compose stack: Run the following command in the directory where your docker-compose.yml file is located:
+4. After you've made your changes, save the `docker-compose.yml` file and exit the text editor.
+
+5. Restart the Docker Compose stack by running the following command in the directory where your `docker-compose.yml` file is located:
+
 ```bash
 docker compose up -d
 ```
 
-This will stop and recreate the services defined in the Docker Compose file, including your newly added service.
+6. This will stop and recreate the services defined in the Docker Compose file, including your newly added service.
 
-5. Commit changes: After verifying your service works correctly, commit the changes to the docker-compose.yml file back to the mission_control repository.
+7. After verifying your service works correctly, commit the changes to the `docker-compose.yml` file back to the `mission_control` repository.
 
 ```bash
 git commit -am "Added my-service to Docker Compose configuration"
 git push
 ```
-
-## Important Notes
-
-- VIRTUAL_HOST: The VIRTUAL_HOST environment variable in your service's definition determines the subdomain your service will be accessible from.
-- Accessing Your Service: Your service will be accessible from https://my-service.braingeneers.gi.ucsc.edu, where my-service should be replaced with the name you used for the VIRTUAL_HOST.
-- Stateless services: Aim to keep services as stateless as possible. While some caching on the local system is acceptable (like we do with the Let's Encrypt certificates), ensure that a clean start is always possible. If your service requires persistent storage, use our standard S3 bucket and implement logic in your service to handle fetching and storing data to/from the S3 bucket as needed.
-- Clean start: Always verify that your service can start cleanly, without any dependencies on existing state or local cache. This ensures our setup is maintainable and reduces potential issues when moving or rebuilding servers.
