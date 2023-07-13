@@ -48,3 +48,40 @@ push-h5repack:
 
 shell-h5repack:
 	docker run --rm -it braingeneers/job_h5repack:latest bash
+
+#
+# nginx-proxy
+#
+build-nginx:
+	docker build -f nginx-reverse-proxy/Dockerfile -t braingeneers/nginx-proxy:latest nginx-reverse-proxy
+
+push-nginx:
+	docker push braingeneers/nginx-proxy:latest
+
+shell-nginx:
+	docker run --rm -it braingeneers/nginx-proxy:latest bash
+
+#
+# oauth2-proxy
+#
+build-oauth2:
+	docker build -f oauth2-proxy/Dockerfile -t braingeneers/oauth2-proxy:latest oauth2-proxy
+
+push-oauth2:
+	docker push braingeneers/oauth2-proxy:latest
+
+shell-oauth2:
+	docker run --rm -it braingeneers/oauth2-proxy:latest bash
+
+#
+# MQTT Service
+#
+build-mqtt:
+	docker build -f mqtt/Dockerfile -t braingeneers/mqtt:latest mqtt
+
+push-mqtt:
+	docker push braingeneers/mqtt:latest
+
+shell-mqtt:
+	docker run --rm -it braingeneers/mqtt:latest bash
+

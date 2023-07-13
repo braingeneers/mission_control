@@ -18,8 +18,6 @@ The primary change to the base image is a change to the `auth.conf` file to allo
 
 ## Debugging tips:
 
-```bash
-
 Use this command to print all MQTT messages to the console (linux based, should work in mac & WSL):
 
 ```bash

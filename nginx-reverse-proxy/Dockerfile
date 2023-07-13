@@ -5,3 +5,4 @@ RUN mkdir -p /etc/nginx/vhost.d
 
 # Add custom configuration file
 COPY vhost_location /etc/nginx/vhost.d/default_location
+COPY static.conf /etc/nginx/conf.d/static.conf
