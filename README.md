@@ -6,7 +6,7 @@ Starting/stopping all services:
 # Prerequisite: Download your personal (or service account) kubeconfig file from the cluster, place it in ~/.kube/config
 git clone git@github.com:braingeneers/mission_control.git
 cd mission_control
-docker-compose up -d
+docker compose up -d
 ```
 
 Importantly you can add a service to our infrastructure without updating any of the configurations described here.
