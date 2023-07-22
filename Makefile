@@ -1,3 +1,6 @@
+# default target runs all build and push operations
+all: build-braingeneers-image push-braingeneers-image build-h5repack push-h5repack build-nginx push-nginx build-oauth2 push-oauth2 build-mqtt push-mqtt build-slack-bridge push-slack-bridge build-secret-fetcher push-secret-fetcher
+
 #
 # Starts the full braingeneers stack of services, this is typically run
 # on the braingeneers server, wherever that is hosted. These services include
@@ -5,17 +8,15 @@
 # being installed.
 #
 start-services:
-	docker-compose create && docker-compose start
+	docker compose pull; docker compose up -d
 
 # Stops the full braingeneers stack of services.
 stop-services:
-	docker-compose down
+	docker compose down
 
 #
 # Builds the braingeneers docker image
 #
-update-braingeneers-image: build-braingeneers-image push-braingeneers-image
-
 build-braingeneers-image:
 	docker build -f braingeneers_docker_image/Dockerfile -t braingeneers/braingeneers:latest .
 
@@ -24,18 +25,6 @@ push-braingeneers-image:
 
 shell-braingeneers-image:
 	docker run --rm -it braingeneers/braingeneers:latest bash
-
-#
-# S3 -> Glacier backup service
-#
-build-s3-glacier-backup-service:
-	docker build -f service_s3_glacier_backup/Dockerfile -t braingeneers/service-s3-glacier-backup:latest service_s3_glacier_backup
-
-push-s3-glacier-backup-service:
-	docker push braingeneers/service-s3-glacier-backup:latest
-
-shell-s3-glacier-backup-service:
-	docker run --rm -it braingeneers/service-s3-glacier-backup:latest bash
 
 #
 # job_h5repack
@@ -59,7 +48,7 @@ push-nginx:
 	docker push braingeneers/nginx-proxy:latest
 
 shell-nginx:
-	docker run --rm -it braingeneers/nginx-proxy:latest bash
+	docker run --rm -it --entrypoint bash braingeneers/nginx-proxy:latest
 
 #
 # oauth2-proxy
@@ -85,3 +74,26 @@ push-mqtt:
 shell-mqtt:
 	docker run --rm -it braingeneers/mqtt:latest bash
 
+#
+# Slack Bridge
+#
+build-slack-bridge:
+	docker build -f slack-bridge/docker/Dockerfile -t braingeneers/service-slack-bridge:latest slack-bridge
+
+push-slack-bridge:
+	docker push braingeneers/service-slack-bridge:latest
+
+shell-slack-bridge:
+	docker run --rm -it braingeneers/service-slack-bridge:latest bash
+
+#
+# Secret Fetcher
+#
+build-secret-fetcher:
+	docker build -f secret-fetcher/Dockerfile -t braingeneers/secret-fetcher:latest secret-fetcher
+
+push-secret-fetcher:
+	docker push braingeneers/secret-fetcher:latest
+
+shell-secret-fetcher:
+	docker run --rm -it braingeneers/secret-fetcher:latest bash

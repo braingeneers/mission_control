@@ -10,13 +10,12 @@ version: '3.8'
 
 services:
 
-  # The secret-fetcher container retrieves the service account secrets from Kubernetes and makes them
-  # available on an in-memory volume. This service requires a valid kubeconfig
-  # file to be mounted at ~/.kube/config, that is the only dependency any service
-  # should have on the local host machine. Any other secrets file should be stored as
-  # a Kubernetes secret and retrieved by this service, non-secret data should reside on S3.
+  # The secret-fetcher container retrieves all secrets in the `braingeneers` namespace on kubernetes.
+  # The files are saved to a shared volume typically mounted at `/secrets`. So for example, the AWS credentials
+  # file would be found at `/secrets/prp-s3-credentials/credentials`.
+  # The secret-fetcher container is typically a dependency of other containers that need access to the secrets.
   secret-fetcher:
-    image: bitnami/kubectl:latest
+    image: braingeneers/secret-fetcher:latest
     container_name: secret-fetcher
     user: root
     volumes:
@@ -24,48 +23,30 @@ services:
       - secrets:/secrets
     environment:
       - KUBECONFIG=/.kube/config
-    entrypoint: ''  # Set the entrypoint to an empty value to override kubectl entrypoint
-    command:
-      - /bin/sh
-      - -c
-      - >
-        kubectl get secret prp-s3-credentials -n braingeneers -o jsonpath='{.data.credentials}' | base64 --decode > /secrets/credentials;
-        kubectl get secret prp-s3-credentials -n braingeneers -o jsonpath='{.data.git-id-rsa}' | base64 --decode > /secrets/git-id-rsa;
-        kubectl get secret ci-logon-auth -n braingeneers -o jsonpath='{.data.cilogon-client-id}' | base64 --decode > /secrets/cilogon-client-id;
-        kubectl get secret ci-logon-auth -n braingeneers -o jsonpath='{.data.cilogon-client-secret}' | base64 --decode > /secrets/cilogon-client-secret;
-        ls -al /secrets/;
     networks:
         - braingeneers-net
 
   # The nginx-proxy container is used to route traffic to the appropriate service based on the domain name.
   nginx-proxy:
     image: braingeneers/nginx-proxy:latest  # derived from jwilder/nginx-proxy:latest
-#    image: jwilder/nginx-proxy:latest
     container_name: nginx-proxy
     volumes:
-      - /tmp/braingeneers-cache/certs:/etc/nginx/certs:ro  # Cache SSL certificates on the host
-      - /tmp/braingeneers-cache/vhost:/etc/nginx/vhost.d
-      - /tmp/braingeneers-cache/html:/usr/share/nginx/html
+      - /data/braingeneers-cache/certs:/etc/nginx/certs:rw  # Cache SSL certificates on the host
+      - /data/braingeneers-cache/vhost:/etc/nginx/vhost.d
+      - /data/braingeneers-cache/html:/usr/share/nginx/html
       - /var/run/docker.sock:/tmp/docker.sock:ro  # Unix socket mount to access docker API read-only
     networks:
       - braingeneers-net
     environment:
-      - LETSENCRYPT_HOST=braingeneers-dev.gi.ucsc.edu
-      - LETSENCRYPT_EMAIL=dfparks@ucsc.edu
-      - DEFAULT_HOST=braingeneers-dev.gi.ucsc.edu  # Set a default host
-#      # Production Settings
-#      - DEFAULT_PORT=80
-#      - LETSENCRYPT_TEST=false   # Set to true (1) for debugging, avoids rate limits, false for production use
-      # Dev/test Settings
-      - DEFAULT_PORT=880
-      - LETSENCRYPT_TEST=true   # Set to true (1) for debugging, avoids rate limits, false for production use
+      - FORCE_INTERVAL=15s
+      - LETSENCRYPT_HOST=braingeneers.gi.ucsc.edu
+      - LETSENCRYPT_EMAIL=braingeners-admins-group@ucsc.edu
+      - LETSENCRYPT_TEST=false   # true | false for debugging | production (remember to set corresponding value in letsencrypt, it's used in run.sh in nginx container)
+      - DEFAULT_HOST=braingeneers.gi.ucsc.edu
+      - DEFAULT_PORT=80
     ports:
-#      # Production Settings
-#      - "80:80"
-#      - "443:443"
-      # Dev/test Settings
-      - "880:80"
-      - "8443:443"
+      - "80:80"
+      - "443:443"
 
   # The letsencrypt container is used to automatically generate SSL certificates for the domain names.
   # https://github.com/jwilder/docker-letsencrypt-nginx-proxy-companion
@@ -74,12 +55,14 @@ services:
     container_name: letsencrypt
     environment:
       - NGINX_PROXY_CONTAINER=nginx-proxy
-      - DEBUG=0   # 1 | 0 for debugging true | false
+      - LETSENCRYPT_TEST=false   # true | false for debugging | production (remember to set corresponding value in NGINX)
+      - DEBUG=0   # 1 | 0 for debugging | production (remember to set corresponding value in nginx-proxy)
+#      - ACME_CA_URI=https://acme-staging-v02.api.letsencrypt.org/directory  # comment out for production use
     volumes:
-      - /tmp/braingeneers-cache/certs:/etc/nginx/certs:rw  # Shared with nginx-proxy
-      - /tmp/braingeneers-cache/vhost:/etc/nginx/vhost.d
-      - /tmp/braingeneers-cache/html:/usr/share/nginx/html
-      - /tmp/braingeneers-cache/acme.sh:/etc/acme.sh
+      - /data/braingeneers-cache/certs:/etc/nginx/certs:rw  # Shared with nginx-proxy
+      - /data/braingeneers-cache/vhost:/etc/nginx/vhost.d
+      - /data/braingeneers-cache/html:/usr/share/nginx/html
+      - /data/braingeneers-cache/acme.sh:/etc/acme.sh
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Unix socket mount to access docker API read-only
     depends_on:
       - nginx-proxy
@@ -93,37 +76,47 @@ services:
     command: /run.sh
     entrypoint: /bin/sh
     volumes:
-      - ./nginx-reverse-proxy/static:/static  # todo bake this into the image later
-      - /tmp/braingeneers-cache/certs:/etc/ssl/certs:ro  # SSL certificates
+      - /data/braingeneers-cache/certs:/etc/ssl/certs  # SSL certificates
       - secrets:/secrets
     networks:
       - braingeneers-net
     environment:
-      - OAUTH2_PROXY_CLIENT_ID_FILE=/secrets/cilogon-client-id
-      - OAUTH2_PROXY_CLIENT_SECRET_FILE=/secrets/cilogon-client-secret
-      - OAUTH2_PROXY_EMAIL_DOMAINS=*
-      - OAUTH2_PROXY_COOKIE_REFRESH=120h
-      - OAUTH2_PROXY_COOKIE_EXPIRE=168h
+      # Settings to define a subdomain for this application
+      - VIRTUAL_HOST=auth.braingeneers.gi.ucsc.edu
+      - VIRTUAL_PORT=80
+      - LETSENCRYPT_HOST=auth.braingeneers.gi.ucsc.edu
+      - LETSENCRYPT_EMAIL=braingeners-admins-group@ucsc.edu
     depends_on:
       - secret-fetcher
 
-  # The dashboard container is used to host the braingeneers dashboard.
-  dashboard:
-    image: braingeneers/dashboard:v1.5
-    container_name: dashboard
-    expose:
-      - "8050"
-    environment:
-      - VIRTUAL_HOST=dashboard.braingeneers-dev.gi.ucsc.edu
-      - VIRTUAL_PORT=8050
-      - LETSENCRYPT_HOST=dashboard.braingeneers-dev.gi.ucsc.edu
-      - LETSENCRYPT_EMAIL=braingeners-admins-group@ucsc.edu
-    volumes:
-      - ~/.aws/credentials:/root/.aws/credentials:ro  # AWS credentials for your application
+#  # The dashboard container is used to host the braingeneers dashboard.
+#  dashboard:
+#    image: braingeneers/dashboard:v1.5
+#    container_name: dashboard
+#    expose:
+#      - "8050"
+#    environment:
+#      - VIRTUAL_HOST=dashboard.braingeneers.gi.ucsc.edu
+#      - VIRTUAL_PORT=8050
+#      - LETSENCRYPT_HOST=dashboard.braingeneers.gi.ucsc.edu
+#      - LETSENCRYPT_EMAIL=braingeners-admins-group@ucsc.edu
+#    volumes:
+#      - ~/.aws/credentials:/root/.aws/credentials:ro  # AWS credentials for your application
+#    networks:
+#      - braingeneers-net
+#    depends_on:
+#      - secret-fetcher
+
+# Slack bridge service, replicates messages between Slack and MQTT
+  slack-bridge:
+    image: braingeneers/service-slack-bridge:latest
+    container_name: slack-bridge
     networks:
       - braingeneers-net
     depends_on:
       - secret-fetcher
+    volumes:
+      - secrets:/secrets
 
 # The braingeneers-net network is used to connect the containers together.
 networks:

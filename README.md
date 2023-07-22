@@ -1,17 +1,41 @@
 # Adding and maintaining web services in `braingeneers` infrastructure
 
 ## Basic usage:
+Prerequisite: Download your personal (or service account) 
+kubeconfig file from the cluster, place it in `~/.kube/config`. 
+Run `kubectl get nodes` to verify that you can connect to the cluster, you
+should see a list of cluster nodes.
+
 Starting/stopping all services:
+
 ```bash
-# Prerequisite: Download your personal (or service account) kubeconfig file from the cluster, place it in ~/.kube/config
+# clone the repo
 git clone git@github.com:braingeneers/mission_control.git
 cd mission_control
+
+# start services
 docker compose up -d
 ```
 
-Importantly you can add a service to our infrastructure without updating any of the configurations described here.
+If you need to pull a newer image version, run pull before starting the services as above:
+```bash
+docker compose pull
+``` 
+
+You can also start and stop just your services (useful during testing):
+
+The name `my_service` is defined in the docker-compose.yml file under `services:`
+for example nginx_proxy, oauth2_proxy, etc. are services in the docker-compose.yml file 
+
+```bash
+docker compose pull my_service
+docker compose up my_service
+docker compose down my_service
+```
 
 ## An Overview of Our Infrastructure
+
+Importantly you can add a service to our infrastructure without updating any of the configurations described here.
 
 A reverse proxy is a type of server that retrieves resources on behalf of a client from one or more servers. These resources are then returned to the client as though they originated from the reverse proxy itself. In our infrastructure, we use a multi-service Docker Compose setup, which includes two reverse proxy's (for authentication and for routing to different containers) and a shared secrets fetcher.
 
