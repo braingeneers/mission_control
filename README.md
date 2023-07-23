@@ -22,15 +22,21 @@ If you need to pull a newer image version, run pull before starting the services
 docker compose pull
 ``` 
 
-You can also start and stop just your services (useful during testing):
+You can also start and stop just your services which is useful during testing so you don't 
+interfere with other running services:
 
 The name `my_service` is defined in the docker-compose.yml file under `services:`
 for example nginx_proxy, oauth2_proxy, etc. are services in the docker-compose.yml file 
 
 ```bash
+# Pull the latest image for a specific service
 docker compose pull my_service
-docker compose up my_service
-docker compose down my_service
+# Start a specific service in the background (removed -d, detached, to see logs, in the foreground for testing)
+docker compose up my_service -d
+# Stop (remove) a specific service
+docker compose rm -sf my_service
+# Restart a services (if you changed docker-compose.yaml then use rm -sf followed by up as shown above)
+docker restart my_service
 ```
 
 ## An Overview of Our Infrastructure

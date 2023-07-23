@@ -7,5 +7,6 @@ while [ ! -f "/secrets/prp-s3-credentials/credentials" ]; do
     sleep 5
 done
 
+mkdir -p /home/jovyan/.aws
 cp /secrets/prp-s3-credentials/credentials /home/jovyan/.aws/credentials
-python /app/slack-bridge.py
+python /app/slack_bridge.py

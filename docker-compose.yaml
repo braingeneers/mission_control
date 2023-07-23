@@ -26,14 +26,34 @@ services:
     networks:
         - braingeneers-net
 
+  # MQTT broker
+  mqtt:
+    image: braingeneers/mqtt:latest   # derived from emqx/emqx:5.0.4
+    container_name: mqtt
+    restart: always
+    ports:
+      - "1883:1883"
+      - "8083:8083"
+      - "8883:8883"
+      - "8084:8084"
+      - "18083:18083"
+    environment:
+      EMQX_NAME: braingeneers_emqx
+      EMQX_HOST: 127.0.0.1
+    networks:
+      host: {}
+      braingeneers-net:
+        aliases:
+          - mqtt.braingeneers.gi.ucsc.edu
+
   # The nginx-proxy container is used to route traffic to the appropriate service based on the domain name.
   nginx-proxy:
     image: braingeneers/nginx-proxy:latest  # derived from jwilder/nginx-proxy:latest
     container_name: nginx-proxy
     volumes:
-      - /data/braingeneers-cache/certs:/etc/nginx/certs:rw  # Cache SSL certificates on the host
-      - /data/braingeneers-cache/vhost:/etc/nginx/vhost.d
-      - /data/braingeneers-cache/html:/usr/share/nginx/html
+      - vol-certs:/etc/nginx/certs:rw  # Cache SSL certificates on the host
+      - vol-vhost:/etc/nginx/vhost.d
+      - vol-html:/usr/share/nginx/html
       - /var/run/docker.sock:/tmp/docker.sock:ro  # Unix socket mount to access docker API read-only
     networks:
       - braingeneers-net
@@ -57,12 +77,12 @@ services:
       - NGINX_PROXY_CONTAINER=nginx-proxy
       - LETSENCRYPT_TEST=false   # true | false for debugging | production (remember to set corresponding value in NGINX)
       - DEBUG=0   # 1 | 0 for debugging | production (remember to set corresponding value in nginx-proxy)
-#      - ACME_CA_URI=https://acme-staging-v02.api.letsencrypt.org/directory  # comment out for production use
+      # - ACME_CA_URI=https://acme-staging-v02.api.letsencrypt.org/directory  # comment out for production use
     volumes:
-      - /data/braingeneers-cache/certs:/etc/nginx/certs:rw  # Shared with nginx-proxy
-      - /data/braingeneers-cache/vhost:/etc/nginx/vhost.d
-      - /data/braingeneers-cache/html:/usr/share/nginx/html
-      - /data/braingeneers-cache/acme.sh:/etc/acme.sh
+      - vol-certs:/etc/nginx/certs:rw  # Shared with nginx-proxy
+      - vol-vhost:/etc/nginx/vhost.d
+      - vol-html:/usr/share/nginx/html
+      - vol-acme.sh:/etc/acme.sh  # todo try removing this and see if it breaks, I don't think this is actually used
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Unix socket mount to access docker API read-only
     depends_on:
       - nginx-proxy
@@ -76,7 +96,7 @@ services:
     command: /run.sh
     entrypoint: /bin/sh
     volumes:
-      - /data/braingeneers-cache/certs:/etc/ssl/certs  # SSL certificates
+      - vol-certs:/etc/ssl/certs  # SSL certificates
       - secrets:/secrets
     networks:
       - braingeneers-net
@@ -111,6 +131,11 @@ services:
   slack-bridge:
     image: braingeneers/service-slack-bridge:latest
     container_name: slack-bridge
+    ports:
+      - "3000:3000"
+    environment:
+      - LETSENCRYPT_HOST=slack-bridge.braingeneers.gi.ucsc.edu
+      - LETSENCRYPT_EMAIL=braingeners-admins-group@ucsc.edu
     networks:
       - braingeneers-net
     depends_on:
@@ -120,11 +145,21 @@ services:
 
 # The braingeneers-net network is used to connect the containers together.
 networks:
+  host: {}
   braingeneers-net:
     driver: bridge
 
+# Volumes are persisted on the host machine.
+# All services should be able to cold start when volumes are cleared, these are not a place for
+# permanent files that can't be replaced, those should be stored on S3 and copied in if needed.
 volumes:
+  # A shared volume for secrets only in-memory for security
   secrets:
     driver_opts:
       type: tmpfs
       device: tmpfs
+  # nginx-proxy, letsencrypt, and oauth2-proxy shared volumes for SSL certificates
+  vol-certs:
+  vol-vhost:
+  vol-html:
+  vol-acme.sh:

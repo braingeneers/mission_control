@@ -26,13 +26,19 @@ for secret in $secrets; do
 
     echo "Fetching key: $key from secret: $secret"
 
-    # Try getting data for each key
-    data_key=$(kubectl get secret $secret -o jsonpath="{.data['$key']}")
+    # Run the fetching, decoding, and saving operations in the background
+    (
+      # Try getting data for each key
+      data_key=$(kubectl get secret $secret -o jsonpath="{.data['$key']}")
 
-    # Decode and save data
-    echo "$data_key" | base64 --decode > "/secrets/$secret/$key"
+      # Decode and save data
+      echo "$data_key" | base64 --decode > "/secrets/$secret/$key"
+    ) &
 
   done
+
+  # Wait for all background processes to finish before processing the next secret
+  wait
 
 done
 

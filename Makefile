@@ -27,16 +27,16 @@ shell-braingeneers-image:
 	docker run --rm -it braingeneers/braingeneers:latest bash
 
 #
-# job_h5repack
+# job-h5repack
 #
 build-h5repack:
-	docker build -f job_h5repack/Dockerfile -t braingeneers/job_h5repack:latest .
+	docker build -f job-h5repack/Dockerfile -t braingeneers/job-h5repack:latest .
 
 push-h5repack:
-	docker push braingeneers/job_h5repack:latest
+	docker push braingeneers/job-h5repack:latest
 
 shell-h5repack:
-	docker run --rm -it braingeneers/job_h5repack:latest bash
+	docker run --rm -it braingeneers/job-h5repack:latest bash
 
 #
 # nginx-proxy
