@@ -42,9 +42,9 @@ def get_channel_name(channel_id):
 
 def mqtt_to_slack_callback(_topic: str, message: dict):
     """ Callback function for MQTT messages. Posts the message to a Slack channel. """
-    channel = message.get("channel")
+    channel = _topic.split('/')[-1]  # Get the channel name from the topic
     text = message.get("message")
-    file_data = message.get("file")
+    file_data = message.get("image_base64")
 
     # If there's a file, decode it from base64 and upload it to Slack
     if file_data is not None:
@@ -53,6 +53,7 @@ def mqtt_to_slack_callback(_topic: str, message: dict):
             slack_client.files_upload(
                 channels=channel,
                 file=file_data,
+                filename=message.get("filename", "uploaded_file"),
                 initial_comment=text
             )
         except SlackApiError as e:
@@ -67,7 +68,7 @@ def mqtt_to_slack_callback(_topic: str, message: dict):
 
 
 # Subscribe to the MQTT topic
-mb.subscribe_message("telemetry/slack/TOSLACK", mqtt_to_slack_callback)
+mb.subscribe_message("telemetry/slack/TOSLACK/#", mqtt_to_slack_callback)
 
 
 @app.route("/slack/events", methods=["POST"])
@@ -96,6 +97,15 @@ def handle_slack_event():
                 channel_id = data["event"]["channel"]
                 channel_name = get_channel_name(channel_id)
                 edited = False
+                file_data = None
+                filename = None
+
+                if "files" in data["event"]:
+                    file_info = data["event"]["files"][0]
+                    response = slack_client.files_info(file=file_info["id"])
+                    if response["ok"]:
+                        file_data = response["file"]["url_private"]
+                        filename = response["file"]["name"]
 
                 if "message" in data["event"] and 'edited' in data["event"]["message"]:
                     text = data["event"]["message"].get('text', '[Message deleted]')
@@ -103,9 +113,9 @@ def handle_slack_event():
                 else:
                     text = data["event"].get("text", '[Message deleted]')
 
-                # TODO: Handle mentions and thread replies
-                mb.publish_message("telemetry/slack/FROMSLACK",
-                                   {"channel": channel_name, "message": text, "edited": edited})
+                mb.publish_message(f"telemetry/slack/FROMSLACK/{channel_name}", {
+                    "channel": channel_name, "message": text, "edited": edited, "filename": filename,
+                    "image_base64": file_data})
 
         return "", 200
     except Exception as e:

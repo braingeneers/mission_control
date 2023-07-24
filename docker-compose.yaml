@@ -24,7 +24,12 @@ services:
     environment:
       - KUBECONFIG=/.kube/config
     networks:
-        - braingeneers-net
+      - braingeneers-net
+    healthcheck:
+      test: ["CMD", "test -f /tmp/SECRET_FETCHER_COMPLETE_TOKEN"]
+      interval: 5s
+      timeout: 5s
+      retries: 2
 
   # MQTT broker
   mqtt:
@@ -107,7 +112,8 @@ services:
       - LETSENCRYPT_HOST=auth.braingeneers.gi.ucsc.edu
       - LETSENCRYPT_EMAIL=braingeners-admins-group@ucsc.edu
     depends_on:
-      - secret-fetcher
+      secret-fetcher:
+        condition: service_healthy
 
 #  # The dashboard container is used to host the braingeneers dashboard.
 #  dashboard:
@@ -139,7 +145,8 @@ services:
     networks:
       - braingeneers-net
     depends_on:
-      - secret-fetcher
+      secret-fetcher:
+        condition: service_healthy
     volumes:
       - secrets:/secrets
 

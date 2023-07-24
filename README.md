@@ -35,8 +35,6 @@ docker compose pull my_service
 docker compose up my_service -d
 # Stop (remove) a specific service
 docker compose rm -sf my_service
-# Restart a services (if you changed docker-compose.yaml then use rm -sf followed by up as shown above)
-docker restart my_service
 ```
 
 ## An Overview of Our Infrastructure

@@ -45,3 +45,7 @@ done
 # List the contents of /secrets directory
 echo "Listing all fetched secrets..."
 ls -lR /secrets
+
+echo "Task complete, main process sleeping so healthcheck can continue."
+touch /tmp/SECRET_FETCHER_COMPLETE_TOKEN
+sleep infinity
