@@ -1,4 +1,4 @@
-# Adding and maintaining web services in `braingeneers` infrastructure
+# Adding and maintaining web (and other) services in `braingeneers` infrastructure
 
 ## Basic usage:
 Prerequisite: Download your personal (or service account) 
