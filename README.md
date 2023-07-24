@@ -29,12 +29,12 @@ The name `my_service` is defined in the docker-compose.yml file under `services:
 for example nginx_proxy, oauth2_proxy, etc. are services in the docker-compose.yml file 
 
 ```bash
-# Pull the latest image for a specific service
-docker compose pull my_service
-# Start a specific service in the background (removed -d, detached, to see logs, in the foreground for testing)
-docker compose up my_service -d
 # Stop (remove) a specific service
 docker compose rm -sf my_service
+# Pull the latest image for a specific service
+docker compose pull my_service
+# Start a specific service in the background (removed -d, detached, to see logs in the foreground, useful during testing)
+docker compose up my_service -d
 ```
 
 ## An Overview of Our Infrastructure

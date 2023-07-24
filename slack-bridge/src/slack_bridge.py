@@ -44,7 +44,7 @@ def mqtt_to_slack_callback(_topic: str, message: dict):
     """ Callback function for MQTT messages. Posts the message to a Slack channel. """
     channel = _topic.split('/')[-1]  # Get the channel name from the topic
     text = message.get("message")
-    file_data = message.get("image_base64")
+    file_data = message.get("image")
 
     # If there's a file, decode it from base64 and upload it to Slack
     if file_data is not None:
@@ -115,7 +115,7 @@ def handle_slack_event():
 
                 mb.publish_message(f"telemetry/slack/FROMSLACK/{channel_name}", {
                     "channel": channel_name, "message": text, "edited": edited, "filename": filename,
-                    "image_base64": file_data})
+                    "image": file_data})
 
         return "", 200
     except Exception as e:
