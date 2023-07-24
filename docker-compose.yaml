@@ -150,6 +150,18 @@ services:
     volumes:
       - secrets:/secrets
 
+# mqtt_job_listener launches NRP jobs based on MQTT messages see repo mqtt_job_listener
+  mqtt-job-listener:
+    image: braingeneers/mqtt-job-listener:latest
+    container_name: job-listener
+    networks:
+      - braingeneers-net
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+    volumes:
+      - secrets:/secrets
+
 # The braingeneers-net network is used to connect the containers together.
 networks:
   host: {}

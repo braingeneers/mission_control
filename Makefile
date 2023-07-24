@@ -1,5 +1,5 @@
 # default target runs all build and push operations
-all: build-braingeneers-image push-braingeneers-image build-h5repack push-h5repack build-nginx push-nginx build-oauth2 push-oauth2 build-mqtt push-mqtt build-slack-bridge push-slack-bridge build-secret-fetcher push-secret-fetcher
+all: build-braingeneers-image push-braingeneers-image build-h5repack push-h5repack build-nginx push-nginx build-oauth2 push-oauth2 build-mqtt push-mqtt build-slack-bridge push-slack-bridge build-secret-fetcher push-secret-fetcher build-mqtt-job-listener push-mqtt-job-listener
 
 #
 # Starts the full braingeneers stack of services, this is typically run
@@ -97,3 +97,15 @@ push-secret-fetcher:
 
 shell-secret-fetcher:
 	docker run --rm -it braingeneers/secret-fetcher:latest bash
+
+#
+# mqtt-job-listener service listens to MQTT and launches NRP kubernetes jobs
+#
+build-mqtt-job-listener:
+	docker build -f mqtt-job-listener/Dockerfile -t braingeneers/mqtt-job-listener:latest mqtt-job-listener
+
+push-mqtt-job-listener:
+	docker push braingeneers/mqtt-job-listener:latest
+
+shell-mqtt-job-listener:
+	docker run --rm -it braingeneers/mqtt-job-listener:latest bash

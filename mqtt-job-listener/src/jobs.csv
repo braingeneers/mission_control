@@ -1,0 +1,4 @@
+job_name,image,mqtt_topic,cpu_request,cpu_limit,memory_request,memory_limit,gpu,disk_request,disk_limit
+hello-world-test-1,hello-world:latest,test/hello/world,0.5,1,500Mi,1Gi,0,10Gi,20Gi
+hello-world-test-2,hello-world:latest,services/mqtt_job_listener/job_complete/hello-world-test,0.5,1,500Mi,1Gi,0,10Gi,20Gi
+h5-repack,braingeneers/job-h5repack:latest,experiments/upload,4,16,4Gi,8Gi,0,0,0
