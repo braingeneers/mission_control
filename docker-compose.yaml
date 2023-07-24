@@ -26,10 +26,10 @@ services:
     networks:
       - braingeneers-net
     healthcheck:
-      test: ["CMD", "test -f /tmp/SECRET_FETCHER_COMPLETE_TOKEN"]
+      test: ["CMD", "/healthcheck.sh"]
       interval: 5s
       timeout: 5s
-      retries: 2
+      retries: 120  # Retries allows for max of 10 minutes for secrets to be fetched before service is permanently marked as unhealthy
 
   # MQTT broker
   mqtt:

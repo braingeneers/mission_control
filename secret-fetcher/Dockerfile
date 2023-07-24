@@ -5,5 +5,6 @@
 FROM bitnami/kubectl:latest
 
 COPY download-secrets.sh /
+COPY healthcheck.sh /
 
 ENTRYPOINT ["/download-secrets.sh"]
