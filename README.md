@@ -34,7 +34,7 @@ docker compose rm -sf my_service
 # Pull the latest image for a specific service
 docker compose pull my_service
 # Start a specific service in the background (removed -d, detached, to see logs in the foreground, useful during testing)
-docker compose up my_service -d
+docker compose up -d my_service
 ```
 
 ## An Overview of Our Infrastructure
