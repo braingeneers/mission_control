@@ -4,7 +4,7 @@ FROM jwilder/nginx-proxy:latest
 RUN mkdir -p /etc/nginx/vhost.d
 
 # Add custom configuration file
-COPY vhost_location /etc/nginx/vhost.d/default_location
+# COPY vhost_location /etc/nginx/vhost.d/default_location
 COPY static.conf /etc/nginx/conf.d/static.conf
 COPY static_https.conf /app/static_https.conf
 

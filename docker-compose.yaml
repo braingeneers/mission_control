@@ -21,8 +21,6 @@ services:
     volumes:
       - ~/.kube/config:/.kube/config
       - secrets:/secrets
-    environment:
-      - KUBECONFIG=/.kube/config
     networks:
       - braingeneers-net
     healthcheck:
@@ -46,14 +44,13 @@ services:
       EMQX_NAME: braingeneers_emqx
       EMQX_HOST: 127.0.0.1
     networks:
-      host: {}
       braingeneers-net:
         aliases:
           - mqtt.braingeneers.gi.ucsc.edu
 
   # The nginx-proxy container is used to route traffic to the appropriate service based on the domain name.
   nginx-proxy:
-    image: braingeneers/nginx-proxy:latest  # derived from jwilder/nginx-proxy:latest
+    image: jwilder/nginx-proxy:latest  # braingeneers/nginx-proxy:latest  # derived from jwilder/nginx-proxy:latest
     container_name: nginx-proxy
     volumes:
       - vol-certs:/etc/nginx/certs:rw  # Cache SSL certificates on the host
@@ -63,12 +60,14 @@ services:
     networks:
       - braingeneers-net
     environment:
-      - FORCE_INTERVAL=15s
-      - LETSENCRYPT_HOST=braingeneers.gi.ucsc.edu
-      - LETSENCRYPT_EMAIL=braingeners-admins-group@ucsc.edu
-      - LETSENCRYPT_TEST=false   # true | false for debugging | production (remember to set corresponding value in letsencrypt, it's used in run.sh in nginx container)
-      - DEFAULT_HOST=braingeneers.gi.ucsc.edu
-      - DEFAULT_PORT=80
+      DEBUG: "true"
+      VERBOSE: "true"
+      FORCE_INTERVAL: 15s
+      LETSENCRYPT_HOST: braingeneers.gi.ucsc.edu
+      LETSENCRYPT_EMAIL: braingeners-admins-group@ucsc.edu
+      LETSENCRYPT_TEST: "false"
+      DEFAULT_HOST: braingeneers.gi.ucsc.edu
+      DEFAULT_PORT: "80"
     ports:
       - "80:80"
       - "443:443"
@@ -79,9 +78,9 @@ services:
     image: jrcs/letsencrypt-nginx-proxy-companion
     container_name: letsencrypt
     environment:
-      - NGINX_PROXY_CONTAINER=nginx-proxy
-      - LETSENCRYPT_TEST=false   # true | false for debugging | production (remember to set corresponding value in NGINX)
-      - DEBUG=0   # 1 | 0 for debugging | production (remember to set corresponding value in nginx-proxy)
+      NGINX_PROXY_CONTAINER: "nginx-proxy"
+      LETSENCRYPT_TEST: "true"   # true | false for debugging | production (remember to set corresponding value in NGINX)
+      DEBUG: "0"   # 1 | 0 for debugging | production (remember to set corresponding value in nginx-proxy)
       # - ACME_CA_URI=https://acme-staging-v02.api.letsencrypt.org/directory  # comment out for production use
     volumes:
       - vol-certs:/etc/nginx/certs:rw  # Shared with nginx-proxy
@@ -133,7 +132,7 @@ services:
 #    depends_on:
 #      - secret-fetcher
 
-# Slack bridge service, replicates messages between Slack and MQTT
+  # Slack bridge service, replicates messages between Slack and MQTT
   slack-bridge:
     image: braingeneers/service-slack-bridge:latest
     container_name: slack-bridge
@@ -150,10 +149,10 @@ services:
     volumes:
       - secrets:/secrets
 
-# mqtt_job_listener launches NRP jobs based on MQTT messages see repo mqtt_job_listener
-  mqtt-job-listener:
-    image: braingeneers/mqtt-job-listener:latest
-    container_name: job-listener
+  # job-launcher launches NRP jobs based on MQTT messages see repo mqtt_job_listener
+  job-launcher:
+    image: braingeneers/job-launcher:latest
+    container_name: job-launcher
     networks:
       - braingeneers-net
     depends_on:

@@ -13,7 +13,7 @@ Starting/stopping all services:
 git clone git@github.com:braingeneers/mission_control.git
 cd mission_control
 
-# start services
+# start all services
 docker compose up -d
 ```
 
@@ -22,19 +22,30 @@ If you need to pull a newer image version, run pull before starting the services
 docker compose pull
 ``` 
 
-You can also start and stop just your services which is useful during testing so you don't 
-interfere with other running services:
+You can also start and stop just a single services which is useful during testing so you don't 
+interfere with other running services, it's perfectly safe to do this while other services are running:
 
-The name `my_service` is defined in the docker-compose.yml file under `services:`
-for example nginx_proxy, oauth2_proxy, etc. are services in the docker-compose.yml file 
+The name `my_service` is defined in the docker-compose.yaml file under `services:`
+for example mqtt, slack-bridge, etc. are services in the docker-compose.yaml file 
 
 ```bash
 # Stop (remove) a specific service
 docker compose rm -sf my_service
+
 # Pull the latest image for a specific service
 docker compose pull my_service
+
 # Start a specific service in the background (removed -d, detached, to see logs in the foreground, useful during testing)
 docker compose up -d my_service
+
+# See a list of all braingeneers service names (these are defined in the docker-compose.yaml file but can be quickly listed with a double tab)
+docker compose up -d <tab><tab>
+
+# See logs for a specific service
+docker compose logs my_service
+
+# See process status for all services
+docker compose ps
 ```
 
 ## An Overview of Our Infrastructure
@@ -95,15 +106,15 @@ graph LR
 git clone git@github.com:braingeneers/mission_control.git
 ```
 
-2. Edit the Docker Compose file: Open the `docker-compose.yml` file located in the `mission_control` directory in a text editor. Add a new service definition for your container under the `services` section, similar to the existing services.
+2. Edit the Docker Compose file: Open the `docker-compose.yaml` file located in the `mission_control` directory in a text editor. Add a new service definition for your container under the `services` section, similar to the existing services.
   - Note: The `VIRTUAL_HOST` environment variable in your service's definition determines the subdomain your service will be accessible from. For instance, if `VIRTUAL_HOST` is set to `my-service`, your service will be accessible from `https://my-service.braingeneers.gi.ucsc.edu`.
   - Remember to also add a volume mount from the shared secrets volume to your service if it requires access to the shared secrets. The secrets will be available in the /secrets directory in your service's file system.
 
 3. Remember to also add a volume mount from the shared `secrets` volume to your service if it requires access to the shared secrets. The secrets will be available in the `/secrets` directory in your service's file system.
 
-4. After you've made your changes, save the `docker-compose.yml` file and exit the text editor.
+4. After you've made your changes, save the `docker-compose.yaml` file and exit the text editor.
 
-5. Restart the Docker Compose stack by running the following command in the directory where your `docker-compose.yml` file is located:
+5. Restart the Docker Compose stack by running the following command in the directory where your `docker-compose.yaml` file is located:
 
 ```bash
 docker compose up -d
@@ -111,7 +122,7 @@ docker compose up -d
 
 6. This will stop and recreate the services defined in the Docker Compose file, including your newly added service.
 
-7. After verifying your service works correctly, commit the changes to the `docker-compose.yml` file back to the `mission_control` repository.
+7. After verifying your service works correctly, commit the changes to the `docker-compose.yaml` file back to the `mission_control` repository.
 
 ```bash
 git commit -am "Added my-service to Docker Compose configuration"

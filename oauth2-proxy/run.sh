@@ -18,11 +18,11 @@ sleep 2  # allow time for nginx to load first in case the cert already existed (
 echo "Copying cilogon.org certificates to /etc/ssl/certs/"
 cp /tmp/cilogon-basic.pem /etc/ssl/certs/cilogon-basic.crt
 cp /tmp/cilogon-openid.pem /etc/ssl/certs/cilogon-openid.crt
-cat /etc/ssl/certs/*.crt > /etc/ssl/certs/ca-certificates.crt
+# cat /etc/ssl/certs/*.crt > /etc/ssl/certs/ca-certificates.crt
 update-ca-certificates
 
 export OAUTH2_PROXY_PROVIDER=oidc
-export OAUTH2_PROXY_OIDC_ISSUER_URL=https://cilogon.org/oidc
+export OAUTH2_PROXY_OIDC_ISSUER_URL=https://cilogon.org
 export OAUTH2_PROXY_LOGIN_URL=https://cilogon.org/authorize
 export OAUTH2_PROXY_EMAIL_DOMAINS=*
 export OAUTH2_PROXY_COOKIE_REFRESH=120h

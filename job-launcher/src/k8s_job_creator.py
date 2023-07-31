@@ -46,7 +46,8 @@ class K8sJobCreator:
         # Create the specification of deployment
         spec = client.V1JobSpec(
             template=template,
-            backoff_limit=0)
+            backoff_limit=0,
+            parallelism=int(self.job_info['parallelism']))  # Add parallelism to the job spec
 
         # Instantiate the job object
         job = client.V1Job(
@@ -60,7 +61,7 @@ class K8sJobCreator:
     def create_and_start_job(self):
         job = self.create_job_object()
         self.api_instance.create_namespaced_job(namespace=self.namespace, body=job)
-        print(f'Job {self.job_info["job_name"]} created')
+        print(f'Job {self.job_info["job_name"]} created\n')
 
     def is_job_completed(self, job_name):
         api_response = self.api_instance.read_namespaced_job_status(job_name, self.namespace)
@@ -79,7 +80,7 @@ class K8sJobCreator:
         logs = self.get_job_logs(job_name)
         status = self.get_job_status(job_name)
         self.copy_logs_to_s3(logs, job_name)
-        print(f'Job {job_name} completed, logs saved to {LOGS_PATH}/{job_name}.txt')
+        print(f'Job {job_name} completed, logs saved to {LOGS_PATH}/{job_name}.txt\n')
         self.send_completion_message(job_name, status)
         self.delete_job(job_name)
 
@@ -87,7 +88,7 @@ class K8sJobCreator:
         core_v1_api = client.CoreV1Api()
         pod_list = core_v1_api.list_namespaced_pod(self.namespace, label_selector=f"app={job_name}")
         if not pod_list.items:
-            print(f'No pods found for job: {job_name}')
+            print(f'No pods found for job: {job_name}\n')
             return ''
         pod_name = pod_list.items[0].metadata.name
         return core_v1_api.read_namespaced_pod_log(name=pod_name, namespace=self.namespace)
@@ -95,7 +96,7 @@ class K8sJobCreator:
     def delete_job(self, job_name):
         delete_options = client.V1DeleteOptions(propagation_policy="Foreground")
         self.api_instance.delete_namespaced_job(job_name, self.namespace, body=delete_options)
-        print(f'Job {job_name} deleted')
+        print(f'Job {job_name} deleted\n')
 
     @staticmethod
     def copy_logs_to_s3(logs, job_name):
@@ -105,7 +106,7 @@ class K8sJobCreator:
     def send_completion_message(self, job_name, status):
         mqtt_topic = f'services/mqtt_job_listener/job_complete/{job_name}'
         self.mb.publish_message(topic=mqtt_topic, message={'status': status})
-        print(f'Job {job_name} published job_complete message to {mqtt_topic} with status {status}')
+        print(f'Job {job_name} published job_complete message to {mqtt_topic} with status {status}\n')
 
 
 class MQTTJobListener:
@@ -115,25 +116,27 @@ class MQTTJobListener:
         self.csv_file = csv_file
         self.mb = messaging.MessageBroker()
 
+        print('Starting listener for REFRESH events.\n')
         self.mb.subscribe_message("services/mqtt_job_listener/REFRESH", self.refresh_jobs)
 
     def refresh_jobs(self, topic, message):
         self.start_mqtt_listeners()
 
     def start_mqtt_listeners(self):
+        print(f'Reading jobs from {self.csv_file}\n')
         with open(self.csv_file, newline='') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 job_info = dict(row).copy()
                 mqtt_topic = job_info["mqtt_topic"]  # Extracts MQTT topic from the CSV file.
-                print(f'Subscribing to {mqtt_topic} with parameters {job_info}')
+                print(f'Subscribing to {mqtt_topic} with parameters {job_info}\n')
                 self.mb.subscribe_message(
                     mqtt_topic,
                     functools.partial(self.handle_job_request, job_info=job_info)
                 )
 
     def handle_job_request(self, topic, message, job_info):
-        print(F'DEBUG> {topic} {message}, {job_info}')
+        print(F'DEBUG> {topic} {message}, {job_info}\n')
         job_info.update(message)  # combine job info from the csv file and the mqtt message
         job_creator = K8sJobCreator(job_info, self.namespace, self.mb)
         job_creator.create_and_start_job()
@@ -147,6 +150,7 @@ class MQTTJobListener:
 
 
 if __name__ == "__main__":
+    print('Starting MQTTJobListener\n')
     job_listener = MQTTJobListener("s3://braingeneers/services/mqtt_job_listener/jobs.csv")
     job_listener.start_mqtt_listeners()
     Event().wait()
