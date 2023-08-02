@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: dp-mqtt-h5repack-init-x
+  name: dp-mqtt-h5repack-init
 spec:
   backoffLimit: 1
   template:

@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: dp-mqtt-h5repack-workers-x
+  name: dp-mqtt-h5repack-workers
 spec:
   parallelism: 160
   backoffLimit: 0

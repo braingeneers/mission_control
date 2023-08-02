@@ -1,5 +1,6 @@
 import csv
 import time
+import json
 from braingeneers.iot import messaging
 from kubernetes import client, config
 from braingeneers.utils.smart_open_braingeneers import open
@@ -59,54 +60,91 @@ class K8sJobCreator:
         return job
 
     def create_and_start_job(self):
-        job = self.create_job_object()
-        self.api_instance.create_namespaced_job(namespace=self.namespace, body=job)
-        print(f'Job {self.job_info["job_name"]} created\n')
+        try:
+            job = self.create_job_object()
+            self.api_instance.create_namespaced_job(namespace=self.namespace, body=job)
+            print(f'Job {self.job_info["job_name"]} created\n')
+        except Exception as e:
+            self.send_error_message(f'Error when creating and starting job: {str(e)}')
+            raise
 
     def is_job_completed(self, job_name):
-        api_response = self.api_instance.read_namespaced_job_status(job_name, self.namespace)
-        return api_response.status.succeeded is not None
+        try:
+            api_response = self.api_instance.read_namespaced_job_status(job_name, self.namespace)
+            return api_response.status.succeeded is not None
+        except Exception as e:
+            self.send_error_message(f'Error when checking job completion status: {str(e)}')
+            raise
 
     def get_job_status(self, job_name):
-        api_response = self.api_instance.read_namespaced_job_status(job_name, self.namespace)
-        if api_response.status.succeeded is not None and api_response.status.succeeded == 1:
-            return 'succeeded'
-        elif api_response.status.failed is not None and api_response.status.failed > 0:
-            return 'failed'
-        else:
-            return 'running'
+        try:
+            api_response = self.api_instance.read_namespaced_job_status(job_name, self.namespace)
+            if api_response.status.succeeded is not None and api_response.status.succeeded == 1:
+                return 'succeeded'
+            elif api_response.status.failed is not None and api_response.status.failed > 0:
+                return 'failed'
+            else:
+                return 'running'
+        except Exception as e:
+            self.send_error_message(f'Error when getting job status: {str(e)}')
+            raise
 
     def handle_completed_job(self, job_name):
-        logs = self.get_job_logs(job_name)
-        status = self.get_job_status(job_name)
-        self.copy_logs_to_s3(logs, job_name)
-        print(f'Job {job_name} completed, logs saved to {LOGS_PATH}/{job_name}.txt\n')
-        self.send_completion_message(job_name, status)
-        self.delete_job(job_name)
+        try:
+            logs = self.get_job_logs(job_name)
+            status = self.get_job_status(job_name)
+            self.copy_logs_to_s3(logs, job_name)
+            print(f'Job {job_name} completed, logs saved to {LOGS_PATH}/{job_name}.txt\n')
+            self.send_completion_message(job_name, status)
+            self.delete_job(job_name)
+        except Exception as e:
+            self.send_error_message(f'Error when handling completed job: {str(e)}')
+            raise
 
     def get_job_logs(self, job_name):
-        core_v1_api = client.CoreV1Api()
-        pod_list = core_v1_api.list_namespaced_pod(self.namespace, label_selector=f"app={job_name}")
-        if not pod_list.items:
-            print(f'No pods found for job: {job_name}\n')
-            return ''
-        pod_name = pod_list.items[0].metadata.name
-        return core_v1_api.read_namespaced_pod_log(name=pod_name, namespace=self.namespace)
+        try:
+            core_v1_api = client.CoreV1Api()
+            pod_list = core_v1_api.list_namespaced_pod(self.namespace, label_selector=f"app={job_name}")
+            if not pod_list.items:
+                print(f'No pods found for job: {job_name}\n')
+                return ''
+            pod_name = pod_list.items[0].metadata.name
+            return core_v1_api.read_namespaced_pod_log(name=pod_name, namespace=self.namespace)
+        except Exception as e:
+            self.send_error_message(f'Error when getting job logs: {str(e)}')
+            raise
 
     def delete_job(self, job_name):
-        delete_options = client.V1DeleteOptions(propagation_policy="Foreground")
-        self.api_instance.delete_namespaced_job(job_name, self.namespace, body=delete_options)
-        print(f'Job {job_name} deleted\n')
+        try:
+            delete_options = client.V1DeleteOptions(propagation_policy="Foreground")
+            self.api_instance.delete_namespaced_job(job_name, self.namespace, body=delete_options)
+            print(f'Job {job_name} deleted\n')
+        except Exception as e:
+            self.send_error_message(f'Error when deleting job: {str(e)}')
+            raise
 
     @staticmethod
     def copy_logs_to_s3(logs, job_name):
-        with open(f'{LOGS_PATH}/{job_name}.txt', 'w') as f:
-            f.write(logs)
+        try:
+            with open(f'{LOGS_PATH}/{job_name}.txt', 'w') as f:
+                f.write(logs)
+        except Exception as e:
+            self.send_error_message(f'Error when copying logs to S3: {str(e)}')
+            raise
 
     def send_completion_message(self, job_name, status):
-        mqtt_topic = f'services/mqtt_job_listener/job_complete/{job_name}'
-        self.mb.publish_message(topic=mqtt_topic, message={'status': status})
-        print(f'Job {job_name} published job_complete message to {mqtt_topic} with status {status}\n')
+        try:
+            mqtt_topic = f'services/mqtt_job_listener/job_complete/{job_name}'
+            self.mb.publish_message(topic=mqtt_topic, message={'status': status})
+            print(f'Job {job_name} published job_complete message to {mqtt_topic} with status {status}\n')
+        except Exception as e:
+            self.send_error_message(f'Error when sending completion message: {str(e)}')
+            raise
+
+    def send_error_message(self, error_message):
+        mqtt_topic = 'services/mqtt_job_listener/ERROR'
+        self.mb.publish_message(topic=mqtt_topic, message={'error': error_message})
+        print(f'Published error message to {mqtt_topic} with content {error_message}\n')
 
 
 class MQTTJobListener:
@@ -120,37 +158,58 @@ class MQTTJobListener:
         self.mb.subscribe_message("services/mqtt_job_listener/REFRESH", self.refresh_jobs)
 
     def refresh_jobs(self, topic, message):
-        self.start_mqtt_listeners()
+        try:
+            self.start_mqtt_listeners()
+        except Exception as e:
+            self.send_error_message(f'Error when refreshing jobs: {str(e)}')
+            raise
 
     def start_mqtt_listeners(self):
-        print(f'Reading jobs from {self.csv_file}\n')
-        with open(self.csv_file, newline='') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                job_info = dict(row).copy()
-                mqtt_topic = job_info["mqtt_topic"]  # Extracts MQTT topic from the CSV file.
-                print(f'Subscribing to {mqtt_topic} with parameters {job_info}\n')
-                self.mb.subscribe_message(
-                    mqtt_topic,
-                    functools.partial(self.handle_job_request, job_info=job_info)
-                )
+        try:
+            print(f'Reading jobs from {self.csv_file}\n')
+            with open(self.csv_file, newline='') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    job_info = dict(row).copy()
+                    mqtt_topic = job_info["mqtt_topic"]  # Extracts MQTT topic from the CSV file.
+                    print(f'Subscribing to {mqtt_topic} with parameters {job_info}\n')
+                    self.mb.subscribe_message(
+                        mqtt_topic,
+                        functools.partial(self.handle_job_request, job_info=job_info)
+                    )
+        except Exception as e:
+            self.send_error_message(f'Error when starting MQTT listeners: {str(e)}')
+            raise
 
     def handle_job_request(self, topic, message, job_info):
-        print(F'DEBUG> {topic} {message}, {job_info}\n')
-        job_info.update(message)  # combine job info from the csv file and the mqtt message
-        job_creator = K8sJobCreator(job_info, self.namespace, self.mb)
-        job_creator.create_and_start_job()
+        try:
+            print(F'DEBUG> {topic} {message}, {job_info}\n')
+            job_info.update(message)  # combine job info from the csv file and the mqtt message
+            job_creator = K8sJobCreator(job_info, self.namespace, self.mb)
+            job_creator.create_and_start_job()
 
-        while True:
-            if job_creator.is_job_completed(job_info['job_name']):
-                break
-            time.sleep(5)
+            while True:
+                if job_creator.is_job_completed(job_info['job_name']):
+                    break
+                time.sleep(5)
 
-        job_creator.handle_completed_job(job_info['job_name'])
+            job_creator.handle_completed_job(job_info['job_name'])
+        except Exception as e:
+            self.send_error_message(f'Error when handling job request: {str(e)}')
+            raise
+
+    def send_error_message(self, error_message):
+        mqtt_topic = 'services/mqtt_job_listener/ERROR'
+        self.mb.publish_message(topic=mqtt_topic, message={'error': error_message})
+        print(f'Published error message to {mqtt_topic} with content {error_message}\n')
 
 
 if __name__ == "__main__":
     print('Starting MQTTJobListener\n')
     job_listener = MQTTJobListener("s3://braingeneers/services/mqtt_job_listener/jobs.csv")
-    job_listener.start_mqtt_listeners()
+    try:
+        job_listener.start_mqtt_listeners()
+    except Exception as e:
+        job_listener.send_error_message(f'Error when starting MQTTJobListener: {str(e)}')
+        raise
     Event().wait()
