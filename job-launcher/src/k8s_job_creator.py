@@ -158,6 +158,7 @@ class MQTTJobListener:
         self.mb.subscribe_message("services/mqtt_job_listener/REFRESH", self.refresh_jobs)
 
     def refresh_jobs(self, topic, message):
+        print('REFRESH event received, refreshing jobs.\n')
         try:
             self.start_mqtt_listeners()
         except Exception as e:
