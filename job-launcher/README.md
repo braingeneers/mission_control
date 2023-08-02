@@ -15,6 +15,7 @@ To schedule a new job based on an MQTT message:
     - `image`: The docker image to be used.
     - `cpu_request`, `memory_request`, `gpu`, `disk_request`: Hardware resources to request for the job.
     - `cpu_limit`, `memory_limit`, `disk_limit`: Maximum hardware resources for the job.
+    - `parallelism`: The number of pods to run in parallel. See [Best Practices for Running Parallel Jobs](#best-practices-for-running-parallel-jobs) for more information.
 
 2. Upload the updated CSV file back to `s3://braingeneers/services/jobs.csv`.
 
