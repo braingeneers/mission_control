@@ -10,7 +10,7 @@ To schedule a new job based on an MQTT message:
 
 1. Create a row in the CSV file hosted at `s3://braingeneers/services/jobs.csv` using the following column headers:
 
-    - `job_name`: The name of your job. This should be unique.
+    - `job_name`: The name of your job. This should be unique. It will be available in your container as an environment variable called `JOB_NAME`.
     - `mqtt_topic`: The MQTT topic that triggers the job.
     - `image`: The docker image to be used.
     - `cpu_request`, `memory_request`, `gpu`, `disk_request`: Hardware resources to request for the job.
@@ -124,6 +124,13 @@ while not queue.empty():
 This script will loop through the tasks in the queue, process them, and then exit successfully when the queue is empty.
 
 Remember, the key to successfully running parallel jobs using the `job-launcher` service is to carefully manage tasks using the provided queue and to set the appropriate level of parallelism for each job. The unique queue name used by both the initialization and worker jobs is vital for ensuring that tasks are correctly shared and processed.
+
+Note that you can use the same docker container for init and workers by using the environment variable `JOB_NAME` to determine whether the job is an init job or a worker job. See [How to Schedule a Job](#how-to-schedule-a-job).
+
+```python
+
+```dockerfile
+
 ## Conclusion
 
 The MQTT Job Listener provides a robust, flexible way to automate Kubernetes job scheduling based on MQTT events. By updating a simple CSV file, you can easily configure and chain together complex job sequences to automate your workflow.

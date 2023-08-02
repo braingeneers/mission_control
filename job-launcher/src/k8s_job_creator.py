@@ -36,7 +36,8 @@ class K8sJobCreator:
                     "nvidia.com/gpu": self.job_info['gpu'],
                     "ephemeral-storage": self.job_info['disk_limit'],
                 }
-            )
+            ),
+            env=[client.V1EnvVar(name="JOB_NAME", value=self.job_info['job_name'])]  # Set JOB_NAME environment variable
         )
 
         # Create and configure a spec section
