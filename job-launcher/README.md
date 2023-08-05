@@ -8,16 +8,16 @@ This application is a Kubernetes job scheduler that listens for specific MQTT ev
 
 To schedule a new job based on an MQTT message:
 
-1. Create a row in the CSV file hosted at `s3://braingeneers/services/jobs.csv` using the following column headers:
+1. Create a row in the CSV file hosted at `s3://braingeneers/services/mqtt_job_listener/jobs.csv` using the following column headers:
 
     - `job_name`: The name of your job. This should be unique. It will be available in your container as an environment variable called `JOB_NAME`.
     - `mqtt_topic`: The MQTT topic that triggers the job.
-    - `image`: The docker image to be used.
+    - `image`: The Docker image to be used.
     - `cpu_request`, `memory_request`, `gpu`, `disk_request`: Hardware resources to request for the job.
     - `cpu_limit`, `memory_limit`, `disk_limit`: Maximum hardware resources for the job.
     - `parallelism`: The number of pods to run in parallel. See [Best Practices for Running Parallel Jobs](#best-practices-for-running-parallel-jobs) for more information.
 
-2. Upload the updated CSV file back to `s3://braingeneers/services/jobs.csv`.
+2. Upload the updated CSV file back to `s3://braingeneers/services/mqtt_job_listener/jobs.csv`.
 
 When the MQTT Job Listener receives a message on the MQTT topic specified in the `mqtt_topic` column, it will schedule the corresponding Kubernetes job.
 
@@ -48,15 +48,32 @@ F --> I[Log to S3];
 
 ## Administration and Maintenance
 
-The application runs as a Docker process on our server. It's included in the standard Docker compose script, which can be found in the Mission_Control repository.
+The application runs as a Docker process on our server. It's included in the standard Docker Compose script, which can be found in the Mission_Control repository.
 
 ### Updating the MQTT Job Listener
 
-To update the MQTT Job Listener, modify the source code and rebuild the Docker image. The updated image should then be deployed via the Docker compose script.
+To update the MQTT Job Listener, modify the source code and rebuild the Docker image. The updated image should then be deployed via the Docker Compose script.
+
+```dockerfile
+# Dockerfile example
+FROM python:3.8
+WORKDIR /app
+COPY . .
+RUN pip install -r requirements.txt
+CMD ["python", "./mqtt_job_listener.py"]
+```
 
 ### Error Handling
 
 Errors and exceptions during job execution are logged and can be inspected for troubleshooting. It's important to regularly check these logs to ensure the application is functioning correctly.
+
+The MQTT Job Listener also publishes error messages to the `services/mqtt_job_listener/ERROR` MQTT topic. You can subscribe to this topic to receive real-time error notifications.
+
+To listen to all job-launcher messages, you can use the following command:
+
+```bash
+mosquitto_sub -h mqtt.braingeneers.gi.ucsc.edu -t "services/mqtt_job_listener/#" -v -u braingeneers -P $(awk '/profile-key/ {print $NF}' ~/.aws/credentials)
+```
 
 ## Best Practices for Running Parallel Jobs
 
@@ -121,15 +138,13 @@ while not queue.empty():
     print(f'Processing {task}')
 ```
 
-This script will loop through the tasks in the queue, process them, and then exit successfully when the queue is empty.
+This script will loop through the tasks in the queue,
+
+ process them, and then exit successfully when the queue is empty.
 
 Remember, the key to successfully running parallel jobs using the `job-launcher` service is to carefully manage tasks using the provided queue and to set the appropriate level of parallelism for each job. The unique queue name used by both the initialization and worker jobs is vital for ensuring that tasks are correctly shared and processed.
 
 Note that you can use the same docker container for init and workers by using the environment variable `JOB_NAME` to determine whether the job is an init job or a worker job. See [How to Schedule a Job](#how-to-schedule-a-job).
-
-```python
-
-```dockerfile
 
 ## Conclusion
 

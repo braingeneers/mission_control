@@ -96,7 +96,12 @@ class K8sJobCreator:
             status = self.get_job_status(job_name)
             self.copy_logs_to_s3(logs, job_name)
             print(f'Job {job_name} completed, logs saved to {LOGS_PATH}/{job_name}.txt\n')
-            self.send_completion_message(job_name, status)
+
+            if status == 'failed':
+                self.send_error_message(f'Job {job_name} failed. Logs at {LOGS_PATH}/{job_name}.txt')
+            else:
+                self.send_completion_message(job_name, status)
+
             self.delete_job(job_name)
         except Exception as e:
             self.send_error_message(f'Error when handling completed job: {str(e)}')
@@ -185,13 +190,14 @@ class MQTTJobListener:
 
     def handle_job_request(self, topic, message, job_info):
         try:
-            print(F'DEBUG> {topic} {message}, {job_info}\n')
+            print(F'Handling job request on topic {topic} {message} {job_info}\n')
             job_info.update(message)  # combine job info from the csv file and the mqtt message
             job_creator = K8sJobCreator(job_info, self.namespace, self.mb)
             job_creator.create_and_start_job()
 
             while True:
-                if job_creator.is_job_completed(job_info['job_name']):
+                if job_creator.is_job_completed(job_info['job_name']) or job_creator.get_job_status(
+                        job_info['job_name']) == 'failed':
                     break
                 time.sleep(5)
 
