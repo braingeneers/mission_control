@@ -1,9 +1,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: dp-mqtt-h5repack-workers
+  name: job-h5repack-0${UNIQUEID}
 spec:
-  parallelism: 160
+  parallelism: 5
   backoffLimit: 0
   ttlSecondsAfterFinished: 1000000000  # A very long time, approximately 31.7 years. (thanks GPT4)
   template:
@@ -12,14 +12,14 @@ spec:
 
       containers:
       - name: h5repack
-        image: localhost:30081/braingeneers/job_h5repack:latest
+        image: davidparks21/job-h5repack:v5
+#        image: braingeneers/job-h5repack:latest
         imagePullPolicy: Always
 
         command: ["stdbuf", "-i0", "-o0", "-e0", "/usr/bin/time", "-v", "bash", "-c"]
         args:
           - >-
-            sleep $(( $(shuf -i 1-120 -n 1) )); 
-            /job_h5repack/h5repack_task.sh
+            /job_h5repack/h5repack_task.sh --random-delay 120
 
         resources:
           requests:
@@ -32,7 +32,7 @@ spec:
 
         env:
           - name: "UUID"
-            value: "2023-04-17-e-causal_v1"
+            value: "${UUID}"
           - name: "AWS_PROFILE"
             value: "default"
           - name: "TF_CPP_MIN_LOG_LEVEL"

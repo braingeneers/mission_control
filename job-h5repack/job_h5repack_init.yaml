@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: dp-mqtt-h5repack-init
+  name: job-h5repack-init
 spec:
   backoffLimit: 1
   template:
@@ -10,7 +10,7 @@ spec:
 
       containers:
       - name: init
-        image: localhost:30081/braingeneers/job_h5repack:latest
+        image: braingeneers/job-h5repack:latest
         imagePullPolicy: Always
 
         command: ["stdbuf", "-i0", "-o0", "-e0", "/usr/bin/time", "-v", "bash", "-c"]
@@ -28,7 +28,7 @@ spec:
 
         env:
           - name: "UUID"
-            value: "2023-04-17-e-causal_v1"
+            value: "2022-10-28-e-alginate_orgs_1"
           - name: "AWS_PROFILE"
             value: "default"
           - name: "TF_CPP_MIN_LOG_LEVEL"

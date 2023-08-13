@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 set -e
+set -x
+echo "DEBUG> v3"
+
+# optional random delay to avoid thundering heard problem
+if [[ "$1" == "--random-delay" ]]; then
+  DELAY_SEC=$(( RANDOM % $2 ))
+  echo "Sleeping $DELAY_SEC seconds"
+  sleep $DELAY_SEC
+fi
 
 export HDF5_PLUGIN_PATH=/opt/conda/lib/python3.10/site-packages/braingeneers/data/mxw_h5_plugin/Linux/
 
@@ -18,15 +27,24 @@ while true; do
   if ! aws --endpoint ${ENDPOINT} s3 ls ${BASE_DIR}/${ROWMAJOR_FILE}; then
     echo "Downloading file: ${FILE}"
     aws --endpoint ${ENDPOINT} s3 cp "${FILE}" "/tmp/"
-    h5repack -v -l "/data_store/data0000/groups/routed/raw:CHUNK=1x30000" -i "/tmp/${BASE_FILE}" -o "/tmp/${ROWMAJOR_FILE}"
+
+    # Run h5repack for V2 format or (||) V1 format (if V2 format attempt failed, note the use of short circuit evaluation)
+    echo "Running h5repack operation"
+    (h5repack -v -l "/data_store/data0000/groups/routed/raw:CHUNK=1x30000" -i "/tmp/${BASE_FILE}" -o "/tmp/${ROWMAJOR_FILE}" || h5repack -v -l "sig:CHUNK=1x30000" -i "/tmp/${BASE_FILE}" -o "/tmp/${ROWMAJOR_FILE}")
+
     echo "Uploading file: ${BASE_DIR}/${BASE_FILE%%.*}.rowmajor.h5"
     aws --endpoint ${ENDPOINT} s3 cp "/tmp/${BASE_FILE%%.*}.rowmajor.h5" "${BASE_DIR}/"
-    # todo delete old file, currently not implemented for safety during testing phase
-    # python update_metadata.py  # todo add after testing
+
+    # Clear local working space
     rm /tmp/${BASE_FILE}
 
+    # todo enable metadata update and deletion after testing
+    # echo "Updating metadata"
+    # python update_metadata.py --uuid ${UUID} --file ${FILE} --rowmajor_file ${ROWMAJOR_FILE}
+    # echo "Deleting file: ${BASE_DIR}/${BASE_FILE}"
+
   else
-    echo "File already exists, exiting: ${ROWMAJOR_FILE}"
+    echo "File already exists, exiting successfully: ${ROWMAJOR_FILE}"
     break
 
   fi

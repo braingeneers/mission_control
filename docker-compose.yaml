@@ -59,18 +59,29 @@ services:
       - /var/run/docker.sock:/tmp/docker.sock:ro  # Unix socket mount to access docker API read-only
     networks:
       - braingeneers-net
-    environment:
-      DEBUG: "true"
-      VERBOSE: "true"
-      FORCE_INTERVAL: 15s
-      LETSENCRYPT_HOST: braingeneers.gi.ucsc.edu
-      LETSENCRYPT_EMAIL: braingeners-admins-group@ucsc.edu
-      LETSENCRYPT_TEST: "false"
-      DEFAULT_HOST: braingeneers.gi.ucsc.edu
-      DEFAULT_PORT: "80"
+#    environment:
+#      DEBUG: "true"
+#      VERBOSE: "true"
+#      FORCE_INTERVAL: 15s
+#      LETSENCRYPT_HOST: braingeneers.gi.ucsc.edu
+#      LETSENCRYPT_EMAIL: braingeners-admins-group@ucsc.edu
+#      LETSENCRYPT_TEST: "false"
+#      DEFAULT_HOST: braingeneers.gi.ucsc.edu
+#      DEFAULT_PORT: "8080"
     ports:
       - "80:80"
-      - "443:443"
+#      - "8443:443"
+
+  # Debugging container to test nginx-proxy
+  whoami:
+    image: jwilder/whoami
+    expose:
+      - "8000"
+    environment:
+      - VIRTUAL_HOST=whoami.braingeneers.gi.ucsc.edu
+      - VIRTUAL_PORT=8000
+    networks:
+      - braingeneers-net
 
   # The letsencrypt container is used to automatically generate SSL certificates for the domain names.
   # https://github.com/jwilder/docker-letsencrypt-nginx-proxy-companion
@@ -114,23 +125,23 @@ services:
       secret-fetcher:
         condition: service_healthy
 
-#  # The dashboard container is used to host the braingeneers dashboard.
-#  dashboard:
-#    image: braingeneers/dashboard:v1.5
-#    container_name: dashboard
-#    expose:
-#      - "8050"
-#    environment:
-#      - VIRTUAL_HOST=dashboard.braingeneers.gi.ucsc.edu
-#      - VIRTUAL_PORT=8050
-#      - LETSENCRYPT_HOST=dashboard.braingeneers.gi.ucsc.edu
-#      - LETSENCRYPT_EMAIL=braingeners-admins-group@ucsc.edu
-#    volumes:
-#      - ~/.aws/credentials:/root/.aws/credentials:ro  # AWS credentials for your application
-#    networks:
-#      - braingeneers-net
-#    depends_on:
-#      - secret-fetcher
+  # The dashboard container is used to host the braingeneers dashboard.
+  dashboard:
+    image: braingeneers/dashboard:v1.5
+    container_name: dashboard
+    expose:
+      - "8050"
+    environment:
+      - VIRTUAL_HOST=dashboard.braingeneers.gi.ucsc.edu
+      - VIRTUAL_PORT=8050
+      - LETSENCRYPT_HOST=dashboard.braingeneers.gi.ucsc.edu
+      - LETSENCRYPT_EMAIL=braingeners-admins-group@ucsc.edu
+    volumes:
+      - ~/.aws/credentials:/root/.aws/credentials:ro  # AWS credentials for your application
+    networks:
+      - braingeneers-net
+    depends_on:
+      - secret-fetcher
 
   # Slack bridge service, replicates messages between Slack and MQTT
   slack-bridge:
@@ -149,6 +160,49 @@ services:
     volumes:
       - secrets:/secrets
 
+  # Shadows frontend web service maintained by Pierre
+  shadows-vue:
+    container_name: shadows_frontend
+    build: shadows_vue/
+    image: shadows_viewer:latest
+    restart: unless-stopped
+    networks:
+      - braingeneers-net
+#    ports:
+#      - "127.0.0.1:8057:80"
+    environment:
+      - VIRTUAL_HOST=shadows.braingeneers.gi.ucsc.edu
+      - VIRTUAL_PORT=80
+
+  shadows-db:
+    user: "0:989"
+    container_name: strapi-shadows-db
+    build: strapi-shadows-db/
+    image: mystrapi:latest
+    restart: unless-stopped
+    networks:
+     - braingeneers-net
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    # todo remove echo $APP_KEYS debug message
+    command:
+      - "--copy"
+      - "/secrets/strapi-shadows-db/strapi_shadows_db.env:/opt/app/.env"
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
+      - "--env"
+      - "/secrets/strapi-shadows-db/strapi_shadows_db.env"
+      - "/bin/bash"
+      - "-c"
+      - "echo $APP_KEYS && cron && npm run develop"
+    environment:
+      - VIRTUAL_HOST=shadows-db.braingeneers.gi.ucsc.edu
+      - VIRTUAL_PORT=1337
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+    volumes:
+      - secrets:/secrets
+
   # job-launcher launches NRP jobs based on MQTT messages see repo mqtt_job_listener
   job-launcher:
     image: braingeneers/job-launcher:latest
@@ -161,23 +215,29 @@ services:
     volumes:
       - secrets:/secrets
 
+
 # The braingeneers-net network is used to connect the containers together.
 networks:
-  host: {}
   braingeneers-net:
     driver: bridge
+
 
 # Volumes are persisted on the host machine.
 # All services should be able to cold start when volumes are cleared, these are not a place for
 # permanent files that can't be replaced, those should be stored on S3 and copied in if needed.
 volumes:
-  # A shared volume for secrets only in-memory for security
+
+  # A shared volume for secrets only in-memory for security this is populated by the secret-fetcher service
   secrets:
     driver_opts:
       type: tmpfs
       device: tmpfs
-  # nginx-proxy, letsencrypt, and oauth2-proxy shared volumes for SSL certificates
+
+  # Volumes for nginx-proxy, letsencrypt, and oauth2-proxy shared for SSL certificates
   vol-certs:
   vol-vhost:
   vol-html:
   vol-acme.sh:
+
+  # Volume for strapi shadows database
+  vol-strapi-shadows-db:

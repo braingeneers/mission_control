@@ -44,3 +44,6 @@ After each file is processed, the metadata is updated to reflect the change in f
 Once all the files in the job queue have been processed, the process will terminate.
 
 Please note that the environment variables such as `UUID` are configured automatically when the job is created. The credentials for the S3 bucket are also handled automatically via Kubernetes secrets. These details allow the process to run smoothly without manual intervention or the need for in-depth understanding from the user.
+
+## Debugging tips:
+- 

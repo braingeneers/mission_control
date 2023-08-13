@@ -16,10 +16,10 @@ for secret in $secrets; do
   mkdir -p "/secrets/$secret"
 
   # Get .data
-  data=$(kubectl get secret $secret -o jsonpath='{.data}')
+  data=$(kubectl get secret $secret -o json)
 
   # Get keys
-  keys=$(echo "$data" | jq -r 'keys[]')
+  keys=$(echo "$data" | jq -r '.data | keys[]')
 
   # Process each key
   for key in $keys; do
@@ -28,8 +28,8 @@ for secret in $secrets; do
 
     # Run the fetching, decoding, and saving operations in the background
     (
-      # Try getting data for each key
-      data_key=$(kubectl get secret $secret -o jsonpath="{.data['$key']}")
+      # Get data for each key using jq
+      data_key=$(echo "$data" | jq -r ".data[\"$key\"]")
 
       # Decode and save data
       echo "$data_key" | base64 --decode > "/secrets/$secret/$key"
@@ -41,6 +41,9 @@ for secret in $secrets; do
   wait
 
 done
+
+# Make entrypoint-setup.sh available in the secrets volume
+cp /entrypoint-secrets-setup.sh /secrets/entrypoint-secrets-setup.sh
 
 # List the contents of /secrets directory
 echo "Listing all fetched secrets..."

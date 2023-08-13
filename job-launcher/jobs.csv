@@ -1,6 +1,6 @@
-job_name,image,mqtt_topic,cpu_request,cpu_limit,memory_request,memory_limit,gpu,disk_request,disk_limit,parallelism
-hello-world-test-1,hello-world:latest,test/hello/world,0.5,1,500Mi,1Gi,0,10Gi,20Gi,1
-hello-world-test-2,hello-world:latest,services/mqtt_job_listener/job_complete/hello-world-test,0.5,1,500Mi,1Gi,0,10Gi,20Gi,1
-h5-repack-init,braingeneers/job-h5repack:latest,experiments/upload,1,2,100Mi,1000Mi,0,0,0,1
-h5-repack-workers,braingeneers/job-h5repack:latest,services/mqtt_job_listener/job_complete/h5-repack-init,1,2,2Gi,4Gi,0,20Gi,40Gi,3
-h5-repack-finalize,braingeneers/job-h5repack:latest,services/mqtt_job_listener/job_complete/h5-repack-workers,1,2,100Mi,1000Mi,0,0,0,1
+job_name,image,mqtt_topic,cpu_request,cpu_limit,memory_request,memory_limit,gpu,disk_request,disk_limit,disk_mount,parallelism
+hello-world-test-1,hello-world:latest,test/hello/world,0.5,1,500Mi,1Gi,0,10Gi,20Gi,"/tmp",1
+hello-world-test-2,hello-world:latest,services/mqtt_job_listener/job_complete/hello-world-test,0.5,1,500Mi,1Gi,0,10Gi,20Gi,"/tmp",1
+h5-repack-init,braingeneers/job-h5repack:latest,experiments/upload,1,2,100Mi,1000Mi,0,0,0,,1
+h5-repack-workers,braingeneers/job-h5repack:latest,services/mqtt_job_listener/job_complete/h5-repack-init,1,2,2Gi,4Gi,0,20Gi,40Gi,"/tmp",3
+h5-repack-finalize,braingeneers/job-h5repack:latest,services/mqtt_job_listener/job_complete/h5-repack-workers,1,2,100Mi,1000Mi,0,0,0,,1

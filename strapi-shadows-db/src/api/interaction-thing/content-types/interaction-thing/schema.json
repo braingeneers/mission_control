@@ -1,0 +1,45 @@
+{
+  "kind": "collectionType",
+  "collectionName": "interaction_things",
+  "info": {
+    "singularName": "interaction-thing",
+    "pluralName": "interaction-things",
+    "displayName": "Interaction_thing"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string"
+    },
+    "type": {
+      "type": "enumeration",
+      "enum": [
+        "BioPlateScope",
+        "Autoculture",
+        "Other"
+      ]
+    },
+    "shadow": {
+      "type": "json"
+    },
+    "current_plate": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::plate.plate"
+    },
+    "current_experiment": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::experiment.experiment"
+    },
+    "plates": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::plate.plate",
+      "mappedBy": "interaction_things"
+    }
+  }
+}

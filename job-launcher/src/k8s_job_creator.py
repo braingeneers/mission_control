@@ -2,14 +2,23 @@ import csv
 import time
 import json
 from braingeneers.iot.messaging import MessageBroker
-from kubernetes import client, config
+from kubernetes.client import V1Pod
+from kubernetes import client, config, watch
 from braingeneers.utils.smart_open_braingeneers import open
 from threading import Event, Thread
 import functools
 import traceback
+import random
+import string
+
 
 LOGS_PATH = 's3://braingeneers/services/mqtt_job_listener/logs'
 MQTT_ERROR_TOPIC = 'services/mqtt_job_listener/ERROR'
+POD_ERROR_STATUSES = [
+    'Error', 'Failed', 'ContainerStatusUnknown', 'Evicted', 'CreateContainerConfigError',
+    'CreateContainerError', 'ContainerCannotRun', 'CrashLoopBackOff',
+]
+JOB_POLL_INTERVAL = 15  # seconds
 
 
 class K8sJobCreator:
@@ -21,9 +30,10 @@ class K8sJobCreator:
         self.mb = message_broker
 
     def create_job_object(self):
+
         # Configure/create Pod template container
         container = client.V1Container(
-            name=self.job_info['job_name'],
+            name=self.job_info['job_name_full'],
             image=self.job_info['image'],
             resources=client.V1ResourceRequirements(
                 requests={
@@ -39,13 +49,17 @@ class K8sJobCreator:
                     "ephemeral-storage": self.job_info['disk_limit'],
                 }
             ),
-            env=[client.V1EnvVar(name="JOB_NAME", value=self.job_info['job_name'])]  # Set JOB_NAME environment variable
+            env=[client.V1EnvVar(name="JOB_NAME", value=self.job_info['job_name'])],  # Set JOB_NAME environment variable
+            volume_mounts=[client.V1VolumeMount(name="ephemeral-storage", mount_path=self.job_info['disk_mount'])] if self.job_info['disk_mount'] else [],
         )
+
+        # Add ephemeral volume to the Pod spec
+        volume = client.V1Volume(name="ephemeral-storage", empty_dir=client.V1EmptyDirVolumeSource())
 
         # Create and configure a spec section
         template = client.V1PodTemplateSpec(
-            metadata=client.V1ObjectMeta(labels={"app": self.job_info['job_name']}),
-            spec=client.V1PodSpec(restart_policy="Never", containers=[container]))
+            metadata=client.V1ObjectMeta(labels={"app": self.job_info['job_name_full']}),
+            spec=client.V1PodSpec(restart_policy="Never", containers=[container], volumes=[volume]))  # Add volumes to the pod spec
 
         # Create the specification of deployment
         spec = client.V1JobSpec(
@@ -57,7 +71,7 @@ class K8sJobCreator:
         job = client.V1Job(
             api_version="batch/v1",
             kind="Job",
-            metadata=client.V1ObjectMeta(name=self.job_info['job_name']),
+            metadata=client.V1ObjectMeta(name=self.job_info['job_name_full']),
             spec=spec)
 
         return job
@@ -66,7 +80,7 @@ class K8sJobCreator:
         try:
             job = self.create_job_object()
             self.api_instance.create_namespaced_job(namespace=self.namespace, body=job)
-            print(f'Job {self.job_info["job_name"]} created\n')
+            print(f'Job {self.job_info["job_name_full"]} created\n')
         except Exception as e:
             send_error_message(self.mb, 'Error when creating and starting job', e)
 
@@ -87,7 +101,7 @@ class K8sJobCreator:
             else:
                 return 'running'
         except Exception as e:
-            send_error_message(self.mb, 'Error when getting job status', e)
+            send_error_message(self.mb, f'Error when getting job status for job {job_name}: ', e)
 
     def handle_completed_job(self, job_name):
         try:
@@ -109,11 +123,40 @@ class K8sJobCreator:
         try:
             core_v1_api = client.CoreV1Api()
             pod_list = core_v1_api.list_namespaced_pod(self.namespace, label_selector=f"app={job_name}")
+
             if not pod_list.items:
                 print(f'No pods found for job: {job_name}\n')
                 return ''
+
             pod_name = pod_list.items[0].metadata.name
-            return core_v1_api.read_namespaced_pod_log(name=pod_name, namespace=self.namespace)
+            pod = core_v1_api.read_namespaced_pod(name=pod_name, namespace=self.namespace)
+
+            # Format description similar to "kubectl describe"
+            description_parts = [
+                f"Name: {pod.metadata.name}",
+                f"Namespace: {pod.metadata.namespace}",
+                f"Node: {pod.spec.node_name}/{pod.status.host_ip}",
+                f"Start Time: {pod.status.start_time}",
+                "\nConditions:",
+                *[f"{condition.type}: {condition.status} - {condition.last_transition_time}" for condition in
+                  pod.status.conditions],
+                "\nEvents:"
+            ]
+
+            events = core_v1_api.list_namespaced_event(self.namespace, field_selector=f"involvedObject.name={pod_name}")
+            for event in events.items:
+                description_parts.extend([
+                    f"Type: {event.type}",
+                    f"Reason: {event.reason}",
+                    f"Message: {event.message}",
+                    "\n"
+                ])
+
+            description = "\n".join(description_parts)
+
+            logs = core_v1_api.read_namespaced_pod_log(name=pod_name, namespace=self.namespace)
+
+            return description + "\n-----\nScript output:\n------\n" + logs
         except Exception as e:
             send_error_message(self.mb, f'Error when getting job logs', e)
 
@@ -176,47 +219,66 @@ class MQTTJobListener:
 
     def handle_job_request(self, topic, message, job_info):
         try:
-            print(f'Handling job request on topic {topic} {message} {job_info}\n')
+            print(F'Handling job request on topic {topic} {message} {job_info}\n')
+
+            # Generate the 5-character random sequence (alphanumeric, lowercase) and append it to the job name
+            random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
+            job_info['random_suffix'] = random_suffix
+            job_info['job_name_full'] = f"{job_info['job_name']}-{random_suffix}"
+
             job_info.update(message)  # combine job info from the csv file and the mqtt message
+
             job_creator = K8sJobCreator(job_info, self.namespace, self.mb)
             job_creator.create_and_start_job()
 
-            # Create a new thread for monitoring the job completion to handle it asynchronously
-            monitor_thread = Thread(target=self.monitor_job, args=(job_creator, job_info,))
+            # Start a new thread to monitor the job
+            monitor_thread = Thread(target=self.monitor_job, args=(job_creator, job_info))
             monitor_thread.start()
-
         except Exception as e:
             send_error_message(self.mb, 'Error when handling job request', e)
 
     def monitor_job(self, job_creator, job_info):
-        """Function to monitor the status of a job."""
-        try:
-            while True:
-                status = job_creator.get_job_status(job_info['job_name'])
-                if status in ['succeeded', 'failed']:
-                    break
-                time.sleep(5)
+        config.load_kube_config()
+        api_instance = client.CoreV1Api()
+        job_name_full = job_info['job_name_full']
 
-            if status == 'failed':
-                self.check_container_error(job_info['job_name'], job_creator)
+        field_selector = f'metadata.name={job_name_full}'
+        w = watch.Watch()
+        message = ""
+        topic = ""
 
-            job_creator.handle_completed_job(job_info['job_name'])
-        except Exception as e:
-            send_error_message(self.mb, 'Error when monitoring job', e)
+        for event in w.stream(api_instance.list_namespaced_pod, namespace=job_creator.namespace, field_selector=field_selector):
+            pod = event['object']
+            phase = pod.status.phase if pod.status else None
 
-    def check_container_error(self, job_name, job_creator):
-        """Function to check for CreateContainerError and report to MQTT."""
-        try:
-            core_v1_api = client.CoreV1Api()
-            pod_list = core_v1_api.list_namespaced_pod(job_creator.namespace, label_selector=f"app={job_name}")
-            if pod_list.items:
-                pod = pod_list.items[0]
+            if pod.status and pod.status.container_statuses:
                 for container_status in pod.status.container_statuses:
-                    if container_status.state.waiting and container_status.state.waiting.reason == "CreateContainerError":
-                        send_error_message(self.mb, 'CreateContainerError', Exception(container_status.state.waiting.message))
-                        break
-        except Exception as e:
-            send_error_message(self.mb, 'Error when checking for CreateContainerError', e)
+                    state = container_status.state
+                    if state and state.terminated and state.terminated.reason:
+                        reason = state.terminated.reason
+                        if reason in POD_ERROR_STATUSES:
+                            message = f"The Pod {pod.metadata.name} has failed with reason: {reason}. Logs saved to {LOGS_PATH}/{job_name_full}.txt"
+                            topic = "ERROR"
+                            break
+
+            if phase:
+                print(f"The Pod {pod.metadata.name} is in phase: {phase}")
+
+                if phase == 'Succeeded':
+                    message = f"The Job {job_name_full} has completed successfully. Logs saved to {LOGS_PATH}/{job_name_full}.txt"
+                    topic = f"services/mqtt_job_listener/job_complete/{job_name_full}"
+                    break
+                elif phase == 'Failed':
+                    message = f"The Job {job_name_full} has failed. Logs saved to {LOGS_PATH}/{job_name_full}.txt"
+                    topic = "ERROR"
+                    break
+
+        if message:
+            print(message)
+            logs = job_creator.get_job_logs(job_name_full)
+            job_creator.copy_logs_to_s3(logs, job_name_full)
+            self.mb.publish_message(topic, message)
+            job_creator.delete_job(job_name_full)
 
 
 def send_error_message(mb: MessageBroker, message_prefix: str, e: Exception):
@@ -224,6 +286,16 @@ def send_error_message(mb: MessageBroker, message_prefix: str, e: Exception):
     mb.publish_message(topic=MQTT_ERROR_TOPIC, message={'error': error_message})
     print(f'Error with tracback: {message_prefix}')
     print(traceback.format_exc())
+
+
+def check_pod_errors(job_name, namespace):
+    core_v1_api = client.CoreV1Api()
+    pod_list = core_v1_api.list_namespaced_pod(namespace, label_selector=f"app={job_name}")
+    for pod in pod_list.items:
+        for condition in pod.status.conditions:
+            if condition.type in POD_ERROR_STATUSES:
+                return condition.type
+    return None
 
 
 if __name__ == "__main__":

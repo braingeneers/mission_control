@@ -1,0 +1,31 @@
+{
+  "kind": "collectionType",
+  "collectionName": "experiments",
+  "info": {
+    "singularName": "experiment",
+    "pluralName": "experiments",
+    "displayName": "Experiment",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string"
+    },
+    "plates": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::plate.plate",
+      "mappedBy": "experiments"
+    },
+    "description": {
+      "type": "text"
+    },
+    "active": {
+      "type": "boolean"
+    }
+  }
+}

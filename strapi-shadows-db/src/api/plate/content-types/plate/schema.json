@@ -1,0 +1,55 @@
+{
+  "kind": "collectionType",
+  "collectionName": "plates",
+  "info": {
+    "singularName": "plate",
+    "pluralName": "plates",
+    "displayName": "Plate",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string"
+    },
+    "experiments": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::experiment.experiment",
+      "inversedBy": "plates"
+    },
+    "wells": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::well.well",
+      "mappedBy": "plate"
+    },
+    "wells_index": {
+      "type": "json"
+    },
+    "description": {
+      "type": "text"
+    },
+    "image_parameters": {
+      "type": "json"
+    },
+    "rows": {
+      "type": "integer"
+    },
+    "columns": {
+      "type": "integer"
+    },
+    "interaction_things": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::interaction-thing.interaction-thing",
+      "inversedBy": "plates"
+    },
+    "active": {
+      "type": "boolean"
+    }
+  }
+}

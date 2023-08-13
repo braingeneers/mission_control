@@ -1,0 +1,31 @@
+{
+  "kind": "collectionType",
+  "collectionName": "samples",
+  "info": {
+    "singularName": "sample",
+    "pluralName": "samples",
+    "displayName": "Sample",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "text"
+    },
+    "well": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::well.well",
+      "inversedBy": "samples"
+    },
+    "annotation": {
+      "type": "json"
+    }
+  }
+}

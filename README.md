@@ -96,35 +96,116 @@ graph LR
 
 ```
 
-# How to Add a New Service to the Nginx Reverse Proxy Configuration with Shared Secrets
+Certainly! Here's the revised documentation incorporating the provided information about the `entrypoint-secrets-setup.sh` script:
 
-## Procedure
+## How to Add a New Service to the Nginx Reverse Proxy Configuration with Shared Secrets
 
-1. Clone the repository where our Docker Compose configuration resides (assuming GitHub/SSH keys configured).
+### Step 1: Clone the Repository
+
+Clone the repository where our Docker Compose configuration resides (assuming GitHub/SSH keys configured).
 
 ```bash
 git clone git@github.com:braingeneers/mission_control.git
 ```
 
-2. Edit the Docker Compose file: Open the `docker-compose.yaml` file located in the `mission_control` directory in a text editor. Add a new service definition for your container under the `services` section, similar to the existing services.
-  - Note: The `VIRTUAL_HOST` environment variable in your service's definition determines the subdomain your service will be accessible from. For instance, if `VIRTUAL_HOST` is set to `my-service`, your service will be accessible from `https://my-service.braingeneers.gi.ucsc.edu`.
-  - Remember to also add a volume mount from the shared secrets volume to your service if it requires access to the shared secrets. The secrets will be available in the /secrets directory in your service's file system.
+### Step 2: Edit the Docker Compose File
 
-3. Remember to also add a volume mount from the shared `secrets` volume to your service if it requires access to the shared secrets. The secrets will be available in the `/secrets` directory in your service's file system.
+Open the `docker-compose.yaml` file located in the `mission_control` directory in a text editor.
 
-4. After you've made your changes, save the `docker-compose.yaml` file and exit the text editor.
+#### Adding a New Service
 
-5. Restart the Docker Compose stack by running the following command in the directory where your `docker-compose.yaml` file is located:
+Add a new service definition for your container under the `services` section, similar to the existing services.
+
+#### Setting the Virtual Host
+
+The `VIRTUAL_HOST` environment variable in your service's definition determines the subdomain your service will be accessible from. For instance, if `VIRTUAL_HOST` is set to `my-service`, your service will be accessible from `https://my-service.braingeneers.gi.ucsc.edu`.
+
+#### Configuring Shared Secrets
+
+If your service requires access to shared secrets, add a volume mount from the shared secrets volume. The secrets will be available in the following directory structure:
+
+```text
+/secrets/
+  ├── prp-s3-credentials/
+  │   └── credentials
+  └── other-k8s-secret/
+      └── other-files
+```
+
+#### Using entrypoint-secrets-setup.sh
+
+The `entrypoint-secrets-setup.sh` script wraps the original entrypoint and allows copying files from the dynamic secrets volume to the correct location, as well as exporting environment variables from a specified file. Include this script in the service definition as shown in the example below if you need credentials files moved to the proper location, or environment variables set before launching your process.
+
+Note the use of one or more `--copy` (or `--env`) commands which are processed 
+by `entrypoint-secrets-setup.sh` to copy files to the correct location. 
+You may use the `--env` option followed by the path to an 
+environment file to export variables defined within that file into the 
+environment.
+
+Example of `--env` usage:
+
+```bash
+--env /secrets/k8s-secret-name/mysecrets.env
+```
+
+The above line will export all key-value pairs 
+defined in `/secrets/k8s-secret-name/mysecrets.env` as environment 
+variables, excluding lines starting with `#`. See the [wiki permissions page](https://github.com/braingeneers/wiki/blob/main/shared/permissions.md) 
+on how to maintain kubernetes namespace secrets.
+
+After processing the --copy and --env options, your original entrypoint command is executed with its arguments.
+
+```yaml
+services:
+  your-service:
+    image: your-image:latest
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
+      - "--copy"
+      - "/secrets/other-k8s-secret/other-files:/path/to/other/files"
+      - "original-entrypoint-command"
+      - "arg1"
+      - "arg2"
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+
+volumes:
+  secrets:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+```
+
+Use the `--env` option in combination with the `--copy` option as needed to set up the environment for your containerized application.
+
+### Step 3: Save and Exit the Text Editor
+
+After you've made your changes, save the `docker-compose.yaml` file and exit the text editor.
+
+### Step 4: Restart the Docker Compose Stack
+
+Run the following command in the directory where your `docker-compose.yaml` file is located to stop and recreate the services:
 
 ```bash
 docker compose up -d
 ```
 
-6. This will stop and recreate the services defined in the Docker Compose file, including your newly added service.
+### Step 5: Verify Your Service
 
-7. After verifying your service works correctly, commit the changes to the `docker-compose.yaml` file back to the `mission_control` repository.
+This will stop and recreate the services defined in the Docker Compose file, including your newly added service.
+
+### Step 6: Commit the Changes
+
+After verifying your service works correctly, commit the changes to the `docker-compose.yaml` file back to the `mission_control` repository.
 
 ```bash
 git commit -am "Added my-service to Docker Compose configuration"
 git push
 ```
+
+I've incorporated the information about the `entrypoint-secrets-setup.sh` script as well as the example usage. Let me know if anything else is needed!
