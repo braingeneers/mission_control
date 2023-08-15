@@ -28,9 +28,11 @@ while true; do
     echo "Downloading file: ${FILE}"
     aws --endpoint ${ENDPOINT} s3 cp "${FILE}" "/tmp/"
 
-    # Run h5repack for V2 format or (||) V1 format (if V2 format attempt failed, note the use of short circuit evaluation)
+    # Run h5repack for V2 format or (||) V1 format (if V2 format attempt failed,
+    # note the use of short circuit evaluation, h5repack will fail quickly if V2 format is not detected)
     echo "Running h5repack operation"
-    (h5repack -v -l "/data_store/data0000/groups/routed/raw:CHUNK=1x30000" -i "/tmp/${BASE_FILE}" -o "/tmp/${ROWMAJOR_FILE}" || h5repack -v -l "sig:CHUNK=1x30000" -i "/tmp/${BASE_FILE}" -o "/tmp/${ROWMAJOR_FILE}")
+    (h5repack -v -l "/data_store/data0000/groups/routed/raw:CHUNK=1x30000" -i "/tmp/${BASE_FILE}" -o "/tmp/${ROWMAJOR_FILE}" || \
+      h5repack -v -l "sig:CHUNK=1x30000" -i "/tmp/${BASE_FILE}" -o "/tmp/${ROWMAJOR_FILE}")
 
     echo "Uploading file: ${BASE_DIR}/${BASE_FILE%%.*}.rowmajor.h5"
     aws --endpoint ${ENDPOINT} s3 cp "/tmp/${BASE_FILE%%.*}.rowmajor.h5" "${BASE_DIR}/"

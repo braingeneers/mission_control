@@ -215,8 +215,24 @@ services:
     volumes:
       - secrets:/secrets
 
+  # Redis service
+  redis:
+    image: braingeneers/redis:latest
+    container_name: redis
+    networks:
+      braingeneers-net:
+        aliases:
+          - redis.braingeneers.gi.ucsc.edu
+    restart: unless-stopped
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+    ports:
+     - "6379:6379"
 
-# The braingeneers-net network is used to connect the containers together.
+      # The braingeneers-net network is used to connect the containers together.
 networks:
   braingeneers-net:
     driver: bridge

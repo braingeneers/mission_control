@@ -6,10 +6,10 @@ import posixpath
 
 
 def main(uuid, file, rowmajor_file):
-    prefix = common_utils.get_basepath()
     mb = MessageBroker()
     lock_name = f'job-h5repack-lock-{uuid.lower()}'
 
+    print(f'Getting Lock: {lock_name}')
     with mb.get_lock(lock_name):
         metadata = de.load_metadata(uuid)
 
