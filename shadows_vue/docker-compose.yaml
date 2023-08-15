@@ -1,0 +1,10 @@
+version: "3"
+services:
+  shadows_vue:
+    container_name: shadows_frontend
+    build: .
+    image: shadows_viewer:latest
+    restart: unless-stopped
+    network_mode: shadows-network
+    ports:
+      - "127.0.0.1:8057:80"

@@ -175,7 +175,6 @@ services:
       - VIRTUAL_PORT=80
 
   shadows-db:
-    user: "0:989"
     container_name: strapi-shadows-db
     build: strapi-shadows-db/
     image: mystrapi:latest
@@ -183,25 +182,26 @@ services:
     networks:
      - braingeneers-net
     entrypoint: /secrets/entrypoint-secrets-setup.sh
-    # todo remove echo $APP_KEYS debug message
     command:
-      - "--copy"
-      - "/secrets/strapi-shadows-db/strapi_shadows_db.env:/opt/app/.env"
-      - "--copy"
-      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
-      - "--env"
-      - "/secrets/strapi-shadows-db/strapi_shadows_db.env"
-      - "/bin/bash"
-      - "-c"
-      - "echo $APP_KEYS && cron && npm run develop"
+      - '--copy'
+      - '/secrets/strapi-shadows-db/strapi_shadows_db.env:/opt/app/.env'
+      - '--copy'
+      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
+      - '--env'
+      - '/secrets/strapi-shadows-db/strapi_shadows_db.env'
+      - '/bin/bash'
+      - '-c'
+      - 'echo "app keys and salt: $$APP_KEYS $$API_TOKEN_SALT" && cron && npm run develop'
     environment:
       - VIRTUAL_HOST=shadows-db.braingeneers.gi.ucsc.edu
       - VIRTUAL_PORT=1337
+    user: "0:989"
     depends_on:
       secret-fetcher:
         condition: service_healthy
     volumes:
       - secrets:/secrets
+      - vol-strapi-shadows-db:/opt/app/.tmp
 
   # job-launcher launches NRP jobs based on MQTT messages see repo mqtt_job_listener
   job-launcher:
