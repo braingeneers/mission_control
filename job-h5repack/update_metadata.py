@@ -3,6 +3,7 @@ from braingeneers.iot.messaging import MessageBroker
 import braingeneers.data.datasets_electrophysiology as de
 import braingeneers.utils.common_utils as common_utils
 import posixpath
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 
 def main(uuid, file, rowmajor_file):
@@ -13,12 +14,20 @@ def main(uuid, file, rowmajor_file):
     with mb.get_lock(lock_name):
         metadata = de.load_metadata(uuid)
 
-        for ephys_experiment in metadata['ephys_experiments']:
-            for _, block in ephys_experiment['blocks'].items():
+        print(f'Updating metadata for file {file}, changed to {rowmajor_file}')
+        for ephys_experiment in metadata['ephys_experiments'].values():
+            for block in ephys_experiment['blocks']:
                 if block['path'] == file:
+                    print(f'Updating file {block["path"]} --> {file}')
                     block['path'] = rowmajor_file
 
-        de.save_metadata(metadata)
+        print('Saving metadata')
+        save_metadata(metadata)
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+def save_metadata(metadata):
+    de.save_metadata(metadata)
 
 
 if __name__ == '__main__':

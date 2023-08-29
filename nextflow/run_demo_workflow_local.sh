@@ -11,6 +11,7 @@ WORKFLOW_NAME=${1:-demo_workflow.nf}
 docker run --rm -it \
   --volume $(pwd)/workflows/:/workflows/ \
   --volume ~/.aws/credentials:/root/.aws/credentials \
+  --volume ~/.aws/config:/root/.aws/config \
   --volume ~/.kube/config:/root/.kube/config \
   nextflow/nextflow:latest \
   nextflow run /workflows/${WORKFLOW_NAME} \

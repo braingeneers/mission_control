@@ -13,7 +13,7 @@ Starting/stopping all services:
 git clone git@github.com:braingeneers/mission_control.git
 cd mission_control
 
-# start all services
+# start all services (keep reading to manage individual services)
 docker compose up -d
 ```
 
@@ -22,11 +22,13 @@ If you need to pull a newer image version, run pull before starting the services
 docker compose pull
 ``` 
 
+## Manage individual services
+
 You can also start and stop just a single services which is useful during testing so you don't 
 interfere with other running services, it's perfectly safe to do this while other services are running:
 
-The name `my_service` is defined in the docker-compose.yaml file under `services:`
-for example mqtt, slack-bridge, etc. are services in the docker-compose.yaml file 
+The name `my_service` is defined in the `docker-compose.yaml` file under `services:`
+for example `mqtt`, `slack-bridge`, etc. are services in the `docker-compose.yaml` file 
 
 ```bash
 # Stop (remove) a specific service
@@ -207,5 +209,3 @@ After verifying your service works correctly, commit the changes to the `docker-
 git commit -am "Added my-service to Docker Compose configuration"
 git push
 ```
-
-I've incorporated the information about the `entrypoint-secrets-setup.sh` script as well as the example usage. Let me know if anything else is needed!
