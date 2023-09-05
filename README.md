@@ -6,25 +6,18 @@ kubeconfig file from the cluster, place it in `~/.kube/config`.
 Run `kubectl get nodes` to verify that you can connect to the cluster, you
 should see a list of cluster nodes.
 
-Starting/stopping all services:
+Log into `braingeneers.gi.ucsc.edu`, see the [permissions page](https://github.com/braingeneers/wiki/blob/main/shared/permissions.md)
+for access, then clone the repo into your home directory on `braingeneers` server as shown below.
 
 ```bash
 # clone the repo
 git clone git@github.com:braingeneers/mission_control.git
 cd mission_control
-
-# start all services (keep reading to manage individual services)
-docker compose up -d
 ```
-
-If you need to pull a newer image version, run pull before starting the services as above:
-```bash
-docker compose pull
-``` 
 
 ## Manage individual services
 
-You can also start and stop just a single services which is useful during testing so you don't 
+You can also start and stop a single services, this is the normal case so you don't 
 interfere with other running services, it's perfectly safe to do this while other services are running:
 
 The name `my_service` is defined in the `docker-compose.yaml` file under `services:`
@@ -49,6 +42,21 @@ docker compose logs my_service
 # See process status for all services
 docker compose ps
 ```
+
+## Manaing all services
+
+This should only be done when the server is rebooted, under normal conditions you will be managing individual services as describe above.
+
+```bash
+# Pull latest version of all services
+docker compose pull
+
+# Start all services
+docker compose up -d
+
+# Stop all services
+docker compose down
+``` 
 
 ## An Overview of Our Infrastructure
 
@@ -100,7 +108,7 @@ graph LR
 
 Certainly! Here's the revised documentation incorporating the provided information about the `entrypoint-secrets-setup.sh` script:
 
-## How to Add a New Service to the Nginx Reverse Proxy Configuration with Shared Secrets
+## How to Add a New Service
 
 ### Step 1: Clone the Repository
 
@@ -116,7 +124,22 @@ Open the `docker-compose.yaml` file located in the `mission_control` directory i
 
 #### Adding a New Service
 
-Add a new service definition for your container under the `services` section, similar to the existing services.
+Add a new service definition for your container under the `services` section, similar to the existing services. Here is an example service you can start with:
+
+```yaml
+  # Describe your service in comments and let other people know who manages it
+  your-service-name:                                            # give your service a meaningful name, replace "your-service-name" with something meaningful like "supervisualizer"
+    image: jwilder/whoami
+    expose:
+      - "8000"                                                  # the ports that your service is listening on
+    environment:
+      VIRTUAL_HOST: "whoami.braingeneers.gi.ucsc.edu"           # choose an appropriate domain name for your service, for example: YOUR-SERVICE-NAME.braingeneers.gi.ucsc.edu
+      VIRTUAL_PORT: "8000"                                      # same as what you listed in expose
+      LETSENCRYPT_HOST: "whoami.braingeneers.gi.ucsc.edu"       # same as VIRTUAL_HOST
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"   # don't change this
+    networks:
+      - braingeneers-net                                        # don't change this
+```
 
 #### Setting the Virtual Host
 
@@ -135,6 +158,8 @@ If your service requires access to shared secrets, add a volume mount from the s
 ```
 
 #### Using entrypoint-secrets-setup.sh
+
+This is an advanced option.
 
 The `entrypoint-secrets-setup.sh` script wraps the original entrypoint and allows copying files from the dynamic secrets volume to the correct location, as well as exporting environment variables from a specified file. Include this script in the service definition as shown in the example below if you need credentials files moved to the proper location, or environment variables set before launching your process.
 
