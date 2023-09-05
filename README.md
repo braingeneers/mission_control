@@ -106,8 +106,6 @@ graph LR
 
 ```
 
-Certainly! Here's the revised documentation incorporating the provided information about the `entrypoint-secrets-setup.sh` script:
-
 ## How to Add a New Service
 
 ### Step 1: Clone the Repository
@@ -141,11 +139,11 @@ Add a new service definition for your container under the `services` section, si
       - braingeneers-net                                        # don't change this
 ```
 
-#### Setting the Virtual Host
+#### Setting the Virtual Host and LetsEncrypt environment variables
 
-The `VIRTUAL_HOST` environment variable in your service's definition determines the subdomain your service will be accessible from. For instance, if `VIRTUAL_HOST` is set to `my-service`, your service will be accessible from `https://my-service.braingeneers.gi.ucsc.edu`.
+The `VIRTUAL_HOST` & `LETSENCRYPT_HOST` environment variables in your service's definition determines the subdomain your service will be accessible from. For instance, if `VIRTUAL_HOST` is set to `my-service`, your service will be accessible from `https://my-service.braingeneers.gi.ucsc.edu`. You can choose any valid hostname under the braingeneers.gi.ucsc.edu domain. The `VIRTUAL_PORT` defines what port your service listens to, any port is acceptable, you will not use the port when accessing your service, that's only used internally.
 
-#### Configuring Shared Secrets
+### Configuring Shared Secrets
 
 If your service requires access to shared secrets, add a volume mount from the shared secrets volume. The secrets will be available in the following directory structure:
 
@@ -155,6 +153,16 @@ If your service requires access to shared secrets, add a volume mount from the s
   │   └── credentials
   └── other-k8s-secret/
       └── other-files
+```
+
+You can add the following to your yaml to add this volume:
+
+```
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
 ```
 
 #### Using entrypoint-secrets-setup.sh
@@ -195,42 +203,23 @@ services:
       - "original-entrypoint-command"
       - "arg1"
       - "arg2"
+    environment:
+      VIRTUAL_HOST: "your-service.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8000"
+      LETSENCRYPT_HOST: "your-service.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+
+    # This section adds the secrets volume to your service, secrets are stored in-memory so they must depend on the
+    # secret-fetcher service which populates that volume at startup.
     volumes:
       - secrets:/secrets
     depends_on:
       secret-fetcher:
         condition: service_healthy
-
-volumes:
-  secrets:
-    driver_opts:
-      type: tmpfs
-      device: tmpfs
 ```
 
 Use the `--env` option in combination with the `--copy` option as needed to set up the environment for your containerized application.
 
-### Step 3: Save and Exit the Text Editor
-
-After you've made your changes, save the `docker-compose.yaml` file and exit the text editor.
-
-### Step 4: Restart the Docker Compose Stack
-
-Run the following command in the directory where your `docker-compose.yaml` file is located to stop and recreate the services:
-
-```bash
-docker compose up -d
-```
-
-### Step 5: Verify Your Service
-
-This will stop and recreate the services defined in the Docker Compose file, including your newly added service.
-
-### Step 6: Commit the Changes
+### Commit the Changes
 
 After verifying your service works correctly, commit the changes to the `docker-compose.yaml` file back to the `mission_control` repository.
-
-```bash
-git commit -am "Added my-service to Docker Compose configuration"
-git push
-```
