@@ -79,7 +79,7 @@ Add a new service definition for your container under the `services` section, si
 ```yaml
   # Describe your service in comments and let other people know who manages it
   your-service-name:                                            # give your service a meaningful name, replace "your-service-name" with something meaningful like "supervisualizer"
-    image: jwilder/whoami
+    image: jwilder/whoami                                       # your docker image name as hosted on Docker Hub (or other image hosting service)
     expose:
       - "8000"                                                  # the ports that your service is listening on
     environment:
