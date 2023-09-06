@@ -154,7 +154,7 @@ services:
       - "--copy"
       - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
       - "--copy"
-      - "/secrets/other-k8s-secret/other-files:/path/to/other/files"
+      - "/secrets/other-k8s-secret/another-file:/path/to/another-file"
       - "original-entrypoint-command"
       - "arg1"
       - "arg2"
