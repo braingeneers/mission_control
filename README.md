@@ -78,17 +78,17 @@ Add a new service definition for your container under the `services` section, si
 
 ```yaml
   # Describe your service in comments and let other people know who manages it
-  your-service-name:                                            # give your service a meaningful name, replace "your-service-name" with something meaningful like "supervisualizer"
-    image: jwilder/whoami                                       # your docker image name as hosted on Docker Hub (or other image hosting service)
+  your-service-name:                                                 # give your service a meaningful name, replace "your-service-name" with something meaningful like "supervisualizer"
+    image: jwilder/whoami:latest                                     # your docker image name as hosted on Docker Hub (or other image hosting service)
     expose:
-      - "8000"                                                  # the ports that your service is listening on
+      - "8000"                                                       # the port(s) that your service is listening on inside your container
     environment:
-      VIRTUAL_HOST: "whoami.braingeneers.gi.ucsc.edu"           # choose an appropriate domain name for your service, for example: YOUR-SERVICE-NAME.braingeneers.gi.ucsc.edu
-      VIRTUAL_PORT: "8000"                                      # same as what you listed in expose
-      LETSENCRYPT_HOST: "whoami.braingeneers.gi.ucsc.edu"       # same as VIRTUAL_HOST
-      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"   # don't change this
+      VIRTUAL_HOST: "your-service-name.braingeneers.gi.ucsc.edu"     # choose an appropriate domain name for your service, for example: your-service-name.braingeneers.gi.ucsc.edu
+      VIRTUAL_PORT: "8000"                                           # same as what you listed in expose
+      LETSENCRYPT_HOST: "your-service-name.braingeneers.gi.ucsc.edu" # same as VIRTUAL_HOST
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"        # don't change this
     networks:
-      - braingeneers-net                                        # don't change this
+      - braingeneers-net                                             # don't change this
 ```
 
 #### Setting the Virtual Host and LetsEncrypt environment variables
