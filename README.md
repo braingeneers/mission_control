@@ -62,10 +62,11 @@ docker compose down
 
 ### Step 1: Clone the Repository
 
-Clone the repository where our Docker Compose configuration resides (assuming GitHub/SSH keys configured).
+Clone the `mission_control` repo where our Docker Compose configuration resides (this command assumes GitHub SSH clone).
 
 ```bash
 git clone git@github.com:braingeneers/mission_control.git
+cd mission_control
 ```
 
 ### Step 2: Edit the Docker Compose File
@@ -78,26 +79,28 @@ Add a new service definition for your container under the `services` section, si
 
 ```yaml
   # Describe your service in comments and let other people know who manages it
-  your-service-name:                                                 # give your service a meaningful name, replace "your-service-name" with something meaningful like "supervisualizer"
-    image: jwilder/whoami:latest                                     # your docker image name as hosted on Docker Hub (or other image hosting service)
+  your-service:                                                 # give your service a meaningful name, replace "your-service" with something meaningful like "supervisualizer"
+    image: jwilder/whoami:latest                                # your docker image name as hosted on Docker Hub (or other image hosting service)
     expose:
-      - "8000"                                                       # the port(s) that your service is listening on inside your container
+      - "8000"                                                  # the port(s) that your service is listening on inside your container
     environment:
-      VIRTUAL_HOST: "your-service-name.braingeneers.gi.ucsc.edu"     # choose an appropriate domain name for your service, for example: your-service-name.braingeneers.gi.ucsc.edu
-      VIRTUAL_PORT: "8000"                                           # same as what you listed in expose
-      LETSENCRYPT_HOST: "your-service-name.braingeneers.gi.ucsc.edu" # same as VIRTUAL_HOST
-      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"        # don't change this
+      VIRTUAL_HOST: "your-service.braingeneers.gi.ucsc.edu"     # choose an appropriate domain name for your service, for example: your-service.braingeneers.gi.ucsc.edu
+      VIRTUAL_PORT: "8000"                                      # same as what you listed in expose
+      LETSENCRYPT_HOST: "your-service.braingeneers.gi.ucsc.edu" # same as VIRTUAL_HOST
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"   # don't change this
     networks:
-      - braingeneers-net                                             # don't change this
+      - braingeneers-net                                        # don't change this
 ```
 
 #### Setting the Virtual Host and LetsEncrypt environment variables
 
-The `VIRTUAL_HOST` & `LETSENCRYPT_HOST` environment variables in your service's definition determines the subdomain your service will be accessible from. For instance, if `VIRTUAL_HOST` is set to `my-service`, your service will be accessible from `https://my-service.braingeneers.gi.ucsc.edu`. You can choose any valid hostname under the braingeneers.gi.ucsc.edu domain. The `VIRTUAL_PORT` defines what port your service listens to, any port is acceptable, you will not use the port when accessing your service, that's only used internally.
+The `VIRTUAL_HOST` & `LETSENCRYPT_HOST` environment variables in your service's definition determine the subdomain your service will be accessible from. For instance, if `VIRTUAL_HOST` is set to `your-service`. Your service will be accessible from `https://your-service.braingeneers.gi.ucsc.edu`. You can choose any valid hostname under the `braingeneers.gi.ucsc.edu domain`. The `VIRTUAL_PORT` defines what port(s) your service listens to. Your service can listen on any port, this is only used internally between the frontend nginx web server and your service.
 
 ### Configuring Shared Secrets
 
-If your service requires access to shared secrets, add a volume mount from the shared secrets volume. The secrets will be available in the following directory structure:
+**IMPORTANT** Never include credentials in your docker image, that image is public and those credentials will be found and stolen if you do. Credentials are stored in our `braingeneers` namespace in Kubernetes. See the [administration page on the wiki](https://github.com/braingeneers/wiki/blob/main/shared/administrators.md) for more details.
+
+If your service requires access to shared secrets such as the S3 credentials, add a volume mount from the shared secrets volume. The secrets will be available in the following directory structure. All secrets in our namespace are downloaded by the `secret-fetcher` service. If you've added a new secret to the Kubernetes namespace you can simply restart the `secret-fetcher` service to make it available and watch the `secret-fetcher` logs to confirm your new secret was pulled.
 
 ```text
 /secrets/
@@ -107,7 +110,7 @@ If your service requires access to shared secrets, add a volume mount from the s
       └── other-files
 ```
 
-You can add the following to your yaml to add this volume:
+You can add the following to your yaml to add this volume, you will see other services in the yaml that use this structure:
 
 ```
     volumes:
