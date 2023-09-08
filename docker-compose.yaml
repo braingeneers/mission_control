@@ -187,8 +187,10 @@ services:
 #    ports:
 #      - "127.0.0.1:8057:80"
     environment:
-      - VIRTUAL_HOST=shadows.braingeneers.gi.ucsc.edu
+      - VIRTUAL_HOST=datahub.braingeneers.gi.ucsc.edu
       - VIRTUAL_PORT=80
+      - LETSENCRYPT_HOST="datahub.braingeneers.gi.ucsc.edu"
+      - LETSENCRYPT_EMAIL="braingeneers-admins-group@ucsc.edu"
 
   # picroscope experiment control console
   # plotly dash
@@ -211,6 +213,8 @@ services:
     environment:
       - VIRTUAL_HOST=picroscope.braingeneers.gi.ucsc.edu
       - VIRTUAL_PORT=8050
+      - LETSENCRYPT_HOST="picroscope.braingeneers.gi.ucsc.edu"
+      - LETSENCRYPT_EMAIL="braingeneers-admins-group@ucsc.edu"
     depends_on:
       secret-fetcher:
         condition: service_healthy
@@ -240,6 +244,8 @@ services:
     environment:
       - VIRTUAL_HOST=shadows-db.braingeneers.gi.ucsc.edu
       - VIRTUAL_PORT=1337
+      - LETSENCRYPT_HOST="shadows-db.braingeneers.gi.ucsc.edu"
+      - LETSENCRYPT_EMAIL="braingeneers-admins-group@ucsc.edu"
     user: "0:989"
     depends_on:
       secret-fetcher:
