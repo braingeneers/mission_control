@@ -219,7 +219,7 @@ services:
       secret-fetcher:
         condition: service_healthy
     volumes:
-      - plotly-dash-picroscope-control-console/.env:/console/.env
+      - ./plotly-dash-picroscope-control-console/.env:/console/.env
       - secrets:/secrets
     restart: unless-stopped
 
