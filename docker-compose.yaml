@@ -190,6 +190,35 @@ services:
       - VIRTUAL_HOST=shadows.braingeneers.gi.ucsc.edu
       - VIRTUAL_PORT=80
 
+  #picroscope experiment control console
+  # plotly dash
+   picroscope-console:
+    build:  plotly-dash-picroscope-control-console/ 
+    container_name: plotly-picroscope-console
+      # ports:
+      #      - "127.0.0.1:8051:8050"
+    networks:
+      - braingeneers-net
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - '--copy'
+      - '/secrets/picroscope-user-credentials/users.py:/console/users.py'
+      - '--copy'
+      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
+      - '/bin/bash'
+      - '-c'
+      - 'python app.py'
+    environment:
+      - VIRTUAL_HOST=picroscope.braingeneers.gi.ucsc.edu
+      - VIRTUAL_PORT=8050
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+    volumes:
+      - plotly-dash-picroscope-control-console/.env:/console/.env
+      - secrets:/secrets
+    restart: unless-stopped
+
   shadows-db:
     container_name: strapi-shadows-db
     build: strapi-shadows-db/
