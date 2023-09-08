@@ -1,0 +1,16 @@
+version: "3"
+services:
+  picroscope-console:
+    build: .
+    container_name: plotly-picroscope-console
+    ports:
+     # - "0.0.0.0:8056:8050"
+       - "127.0.0.1:8051:8050" 
+    volumes:
+      - ~/.aws/credentials:/root/.aws/credentials:ro
+     # usernames and passwords
+      - ./users.py:/console/users.py
+      - ./.env:/console/.env
+    # create shadows-network if it doesn't exist, must connect all services that need strapi-shadows-db to shadows-network
+    network_mode: shadows-network
+    restart: unless-stopped

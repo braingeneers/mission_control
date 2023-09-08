@@ -1,0 +1,17 @@
+redis
+plotly
+flask
+dash
+dash-canvas
+dash-daq
+#dash-bio
+dash-cytoscape
+dash_bootstrap_components
+dash-auth==1.4.1
+dash-core-components==2.0.0
+dash-extensions==0.0.67
+dash-html-components==2.0.0
+dash-table==5.0.0
+boto3==1.17.96
+pytz==2022.4
+python-dotenv
