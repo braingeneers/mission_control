@@ -12,3 +12,4 @@ dist/
 **/.vscode/**
 secrets/**
 certs
+plotly-dash-picroscope-control-console/users.py
