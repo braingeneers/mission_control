@@ -204,7 +204,7 @@ services:
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
       - '--copy'
-      - '/secrets/picroscope-user-credentials/users.py:/console/users.py'
+      - '/secrets/picroscope-console-user-credentials/users.py:/console/users.py'
       - '--copy'
       - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
       - '/bin/bash'
@@ -246,7 +246,7 @@ services:
       - VIRTUAL_PORT=1337
       - LETSENCRYPT_HOST="shadows-db.braingeneers.gi.ucsc.edu"
       - LETSENCRYPT_EMAIL="braingeneers-admins-group@ucsc.edu"
-    user: "0:989"
+#    user: "0:989"
     depends_on:
       secret-fetcher:
         condition: service_healthy
