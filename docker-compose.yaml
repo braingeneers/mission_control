@@ -87,7 +87,7 @@ services:
 
   # Ella's website (maxwell related)
   mxvisuals:
-    image: mirellameelo/visualsmaxwell-frontend:latest
+    image: mirellameelo/visualsmaxwell-frontend:v0.2
     expose:
       - "3000"
     environment:
