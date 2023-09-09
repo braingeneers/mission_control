@@ -87,12 +87,25 @@ services:
 
   # Ella's website (maxwell related)
   mxvisuals:
-    image: mirellameelo/visualsmaxwell:latest
+    image: mirellameelo/visualsmaxwell-frontend:latest
     expose:
       - "3000"
     environment:
       VIRTUAL_HOST: "mxvisuals.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "3000"
+      LETSENCRYPT_HOST: "mxvisuals.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+    networks:
+      - braingeneers-net
+
+  # Ella's website (maxwell related)
+  mxvisuals--backend:
+    image: mirellameelo/visualsmaxwell-backend:latest
+    expose:
+      - "3000"
+    environment:
+      VIRTUAL_HOST: "mxvisuals--backend.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "5000"
       LETSENCRYPT_HOST: "mxvisuals.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     networks:
