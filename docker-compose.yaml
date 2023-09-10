@@ -100,7 +100,7 @@ services:
 
   # Ella's website (maxwell related)
   mxvisuals-backend:
-    image: mirellameelo/visualsmaxwell-backend:latest
+    image: mirellameelo/visualsmaxwell-backend:v0.2
     expose:
       - "5000"
     environment:
@@ -110,6 +110,11 @@ services:
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     networks:
       - braingeneers-net
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
 
   # The letsencrypt container is used to automatically generate SSL certificates for the domain names.
   # https://github.com/jwilder/docker-letsencrypt-nginx-proxy-companion
