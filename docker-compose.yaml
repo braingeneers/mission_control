@@ -279,6 +279,10 @@ services:
     volumes:
       - secrets:/secrets
       - vol-strapi-shadows-db:/opt/app/.tmp
+      - ./strapi-shadows-db/config:/opt/app/config
+      - ./strapi-shadows-db/src:/opt/app/src
+      - ./strapi-shadows-db/package.json:/opt/package.json
+      - ./strapi-shadows-db/package-lock.json:/opt/package-lock.json
 
   # job-launcher launches NRP jobs based on MQTT messages see repo mqtt_job_listener
   job-launcher:
