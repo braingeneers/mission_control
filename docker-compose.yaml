@@ -101,9 +101,17 @@ services:
   # Ella's website (maxwell related)
   mxvisuals-backend:
     image: mirellameelo/visualsmaxwell-backend:v0.2
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
+      - "python3"
+      - "-u"
+      - "main.py"
     expose:
       - "5000"
     environment:
+      DEBUG: "true"
       VIRTUAL_HOST: "mxvisuals-backend.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "5000"
       LETSENCRYPT_HOST: "mxvisuals-backend.braingeneers.gi.ucsc.edu"
