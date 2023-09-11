@@ -50,6 +50,9 @@
     },
     "active": {
       "type": "boolean"
+    },
+    "marked_for_deletion": {
+      "type": "boolean"
     }
   }
 }

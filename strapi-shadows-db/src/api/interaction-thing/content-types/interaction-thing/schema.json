@@ -4,7 +4,8 @@
   "info": {
     "singularName": "interaction-thing",
     "pluralName": "interaction-things",
-    "displayName": "Interaction_thing"
+    "displayName": "Interaction_thing",
+    "description": ""
   },
   "options": {
     "draftAndPublish": true
@@ -40,6 +41,9 @@
       "relation": "manyToMany",
       "target": "api::plate.plate",
       "mappedBy": "interaction_things"
+    },
+    "marked_for_deletion": {
+      "type": "boolean"
     }
   }
 }

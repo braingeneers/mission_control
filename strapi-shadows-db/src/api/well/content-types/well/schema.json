@@ -29,6 +29,9 @@
       "relation": "oneToMany",
       "target": "api::sample.sample",
       "mappedBy": "well"
+    },
+    "marked_for_deletion": {
+      "type": "boolean"
     }
   }
 }

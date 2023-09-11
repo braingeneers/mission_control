@@ -26,6 +26,9 @@
     },
     "annotation": {
       "type": "json"
+    },
+    "marked_for_deletion": {
+      "type": "boolean"
     }
   }
 }
