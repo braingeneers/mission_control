@@ -313,7 +313,15 @@ services:
     ports:
      - "6379:6379"
 
-      # The braingeneers-net network is used to connect the containers together.
+  # Centralizes MQTT messages of the "telemetry" topic to s3; maintainer: lblauvel@ucsc.edu
+  mqtt-logging-s3:
+    image: quay.io/ucsc-cgl/mqtt-logging-s3:latest
+    expose:
+      - "4242"
+    networks:
+      - braingeneers-net
+
+# The braingeneers-net network is used to connect the containers together.
 networks:
   braingeneers-net:
     driver: bridge
