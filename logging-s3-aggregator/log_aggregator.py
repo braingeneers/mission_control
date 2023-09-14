@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
-A service that subscribes to the "telemetry/#" topic and writes all received messages into a central s3 bucket.
-
-Each log message is written as its own .csv file.  A separate service is intended to run as a cron job and
-concatenate all logs files together periodically.
+A service that looks at individual logs of MQTT messages written to 
+an s3 bucket and concatenates all of those log files together periodically.
 """
 import functools
 import time
