@@ -316,10 +316,12 @@ services:
   # Centralizes MQTT messages of the "telemetry" topic to s3; maintainer: lblauvel@ucsc.edu
   mqtt-logging-s3:
     image: quay.io/ucsc-cgl/mqtt-logging-s3:latest
-    expose:
-      - "4242"
+    volumes:
+      - ~/.aws/credentials:/root/.aws/credentials:ro  # AWS credentials for your application
     networks:
       - braingeneers-net
+    depends_on:
+      - secret-fetcher
 
 # The braingeneers-net network is used to connect the containers together.
 networks:
