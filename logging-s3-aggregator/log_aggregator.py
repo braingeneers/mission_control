@@ -83,10 +83,10 @@ def main():
     """
     An infinite loop that combines the csv-formatted log files we generate in s3.
 
-    Log files ending in ".1.log" are expected to contain one csv-formatted line.
+    Log files ending in ".1.csv" are expected to contain one csv-formatted line.
 
-    These are combined every 5 minutes into a file ending in ".5m.log"...
-    which are in turn combined every 24 hours into files ending in ".24h.log".
+    These are combined every 5 minutes into a file ending in ".5m.csv"...
+    which are in turn combined every 24 hours into files ending in ".24h.csv".
     """
     print('Now starting up the log aggregator...')
     seconds_per_day = 24 * 60 * 60  # seconds per day
