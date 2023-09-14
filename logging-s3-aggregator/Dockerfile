@@ -12,6 +12,6 @@ RUN apt-get -q -y update && \
 
 RUN python3 -m pip install --force-reinstall git+https://github.com/braingeneers/braingeneerspy.git#egg=braingeneerspy[iot,analysis,data]
 
-COPY log.py /tmp/log.py
+COPY log_aggregator.py /tmp/log_aggregator.py
 
-ENTRYPOINT python3 /tmp/log.py
+ENTRYPOINT python3 /tmp/log_aggregator.py
