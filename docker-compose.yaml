@@ -87,7 +87,7 @@ services:
 
   # Ella's website (maxwell related)
   mxvisuals:
-    image: mirellameelo/visualsmaxwell-frontend:v0.2
+    image: mirellameelo/visualsmaxwell-frontend:v0.3
     expose:
       - "3000"
     environment:
@@ -100,7 +100,7 @@ services:
 
   # Ella's website (maxwell related)
   mxvisuals-backend:
-    image: mirellameelo/visualsmaxwell-backend:v0.2
+    image: mirellameelo/visualsmaxwell-backend:v0.3
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
       - "--copy"
