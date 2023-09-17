@@ -43,8 +43,21 @@ def retry(intervals: Optional[List] = None, errors: Optional[Set] = None):
 
 @retry(errors={Exception})
 def delete_s3_object(uri: str):
-    assert uri.startswith('s3://braingeneers/')
     s3_client.delete_object(Bucket='braingeneers', Key=uri[len('s3://braingeneers/'):])
+
+
+def batch_1000_logs(singletons):
+    """
+    Generates a list of 1000 logs each time, or an empty list
+    if there are not enough logs to make a batch of 1000.
+    """
+    logs = []
+    for log in s3wrangler.list_objects(path='s3://braingeneers/logs/', suffix=[f'.{singletons}.csv']):
+        logs.append(log)
+        if len(logs) % 1000 == 0:
+            yield logs  # return next batch of 1000
+            logs = []  # reset
+    return []
 
 
 def combine_logs(singletons: str, combined: str):
@@ -55,28 +68,28 @@ def combine_logs(singletons: str, combined: str):
       s3://braingeneers/logs/{uuid}/{start_time_stamp}.{combined}.csv
     Then the singletons will be deleted.
     """
-    print(f'Combining logs at {combined} minute interval...')
-    logs = defaultdict(list)
-    files_to_delete = list()
+
     # single-line log path format is: s3://braingeneers/logs/{uuid}/{current_time}.1.csv
-    for log in s3wrangler.list_objects(path='s3://braingeneers/logs/', suffix=[f'.{singletons}.csv']):
-        log_uuid = log[len("s3://braingeneers/logs/"):].split("/")[0]
-        with smart_open.open(log, 'r') as r:
-            logs[log_uuid].append(r.read())
-        files_to_delete.append(log)
+    for batch in batch_1000_logs(singletons):  # returns lists of 1000 logs, or an empty list
+        print(f'Combining 1000 logs...')
+        logs = defaultdict(list)
+        for log in batch:
+            log_uuid = log[len("s3://braingeneers/logs/"):].split("/")[0]
+            with smart_open.open(log, 'r') as r:
+                logs[log_uuid].append(r.read())
 
-    for log_uuid, log_entries in logs.items():
-        log_entries.sort()
-        start_time_stamp = log_entries[0].split(",")[0]
-        with smart_open.open(f's3://braingeneers/logs/{log_uuid}/{start_time_stamp}.{combined}.csv', 'w') as w:
-            w.write(''.join(log_entries))  # log entries are expected to all end in newlines
+        for log_uuid, log_entries in logs.items():
+            log_entries.sort()
+            start_time_stamp = log_entries[0].split(",")[0]
+            with smart_open.open(f's3://braingeneers/logs/{log_uuid}/{start_time_stamp}.{combined}.csv', 'w') as w:
+                w.write(''.join(log_entries))  # log entries are expected to all end in newlines
 
-        print(f'{combined}: {log_uuid} combined {len(log_entries)} files.')
+            print(f'{combined}: {log_uuid} combined {len(log_entries)} files.')
 
-    # assuming everything went alright, we can now clean up the old files
-    for uri in files_to_delete:
-        delete_s3_object(uri)
-    print(f'{len(files_to_delete)} deleted.  Example: {files_to_delete[0]}')
+        # assuming everything went alright, we can now clean up the old files
+        for uri in batch:
+            delete_s3_object(uri)
+        print(f'1000 files deleted.  Example: {batch[0]}')
 
 
 def main():
@@ -85,22 +98,14 @@ def main():
 
     Log files ending in ".1.csv" are expected to contain one csv-formatted line.
 
-    These are combined every 5 minutes into a file ending in ".5m.csv"...
-    which are in turn combined every 24 hours into files ending in ".24h.csv".
+    These are combined into a file ending in ".1k.csv" for every 1000 files.
+    which are in turn combined into files ending in ".1m.csv" for every 1,000,000 files.
     """
     print('Now starting up the log aggregator...')
-    seconds_per_day = 24 * 60 * 60  # seconds per day
     while True:
-        # iterate the loop every five minutes for 24 hours, then reset
-        for five_minute_interval in range(0, seconds_per_day + 300, 300):
-            # combine all single-line logs into a 5 minute log
-            combine_logs(singletons='1', combined='5m')
-
-            # combine all 5 minute logs into a 24 hour log at the top of the morning each day
-            if five_minute_interval == 0:
-                combine_logs(singletons='5m', combined='24h')
-            print('Sleeping for 5 minutes...')
-            time.sleep(300)  # 5 minutes
+        combine_logs(singletons='1', combined='1k')
+        combine_logs(singletons='1k', combined='1m')
+        time.sleep(120)  # check to combine every 2 minutes
 
 
 if __name__ == '__main__':
