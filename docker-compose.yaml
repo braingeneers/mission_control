@@ -317,7 +317,17 @@ services:
   mqtt-logging-s3:
     image: quay.io/ucsc-cgl/mqtt-logging-s3:latest
     volumes:
-      - ~/.aws/credentials:/root/.aws/credentials:ro  # AWS credentials for your application
+      - ~/.aws/credentials:/root/.aws/credentials:ro
+    networks:
+      - braingeneers-net
+    depends_on:
+      - secret-fetcher
+
+  # Checks s3 for log files and combines them on a schedule; maintainer: lblauvel@ucsc.edu
+  mqtt-logging-s3-aggregator:
+    image: quay.io/ucsc-cgl/mqtt-logging-s3-aggregator:latest
+    volumes:
+      - ~/.aws/credentials:/root/.aws/credentials:ro
     networks:
       - braingeneers-net
     depends_on:
