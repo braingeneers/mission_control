@@ -24,6 +24,6 @@ def main(uuid: str, delete_queue: bool = True):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Provide UUID as an argument')
     parser.add_argument('--uuid', '-u', type=str, required=True, help='UUID for the process')
-    parser.add_argument('--no-delete', '-n', dest='delete', action='store_false', help='Do not delete the queue')
+    parser.add_argument('--no-delete-queue', '-n', dest='delete', action='store_false', help='Do not delete the queue')
     args = parser.parse_args()
     main(args.uuid, args.delete)

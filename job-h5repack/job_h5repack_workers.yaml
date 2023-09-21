@@ -1,9 +1,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: job-h5repack-0${UNIQUEID}
+  name: job-h5repack-${UNIQUEID}
 spec:
-  parallelism: 5
+  parallelism: 1
   backoffLimit: 0
   ttlSecondsAfterFinished: 1000000000  # A very long time, approximately 31.7 years. (thanks GPT4)
   template:
@@ -12,23 +12,23 @@ spec:
 
       containers:
       - name: h5repack
-        image: davidparks21/job-h5repack:v5
+        image: braingeneers/job-h5repack:v${VERSION}
 #        image: braingeneers/job-h5repack:latest
         imagePullPolicy: Always
 
         command: ["stdbuf", "-i0", "-o0", "-e0", "/usr/bin/time", "-v", "bash", "-c"]
         args:
           - >-
-            /job_h5repack/h5repack_task.sh --random-delay 120
+            /job_h5repack/h5repack_task.sh --random-delay 2
 
         resources:
           requests:
             cpu: "1"
-            memory: "2Gi"
+            memory: "4Gi"
             ephemeral-storage: "20Gi"
           limits:
-            cpu: "2"
-            memory: "4Gi"
+            cpu: "4"
+            memory: "12Gi"
 
         env:
           - name: "UUID"

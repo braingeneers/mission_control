@@ -1,0 +1,127 @@
+./build-push-version.sh
+
+k delete jobs job-h5repack-1 job-h5repack-2 job-h5repack-3 job-h5repack-4 job-h5repack-5 job-h5repack-6 job-h5repack-7 job-h5repack-8
+
+python init.py --uuid 2022-10-28-e-alginate_orgs_1
+python init.py --uuid 2022-07-21-e-connectoid11821
+python init.py --uuid 2022-05-03-e-
+python init.py --uuid 2022-05-18-e-connectoid
+python init.py --uuid 2022-12-14-e-c11400_long
+python init.py --uuid 2022-10-24-e-connectoids-chip11978
+python init.py --uuid 2022-10-17-e-conectoids-chip12098
+python init.py --uuid 2022-10-17-e-connectoids-chip17816
+
+export UNIQUEID=0
+for UUID in 2022-10-28-e-alginate_orgs_1 2022-07-21-e-connectoid11821 2022-05-03-e- 2022-05-18-e-connectoid 2022-12-14-e-c11400_long 2022-10-24-e-connectoids-chip11978 2022-10-17-e-conectoids-chip12098 2022-10-17-e-connectoids-chip17816; do
+  echo $UUID
+  export UUID
+  export UNIQUEID=$(( ${UNIQUEID} + 1 ))
+  export VERSION=$(cat VERSION)
+  envsubst < job_h5repack_workers.yaml | k create -f -
+done
+
+
+#
+# Run init then job for a single UUID
+#
+export UUID=2022-04-27-e- ; export UNIQUEID=0 ; python init.py --uuid ${UUID} ; envsubst < job_h5repack_workers.yaml | k create -f -
+
+
+
+
+2022-10-28-e-alginate_orgs_1
+          "path": "original/data/Trace_20221028_11_50_28_chip10971_FINALLY.rowmajor.h5"
+
+2022-07-21-e-connectoid11821
+          "path": "original/data/Trace_20220720_16_00_27_chip11821.raw.h5",
+          "path": "original/data/Trace_20220721_13_12_33_chip11821.raw.h5",
+          "path": "original/data/Trace_20220721_15_07_06_chip11821.raw.h5",
+          "path": "original/data/Trace_20220722_13_58_52_chip11821.rowmajor.h5",
+          "path": "original/data/Trace_20220722_14_10_06chip11821.raw.h5",
+          "path": "original/data/Trace_20220724_18_55_12_chip11821.raw.h5",
+          "path": "original/data/Trace_20220725_12_17_31_chip11821.raw.h5",
+
+2022-05-03-e-
+          "path": "original/data/Trace_20220503_12_25_42v_chip11350.rowmajor.h5",
+          "path": "original/data/Trace_20220503_13_03_48_chip11317.raw.h5"
+
+2022-05-18-e-connectoid
+          "path": "original/data/Trace_20220518_12_53_35_chip11350.rowmajor.h5"
+
+2022-12-14-e-c11400_long
+          "path": "original/data/Trace_20221026_10_44_46_chip11400.rowmajor.h5"
+          "path": "original/data/Trace_20221130_10_59_57_chip11400.rowmajor.h5"
+          "path": "original/data/Trace_20221202_13_04_26_chip11400.rowmajor.h5"
+          "path": "original/data/Trace_20221205_12_23_03_leftside_migration.rowmajor.h5"
+          "path": "original/data/Trace_20221207_11_14_55_chip11400.raw.h5"
+          "path": "original/data/Trace_20221209_11_38_20_chip1400.raw.h5"
+          "path": "original/data/Trace_20221214_10_40_11_chip11400.raw.h5"
+          "path": "original/data/Trace_20221219_10_37_08_Chip11400.raw.h5"
+          "path": "original/data/Trace_20221221_16_20_12_chip11400.raw.h5"
+          "path": "original/data/Trace_20221223_10_38_41_chip11400.raw.h5"
+          "path": "original/data/Trace_20221226_13_26_15_chip11400.raw.h5"
+          "path": "original/data/Trace_20221228_14_20_38_chip11400.raw.h5"
+          "path": "original/data/Trace_20221230_13_10_10_chip11400.raw.h5"
+          "path": "original/data/Trace_20230102_12_09_28_chip11400.raw.h5"
+          "path": "original/data/Trace_20230109_11_06_35_chip1400_stronger_left.raw.h5"
+          "path": "original/data/Trace_20230111_10_19_46_chip11400.raw.h5"
+          "path": "original/data/Trace_20230111_12_15_45_chip11400.raw.h5"
+          "path": "original/data/Trace_20230113_11_18_23_chip11400.raw.h5"
+
+2022-10-24-e-connectoids-chip11978
+          "path": "original/data/Trace_20221024_11_58_46_chip11978_minor.rowmajor.h5",
+          "path": "original/data/Trace_20221028_12_41_57_chip11978.rowmajor.h5",
+          "path": "original/data/Trace_20221109_12_04_38_chip11978.rowmajor.h5",
+          "path": "original/data/Trace_20221111_15_17_53_chip11978.rowmajor.h5",
+          "path": "original/data/Trace_20221116_11_29_28_chip11978.rowmajor.h5",
+          "path": "original/data/Trace_20221121_11_45_03_chip11978.raw.h5",
+          "path": "original/data/Trace_20221128_15_25_03_chip11978.raw.h5",
+          "path": "original/data/Trace_20221130_10_38_31_chip11978.raw.h5",
+          "path": "original/data/Trace_20221207_11_46_56_chip11978_bothsides.raw.h5",
+          "path": "original/data/Trace_20221209_14_35_23_chip11978.raw.h5",
+          "path": "original/data/Trace_20221214_10_43_05_chip11978.raw.h5",
+          "path": "original/data/Trace_20221219_11_11_58_chip11978.raw.h5",
+          "path": "original/data/Trace_20221221_16_22_00_chip11978.raw.h5",
+          "path": "original/data/Trace_20221223_10_39_58_chip11978.raw.h5",
+          "path": "original/data/Trace_20221226_13_28_32_chip11978.raw.h5"
+          "path": "original/data/Trace_20221228_14_34_02_chip11978.raw.h5"
+          "path": "original/data/Trace_20221230_13_08_59_chip11978.raw.h5"
+          "path": "original/data/Trace_20230102_12_43_26_chip11978.raw.h5"
+          "path": "original/data/Trace_20230106_11_33_17_chip11978.raw.h5"
+          "path": "original/data/Trace_20230111_10_42_27_chip11978.raw.h5"
+
+2022-10-17-e-conectoids-chip12098
+          "path": "original/data/Trace_20221019_12_17_51_chip12098.rowmajor.h5"
+          "path": "original/data/Trace_20221102_12_57_19_chip12098_cross_connectoid_activity.rowmajor.h5"
+          "path": "original/data/Trace_20221109_11_23_23_chip12098_quiescent_in_bundle.rowmajor.h5"
+          "path": "original/data/Trace_20221111_15_15_12_chip12098_light_cross_activity.rowmajor.h5"
+          "path": "original/data/Trace_20221116_11_12_47_chip12098_activity_all_over.rowmajor.h5"
+          "path": "original/data/Trace_20221118_17_05_16_chip12098_nobundle.raw.h5"
+          "path": "original/data/Trace_20221121_11_48_56_chip12098_strong_sides_weak_bundle.raw.h5"
+          "path": "original/data/Trace_20221128_14_34_31_weakened.raw.h5"
+
+2022-10-17-e-connectoids-chip17816
+          "path": "original/data/Trace_20221017_11_14_32_chip17816.rowmajor.h5",
+          "path": "original/data/Trace_20221019_12_19_10_chip17816.rowmajor.h5",
+          "path": "original/data/Trace_20221024_11_29_17_chip17816.rowmajor.h5",
+          "path": "original/data/Trace_20221026_10_17_38_chip17816_somebursting.rowmajor.h5",
+          "path": "original/data/Trace_20221028_12_17_45_chip17816.rowmajor.h5",
+          "path": "original/data/Trace_20221109_11_12_38_chip17816.raw.h5",
+          "path": "original/data/Trace_20221111_13_50_28_chip17816.raw.h5",
+          "path": "original/data/Trace_20221116_10_50_46_chip17816.raw.h5",
+          "path": "original/data/Trace_20221118_16_31_48_chip17816.raw.h5",
+          "path": "original/data/Trace_20221121_10_59_57_chip17816_small_burst.raw.h5",
+          "path": "original/data/Trace_20221128_14_47_18_chip17816.raw.h5",
+          "path": "original/data/Trace_20221130_11_56_36_chip17816.raw.h5",
+          "path": "original/data/Trace_20221207_11_12_08_chip17816_rightside.raw.h5"
+          "path": "original/data/Trace_20221209_13_58_16_chip17816.raw.h5"
+          "path": "original/data/Trace_20221214_11_56_55_chip17816.raw.h5"
+          "path": "original/data/Trace_20221219_11_50_59_CHIP17816.raw.h5"
+          "path": "original/data/Trace_20221221_14_34_58_Chip17816.raw.h5"
+          "path": "original/data/Trace_20221223_13_51_11_chip17816.raw.h5"
+          "path": "original/data/Trace_20221226_13_48_01_chip17816.raw.h5"
+          "path": "original/data/Trace_20221228_14_00_07_chip17816.raw.h5"
+          "path": "original/data/Trace_20230102_13_44_24_chip17816.raw.h5"
+          "path": "original/data/Trace_20230106_13_36_30_chip17816_rightside_only.raw.h5"
+          "path": "original/data/Trace_20230109_11_52_10_chip17816.raw.h5"
+

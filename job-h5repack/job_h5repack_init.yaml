@@ -10,13 +10,13 @@ spec:
 
       containers:
       - name: init
-        image: braingeneers/job-h5repack:latest
+        image: braingeneers/job-h5repack:v${TAG}
         imagePullPolicy: Always
 
         command: ["stdbuf", "-i0", "-o0", "-e0", "/usr/bin/time", "-v", "bash", "-c"]
         args:
           - >-
-            python init.py
+            python init.py --uuid "${UUID}"
 
         resources:
           requests:
@@ -27,8 +27,6 @@ spec:
             memory: "1000Mi"
 
         env:
-          - name: "UUID"
-            value: "2022-10-28-e-alginate_orgs_1"
           - name: "AWS_PROFILE"
             value: "default"
           - name: "TF_CPP_MIN_LOG_LEVEL"

@@ -8,6 +8,6 @@ docker run --rm -it \
   -v /home/${USER}/.aws:/home/jovyan/.aws \
   -v /home/${USER}/.kube:/home/jovyan/.kube:ro \
   -v .:/mission_control/ \
-  --env "UUID=2023-04-17-e-causal_v1" \
+  --env "UUID=${UUID}" \
   braingeneers/braingeneers:latest \
   bash

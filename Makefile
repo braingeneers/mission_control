@@ -29,11 +29,8 @@ shell-braingeneers-image:
 #
 # job-h5repack
 #
-build-h5repack:
-	docker build -f job-h5repack/Dockerfile -t braingeneers/job-h5repack:latest .
-
-push-h5repack:
-	docker push braingeneers/job-h5repack:latest
+build-push-version:
+	cd job-h5repack; build-push-version.sh
 
 shell-h5repack:
 	docker run --rm -it braingeneers/job-h5repack:latest bash
