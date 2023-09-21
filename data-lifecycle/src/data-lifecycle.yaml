@@ -1,0 +1,28 @@
+#
+# See https://github.com/braingeneers/data-lifecycle for documentation.
+#
+
+# AWS S3 Glacier configuration
+aws_s3_glacier:
+  bucket: 'braingeneers-backups'
+  inventory_file_path: 's3://braingeneers-backups-inventory/data/'
+
+# Deletion parameters
+deletion:
+  # Length of time (in days) before files are deleted by default
+  expire_days: 365
+  notification_days: 90
+
+# Backup parameters
+backup:
+  # Base paths to include in backup
+  include_paths:
+    - 's3://braingeneers/'
+    - 's3://streamscope/'
+
+  # Directories with files that should be added or deleted at the same time
+  # the latest modification time of all files under the directory is used
+  atomic_directories:
+    - 's3://braingeneers/ephys/*'
+    - 's3://braingeneers/imaging/*'
+    - 's3://streamscope/experiments/*'
