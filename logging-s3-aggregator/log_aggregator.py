@@ -67,10 +67,11 @@ def format_log_entries(log_entries: dict, header_keys: list):
     """
     formatted_lines = '\t'.join(header_keys) + '\n'  # start with the first line (the header)
     header_keys.remove('TIMESTAMP')
+    header_keys.remove('TOPIC')
     timestamps = sorted(log_entries.keys())
     for timestamp in timestamps:
         entry = log_entries[timestamp]
-        formatted_lines += '\t'.join([timestamp] + [str(entry.get(k, '')) for k in header_keys]) + '\n'
+        formatted_lines += '\t'.join([timestamp] + [entry['TOPIC']] + [str(entry.get(k, '')) for k in header_keys]) + '\n'
     return formatted_lines, timestamps[0]
 
 
