@@ -3,11 +3,12 @@
 A service that looks at individual logs of MQTT messages written to 
 an s3 bucket and concatenates all of those log files together periodically.
 """
-import functools
 import time
+import traceback
+import sys
 
+from tenacity import retry, wait_exponential, stop_after_attempt
 from collections import defaultdict
-from typing import Optional, List, Set
 
 import braingeneers.utils.smart_open_braingeneers as smart_open
 from braingeneers.utils.common_utils import _lazy_init_s3_client
@@ -17,45 +18,60 @@ from braingeneers.utils import s3wrangler
 s3_client = _lazy_init_s3_client()
 
 
-# TODO: Move to braingeneers utils
-def retry(intervals: Optional[List] = None, errors: Optional[Set] = None):
-    """Retry decorator."""
-    if intervals is None:
-        intervals = [1, 1, 2, 4]
-
-    def decorate(func):
-        @functools.wraps(func)
-        def call(*args, **kwargs):
-            while True:
-                try:
-                    return func(*args, **kwargs)
-                except tuple(errors) as e:
-                    if not intervals:
-                        raise
-                    interval = intervals.pop(0)
-                    print(f"Error in {func}: {e}. Retrying after {interval} s...")
-                    time.sleep(interval)
-        return call
-    return decorate
+def log_to_stderr(retry_state):
+    """Print our retries to the screen so that we know what's going on."""
+    print(f"Retrying: {retry_state.attempt_number}...", file=sys.stderr)
 
 
-@retry(errors={Exception})
+# retry @ [0s, 1s, 2s, 4s, 8s] before raising
+@retry(wait=wait_exponential(multiplier=1, min=1, max=8), stop=stop_after_attempt(5), after=log_to_stderr)
 def delete_s3_object(uri: str):
+    assert uri.startswith('s3://braingeneers/logs/'), uri
+    print(f'Now deleting: {uri}')
     s3_client.delete_object(Bucket='braingeneers', Key=uri[len('s3://braingeneers/'):])
 
 
-def batch_1000_logs(singletons):
+def batch_100_logs(singletons: str):
     """
-    Generates a list of 1000 logs each time, or an empty list
-    if there are not enough logs to make a batch of 1000.
+    Generates a list of 100 logs specific to a UUID each time as well as the UUID...
+    or an empty list and empty string if there are not enough logs to make a batch of 100.
     """
-    logs = []
-    for log in s3wrangler.list_objects(path='s3://braingeneers/logs/', suffix=[f'.{singletons}.csv']):
-        logs.append(log)
-        if len(logs) % 1000 == 0:
-            yield logs  # return next batch of 1000
-            logs = []  # reset
-    return []
+    logs = defaultdict(list)
+    for log in s3wrangler.list_objects(path='s3://braingeneers/logs/', suffix=[f'.{singletons}.tsv']):
+        log_uuid = log[len("s3://braingeneers/logs/"):].split("/")[0]
+        logs[log_uuid].append(log)
+        if len(logs[log_uuid]) % 100 == 0:
+            yield log_uuid, logs[log_uuid]  # return next batch of 100
+            logs[log_uuid] = []  # reset
+    return '', []  # we're out of logs to return
+
+
+def format_log_entries(log_entries: dict, header_keys: list):
+    """
+    Given a dict of log entries, return a string to write to a new log file.
+
+    For example, the inputs:
+        log_entries=
+            {'2023-09-21_23-24-59': {'TOPIC': 'telemetry/0000-00-00-efi-testing/log/zambezi-cam/cmnd',
+                                     '': 'ॐ'},
+             '2023-09-21_23-25-00': {'TOPIC': 'telemetry/0000-00-00-efi-testing/log/zambezi-cam/cmnd',
+                                     '': 'ॐ'}
+            }
+        header_keys=
+            ['TIMESTAMP', 'TOPIC', '']
+
+    Will return the following as a formatted string:
+        TIMESTAMP	TOPIC
+        2023-09-21_23-24-59	telemetry/0000-00-00-efi-testing/log/zambezi-cam/cmnd	ॐ
+        2023-09-21_23-25-00	telemetry/0000-00-00-efi-testing/log/zambezi-cam/cmnd	ॐ
+    """
+    formatted_lines = '\t'.join(header_keys) + '\n'  # start with the first line (the header)
+    header_keys.remove('TIMESTAMP')
+    timestamps = sorted(log_entries.keys())
+    for timestamp in timestamps:
+        entry = log_entries[timestamp]
+        formatted_lines += '\t'.join([timestamp] + [str(entry.get(k, '')) for k in header_keys]) + '\n'
+    return formatted_lines, timestamps[0]
 
 
 def combine_logs(singletons: str, combined: str):
@@ -66,28 +82,41 @@ def combine_logs(singletons: str, combined: str):
       s3://braingeneers/logs/{uuid}/{start_time_stamp}.{combined}.csv
     Then the singletons will be deleted.
     """
-
-    # single-line log path format is: s3://braingeneers/logs/{uuid}/{current_time}.1.csv
-    for batch in batch_1000_logs(singletons):  # returns lists of 1000 logs, or an empty list
-        print(f'Combining 1000 logs...')
-        logs = defaultdict(list)
+    for log_uuid, batch in batch_100_logs(singletons):  # batch is a list of 100 logs, or empty list
+        print(f'Reading {len(batch)} {log_uuid} logs...')
+        logs = dict()
+        unique_keys = list()
         for log in batch:
-            log_uuid = log[len("s3://braingeneers/logs/"):].split("/")[0]
+            print(f'Reading log: {log}')
             with smart_open.open(log, 'r') as r:
-                logs[log_uuid].append(r.read())
+                for line in r:
+                    if line.startswith('TIMESTAMP'):  # header line
+                        for header_key in [j.strip() for j in line.split('\t')]:
+                            if header_key not in ['TIMESTAMP', 'TOPIC']:
+                                unique_keys.append(header_key)
+                        header_keys = ['TIMESTAMP', 'TOPIC'] + sorted(set(unique_keys))
+                    else:
+                        row = [j.strip() for j in line.split('\t')]
+                        assert len(header_keys) == len(row), f'File header conflicts with tab entries: {log}\n' \
+                                                             f'keys: {header_keys}\nrow: {row}\n'
+                        messages = dict()
+                        for i in range(1, len(row)):
+                            messages[header_keys[i]] = row[i]
+                        logs[row[0]] = messages
 
-        for log_uuid, log_entries in logs.items():
-            log_entries.sort()
-            start_time_stamp = log_entries[0].split(",")[0]
-            with smart_open.open(f's3://braingeneers/logs/{log_uuid}/{start_time_stamp}.{combined}.csv', 'w') as w:
-                w.write(''.join(log_entries))  # log entries are expected to all end in newlines
-
-            print(f'{combined}: {log_uuid} combined {len(log_entries)} files.')
+        log_entries, start_time = format_log_entries(logs, header_keys)
+        print(log_entries)
+        combined_file = f's3://braingeneers/logs/{log_uuid}/{start_time}.{combined}.tsv'
+        print(f'Writing {len(batch)} logs to: {combined_file}')
+        with smart_open.open(combined_file, 'w') as w:
+            w.write(log_entries)  # log entries are expected to all end in newlines
+        print(f'{combined}: {log_uuid} combined {len(batch)} files.')
 
         # assuming everything went alright, we can now clean up the old files
+        print(f'Deleting {len(batch)} files.')
         for uri in batch:
             delete_s3_object(uri)
-        print(f'1000 files deleted.  Example: {batch[0]}')
+        print(f'Successfully deleted {len(batch)} files.')
 
 
 def main():
@@ -95,14 +124,17 @@ def main():
     An infinite loop that combines the csv-formatted log files we generate in s3.
 
     Log files ending in ".1.csv" are expected to contain one csv-formatted line.
-
-    These are combined into a file ending in ".1k.csv" for every 1000 files.
+    These are combined into a file ending in ".10k.csv" for every 10,000 files.
     which are in turn combined into files ending in ".1m.csv" for every 1,000,000 files.
     """
     print('Now starting up the log aggregator...')
     while True:
-        combine_logs(singletons='1', combined='1k')
-        combine_logs(singletons='1k', combined='1m')
+        try:
+            combine_logs(singletons='1', combined='100')
+            combine_logs(singletons='100', combined='10k')
+            combine_logs(singletons='10k', combined='1m')
+        except Exception as e:  # this is a long-lived logging service; never say die
+            print(f'ERROR: {e}\n{traceback.format_exc()}', file=sys.stderr)
         time.sleep(120)  # check to combine every 2 minutes
 
 
