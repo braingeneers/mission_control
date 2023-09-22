@@ -65,37 +65,37 @@ def format_log_entries(log_entries: dict, header_keys: list):
         2023-09-21_23-24-59	telemetry/0000-00-00-efi-testing/log/zambezi-cam/cmnd	ॐ
         2023-09-21_23-25-00	telemetry/0000-00-00-efi-testing/log/zambezi-cam/cmnd	ॐ
     """
-    formatted_lines = '\t'.join(header_keys) + '\n'  # start with the first line (the header)
-    header_keys.remove('TIMESTAMP')
-    header_keys.remove('TOPIC')
+    header_keys = sorted(set(header_keys))
+    header_keys.remove('_LOGTIMESTAMP')
+    header_keys.remove('_LOGTOPIC')
+    formatted_lines = '\t'.join(['_LOGTIMESTAMP', '_LOGTOPIC'] + header_keys) + '\n'  # start with the first line (the header)
     timestamps = sorted(log_entries.keys())
     for timestamp in timestamps:
         entry = log_entries[timestamp]
-        formatted_lines += '\t'.join([timestamp] + [entry['TOPIC']] + [str(entry.get(k, '')) for k in header_keys]) + '\n'
+        formatted_lines += '\t'.join([timestamp] + [entry['_LOGTOPIC']] + [str(entry.get(k, '')) for k in header_keys]) + '\n'
     return formatted_lines, timestamps[0]
 
 
 def combine_logs(singletons: str, combined: str):
     """
     All files with the s3 path:
-      s3://braingeneers/logs/{uuid}/{time_stamp}.{singletons}.csv
+      s3://braingeneers/logs/{uuid}/{time_stamp}.{singletons}.tsv
     will be combined into one file:
-      s3://braingeneers/logs/{uuid}/{start_time_stamp}.{combined}.csv
+      s3://braingeneers/logs/{uuid}/{start_time_stamp}.{combined}.tsv
     Then the singletons will be deleted.
     """
     for log_uuid, batch in batch_100_logs(singletons):  # batch is a list of 100 logs, or empty list
         print(f'Reading {len(batch)} {log_uuid} logs...')
         logs = dict()
-        unique_keys = list()
+        all_header_keys = list()
+        header_keys = list()
         for log in batch:
             print(f'Reading log: {log}')
             with smart_open.open(log, 'r') as r:
                 for line in r:
-                    if line.startswith('TIMESTAMP'):  # header line
-                        for header_key in [j.strip() for j in line.split('\t')]:
-                            if header_key not in ['TIMESTAMP', 'TOPIC']:
-                                unique_keys.append(header_key)
-                        header_keys = ['TIMESTAMP', 'TOPIC'] + sorted(set(unique_keys))
+                    if line.startswith('_LOGTIMESTAMP'):  # header line
+                        header_keys = [j.strip() for j in line.split('\t')]
+                        all_header_keys += header_keys
                     else:
                         row = [j.strip() for j in line.split('\t')]
                         assert len(header_keys) == len(row), f'File header conflicts with tab entries: {log}\n' \
@@ -105,7 +105,7 @@ def combine_logs(singletons: str, combined: str):
                             messages[header_keys[i]] = row[i]
                         logs[row[0]] = messages
 
-        log_entries, start_time = format_log_entries(logs, header_keys)
+        log_entries, start_time = format_log_entries(logs, all_header_keys)
         print(log_entries)
         combined_file = f's3://braingeneers/logs/{log_uuid}/{start_time}.{combined}.tsv'
         print(f'Writing {len(batch)} logs to: {combined_file}')
@@ -122,11 +122,14 @@ def combine_logs(singletons: str, combined: str):
 
 def main():
     """
-    An infinite loop that combines the csv-formatted log files we generate in s3.
+    An infinite loop that combines the tsv-formatted log files we generate in s3.
 
-    Log files ending in ".1.csv" are expected to contain one csv-formatted line.
-    These are combined into a file ending in ".10k.csv" for every 10,000 files.
-    which are in turn combined into files ending in ".1m.csv" for every 1,000,000 files.
+    All log files have a tsv-formatted header line at the top of the file.
+
+    Log files ending in ".1.tsv" are expected to contain one tsv-formatted log line.
+    Log files ending in ".100.tsv" are expected to contain one hundred tsv-formatted log lines.
+    Log files ending in ".10k.tsv" are expected to contain ten thousand tsv-formatted log lines.
+    Log files ending in ".1m.tsv" are expected to contain one million tsv-formatted log lines.
     """
     print('Now starting up the log aggregator...')
     while True:
