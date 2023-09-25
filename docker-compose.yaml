@@ -321,7 +321,8 @@ services:
     networks:
       - braingeneers-net
     depends_on:
-      - secret-fetcher
+      secret-fetcher:
+        condition: service_healthy
 
   # Checks s3 for log files and combines them on a schedule; maintainer: lblauvel@ucsc.edu
   mqtt-logging-s3-aggregator:
@@ -331,23 +332,39 @@ services:
     networks:
       - braingeneers-net
     depends_on:
-      - secret-fetcher
+      secret-fetcher:
+        condition: service_healthy
 
   rustdesk-hbbs:
-    container_name: rustdesk-hbbs
+    container_name: hbbs
     ports:
       - 21115:21115
       - 21116:21116
       - 21116:21116/udp
       - 21118:21118
-    image: rustdesk/rustdesk-server:latest
-    command: hbbs -r rustdesk.example.com:21117
+    image: braingeneers/rustdesk-server:latest
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - '--copy'
+      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
+      - '--copy'
+      - '/secrets/rustdesk-credentials/.ssh/id_ed25519:/root/.ssh/id_ed25519'
+      - '--copy'
+      - '/secrets/rustdesk-credentials/.ssh/id_ed25519.pub:/root/.ssh/id_ed25519.pub'
+      - '/bin/bash'
+      - '-c'
+      - 'hbbs -r rustdesk.example.com:21117'
     volumes:
-      - ./data:/root
+      - rustdesk-data:/root/db_v2.sqlite3
+      - rustdesk-data:/root/db_v2.sqlite3-shm
+      - rustdesk-data:/root/db_v2.sqlite3-wal
     networks:
       - braingeneers-net
     depends_on:
-      - rustdesk-hbbr
+      rustdesk-hbbr:
+        condition: service_started
+      secret-fetcher:
+        condition: service_healthy
     restart: unless-stopped
 
   rustdesk-hbbr:
@@ -355,12 +372,27 @@ services:
     ports:
       - 21117:21117
       - 21119:21119
-    image: rustdesk/rustdesk-server:latest
-    command: hbbr
+    image: braingeneers/rustdesk-server:latest
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - '--copy'
+      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
+      - '--copy'
+      - '/secrets/rustdesk-credentials/.ssh/id_ed25519:/root/.ssh/id_ed25519'
+      - '--copy'
+      - '/secrets/rustdesk-credentials/.ssh/id_ed25519.pub:/root/.ssh/id_ed25519.pub'
+      - '/bin/bash'
+      - '-c'
+      - 'hbbr_entrypoint.sh'
     volumes:
-      - ./data:/root
+      - rustdesk-data:/root/db_v2.sqlite3
+      - rustdesk-data:/root/db_v2.sqlite3-shm
+      - rustdesk-data:/root/db_v2.sqlite3-wal
     networks:
       - braingeneers-net
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
     restart: unless-stopped
 
 # The braingeneers-net network is used to connect the containers together.
@@ -384,7 +416,9 @@ volumes:
   vol-certs:
   vol-vhost:
   vol-html:
-#  vol-acme.sh:
 
   # Volume for strapi shadows database
   vol-strapi-shadows-db:
+
+  # Volume for rustdesk
+  rustdesk-data:
