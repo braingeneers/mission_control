@@ -11,6 +11,7 @@ aws_s3_glacier:
 deletion:
   # Length of time (in days) before files are deleted by default
   expire_days: 365
+  # Amount of time prior to scheduled deletion to send notification
   notification_days: 90
 
 # Backup parameters
