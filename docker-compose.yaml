@@ -336,8 +336,6 @@ services:
     depends_on:
       secret-fetcher:
         condition: service_healthy
-<<<<<<< HEAD
-=======
 
   rustdesk-hbbs:
     container_name: hbbs
@@ -398,7 +396,6 @@ services:
       secret-fetcher:
         condition: service_healthy
     restart: unless-stopped
->>>>>>> fd0fe1dd98bb5fb9c6fa58603c967d8e202c7390
 
 # The braingeneers-net network is used to connect the containers together.
 networks:
