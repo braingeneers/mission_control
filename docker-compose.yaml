@@ -316,22 +316,26 @@ services:
   # Centralizes MQTT messages of the "telemetry" topic to s3; maintainer: lblauvel@ucsc.edu
   mqtt-logging-s3:
     image: quay.io/ucsc-cgl/mqtt-logging-s3:latest
+    restart: unless-stopped
     volumes:
-      - ~/.aws/credentials:/root/.aws/credentials:ro
+      - /secrets/prp-s3-credentials/credentials:/root/.aws/credentials:ro
     networks:
       - braingeneers-net
     depends_on:
-      - secret-fetcher
+      secret-fetcher:
+        condition: service_healthy
 
   # Checks s3 for log files and combines them on a schedule; maintainer: lblauvel@ucsc.edu
   mqtt-logging-s3-aggregator:
     image: quay.io/ucsc-cgl/mqtt-logging-s3-aggregator:latest
+    restart: unless-stopped
     volumes:
-      - ~/.aws/credentials:/root/.aws/credentials:ro
+      - /secrets/prp-s3-credentials/credentials:/root/.aws/credentials:ro
     networks:
       - braingeneers-net
     depends_on:
-      - secret-fetcher
+      secret-fetcher:
+        condition: service_healthy
 
 # The braingeneers-net network is used to connect the containers together.
 networks:
