@@ -3,8 +3,10 @@
 A service that looks at individual logs of MQTT messages written to 
 an s3 bucket and concatenates all of those log files together periodically.
 """
+import os.path
 import time
 import traceback
+import shutil
 import sys
 
 from tenacity import retry, wait_exponential, stop_after_attempt
@@ -131,6 +133,15 @@ def main():
     Log files ending in ".10k.tsv" are expected to contain ten thousand tsv-formatted log lines.
     Log files ending in ".1m.tsv" are expected to contain one million tsv-formatted log lines.
     """
+    print('Checking and moving credentials files...')
+    src = '/secrets/prp-s3-credentials/credentials'
+    dst = os.path.expanduser('~/.aws/credentials')
+    if not os.path.exists(dst):
+        if not os.path.exists(src):
+            raise RuntimeError(f'{src} does not exist!  Are your secrets mounted?')
+        os.makedirs(os.path.expanduser('~/.aws'), exist_ok=True)
+        shutil.copyfile(src, dst)
+
     print('Now starting up the log aggregator...')
     while True:
         try:

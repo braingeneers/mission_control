@@ -9,6 +9,8 @@ import pytz
 import sys
 import time
 import traceback
+import os
+import shutil
 
 from uuid import uuid4
 from datetime import datetime
@@ -32,6 +34,15 @@ def main():
     Note: A MQTT device is recommended to produce a `<device-name>_<uuid>.log` of all jobs executed during
     the experiment with specific timestamps and any error messages it encounters.
     """
+    print('Checking and moving credentials files...')
+    src = '/secrets/prp-s3-credentials/credentials'
+    dst = os.path.expanduser('~/.aws/credentials')
+    if not os.path.exists(dst):
+        if not os.path.exists(src):
+            raise RuntimeError(f'{src} does not exist!  Are your secrets mounted?')
+        os.makedirs(os.path.expanduser('~/.aws'), exist_ok=True)
+        shutil.copyfile(src, dst)
+
     print('Starting the logging service...')
     mb = messaging.MessageBroker("mqtt-log-" + str(uuid4()))
     queue = mb.subscribe_message(topic="telemetry/#", callback=messaging.CallableQueue())
