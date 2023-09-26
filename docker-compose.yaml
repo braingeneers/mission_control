@@ -318,7 +318,7 @@ services:
     image: quay.io/ucsc_cgl/mqtt-logging-s3:latest
     restart: unless-stopped
     volumes:
-      - /secrets/prp-s3-credentials/credentials:/root/.aws/credentials:ro
+      - /secrets/prp-s3-credentials:/root/.aws:ro
     networks:
       - braingeneers-net
     depends_on:
@@ -330,7 +330,7 @@ services:
     image: quay.io/ucsc_cgl/mqtt-logging-s3-aggregator:latest
     restart: unless-stopped
     volumes:
-      - /secrets/prp-s3-credentials/credentials:/root/.aws/credentials:ro
+      - /secrets/prp-s3-credentials:/root/.aws:ro
     networks:
       - braingeneers-net
     depends_on:
