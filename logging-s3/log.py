@@ -36,12 +36,13 @@ def main():
     """
     print('Checking and moving credentials files...')
     src = '/secrets/prp-s3-credentials/credentials'
-    dst = os.path.expanduser('~/.aws/credentials')
-    if not os.path.exists(dst):
-        if not os.path.exists(src):
-            raise RuntimeError(f'{src} does not exist!  Are your secrets mounted?')
-        os.makedirs(os.path.expanduser('~/.aws'), exist_ok=True)
-        shutil.copyfile(src, dst)
+    dsts = ['/root/.aws/credentials', os.path.expanduser('~/.aws/credentials')]
+    for dst in dsts:
+        if not os.path.exists(dst):
+            if not os.path.exists(src):
+                raise RuntimeError(f'{src} does not exist!  Are your secrets mounted?')
+            os.makedirs(dst[:-len('/credentials')], exist_ok=True)
+            shutil.copyfile(src, dst)
 
     print('Starting the logging service...')
     mb = messaging.MessageBroker("mqtt-log-" + str(uuid4()))
