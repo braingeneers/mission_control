@@ -26,18 +26,16 @@ process helloWorld1 {
     output:
     file 'output.txt'
 
-//     pod:
-//     '''
-//     apiVersion: v1
-//     kind: Pod
-//     spec:
-//       containers:
-//       - name: main
-//         securityContext:
-//           runAsUser: 0
-//           privileged: false
-//     '''
-
+    pod: '''
+    apiVersion: v1
+    kind: Pod
+    spec:
+      containers:
+      - name: main
+        securityContext:
+          runAsUser: 0
+          privileged: false
+    '''
 
 //     pod = '''
 //     apiVersion: v1
