@@ -315,7 +315,7 @@ services:
 
   # Centralizes MQTT messages of the "telemetry" topic to s3; maintainer: lblauvel@ucsc.edu
   mqtt-logging-s3:
-    image: quay.io/ucsc-cgl/mqtt-logging-s3:latest
+    image: quay.io/ucsc_cgl/mqtt-logging-s3:latest
     restart: unless-stopped
     volumes:
       - /secrets/prp-s3-credentials/credentials:/root/.aws/credentials:ro
@@ -327,7 +327,7 @@ services:
 
   # Checks s3 for log files and combines them on a schedule; maintainer: lblauvel@ucsc.edu
   mqtt-logging-s3-aggregator:
-    image: quay.io/ucsc-cgl/mqtt-logging-s3-aggregator:latest
+    image: quay.io/ucsc_cgl/mqtt-logging-s3-aggregator:latest
     restart: unless-stopped
     volumes:
       - /secrets/prp-s3-credentials/credentials:/root/.aws/credentials:ro
