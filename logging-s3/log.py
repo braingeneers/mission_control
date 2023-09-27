@@ -51,12 +51,13 @@ def main():
         try:
             topic, message = queue.get()
             if '/log/' in topic:  # TODO: filter for this in subscribe_message()?
-                uuid = topic.split('/log/')[0].split('/')[-1]  # cut out the uuid preceding "/log/"
+                log_name = topic[len('telemetry/'):].split('/log/')[0]  # cut out everything between "telemetry/" and "/log/"
+
                 current_time = datetime.now(tz=pytz.timezone('UTC')).strftime('%Y-%m-%d_%H-%M-%S')
 
                 # "1" signifies one message in the tsv
                 # concatenated files will have other markers (100, 10000, etc.)
-                with smart_open.open(f's3://braingeneers/logs/{uuid}/{current_time}.1.tsv', 'w') as w:
+                with smart_open.open(f's3://braingeneers/logs/{log_name}/{current_time}.1.tsv', 'w') as w:
                     if isinstance(message, str):
                         message = {'': message}  # gotta have a key
                     unique_keys = sorted(set([k for k in message.keys()]))

@@ -40,11 +40,11 @@ def batch_100_logs(singletons: str):
     """
     logs = defaultdict(list)
     for log in s3wrangler.list_objects(path='s3://braingeneers/logs/', suffix=[f'.{singletons}.tsv']):
-        log_uuid = log[len("s3://braingeneers/logs/"):].split("/")[0]
-        logs[log_uuid].append(log)
-        if len(logs[log_uuid]) % 100 == 0:
-            yield log_uuid, logs[log_uuid]  # return next batch of 100
-            logs[log_uuid] = []  # reset
+        log_name = log[len("s3://braingeneers/logs/"):].rsplit("/", 1)[0]
+        logs[log_name].append(log)
+        if len(logs[log_name]) % 100 == 0:
+            yield log_name, logs[log_name]  # return next batch of 100
+            logs[log_name] = []  # reset
     return '', []  # we're out of logs to return
 
 
