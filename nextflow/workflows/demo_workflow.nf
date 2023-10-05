@@ -26,15 +26,17 @@ process helloWorld1 {
     output:
     file 'output.txt'
 
-    pod: '''
-    apiVersion: v1
-    kind: Pod
-    spec:
-      containers:
-      - name: main
-        securityContext:
-          runAsUser: 0
-          privileged: false
+//     pod.privileged = false
+
+//     pod: '''
+//     apiVersion: v1
+//     kind: Pod
+//     spec:
+//       containers:
+//       - name: main
+//         securityContext:
+//           runAsUser: 0
+//           privileged: false
     '''
 
 //     pod = '''
@@ -48,18 +50,18 @@ process helloWorld1 {
 //           privileged: false
 //     '''
 
-    pod = [
-        """
-        apiVersion: v1
-        kind: Pod
-        spec:
-          containers:
-          - name: main
-            securityContext:
-              runAsUser: 1000
-              privileged: false
-        """
-    ]
+//     pod = [
+//         """
+//         apiVersion: v1
+//         kind: Pod
+//         spec:
+//           containers:
+//           - name: main
+//             securityContext:
+//               runAsUser: 1000
+//               privileged: false
+//         """
+//     ]
 
 //     pod = [
 //         'spec': [
