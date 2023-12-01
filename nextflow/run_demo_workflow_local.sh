@@ -14,6 +14,5 @@ docker run --rm -t \
   --volume ~/.kube/:/root/.kube/ \
   --volume ~/.local/bin/:/usr/local/sbin/ \
   nextflow/nextflow:latest \
-  curl -fsSL https://get.nextflow.io | bash && \
   nextflow run /workflows/${WORKFLOW_NAME} \
   --xyz 1970-01-01-e-demo
