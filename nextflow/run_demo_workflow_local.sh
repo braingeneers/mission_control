@@ -9,7 +9,6 @@
 WORKFLOW_NAME=${1:-demo/main.nf}
 
 docker run --rm -t \
-  --volume $(pwd)/workflows/:/workflows/ \
   --volume ~/.aws/:/root/.aws/ \
   --volume ~/.kube/:/root/.kube/ \
   --volume ~/.local/bin/:/usr/local/sbin/ \
