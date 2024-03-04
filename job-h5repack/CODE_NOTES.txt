@@ -125,3 +125,8 @@ export UUID=2022-04-27-e- ; export UNIQUEID=0 ; python init.py --uuid ${UUID} ; 
           "path": "original/data/Trace_20230106_13_36_30_chip17816_rightside_only.raw.h5"
           "path": "original/data/Trace_20230109_11_52_10_chip17816.raw.h5"
 
+#
+# Find all the original results files and concatenate them into a single file
+#
+{ find . -name "*Original_results.csv" -print0 | xargs -0 awk 'FNR==1 && NR!=1{next;}{print}'; } | sort -V
+{ find . -name "*Original_results.csv" -print0 | xargs -0 awk 'FNR==1 && NR!=1{next;}{print}'; } > lr_results.csv

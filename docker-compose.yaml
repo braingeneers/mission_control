@@ -141,7 +141,7 @@ services:
       NGINX_PROXY_CONTAINER: "nginx-proxy"
       LETSENCRYPT_TEST: "false"   # true | false for debugging | production (remember to set corresponding value in NGINX)
       DEBUG: "0"   # 1 | 0 for debugging | production (remember to set corresponding value in nginx-proxy)
-      # ACME_CA_URI: "https://acme-staging-v02.api.letsencrypt.org/directory"  # comment out for production use
+      # ACME_CA_URI: "https://acme-staging-v02.api.letsencrypt.org/directory"    # comment out for production use
     restart: always
     volumes:
       - vol-certs:/etc/nginx/certs:rw  # Shared with nginx-proxy

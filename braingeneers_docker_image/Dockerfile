@@ -21,7 +21,13 @@ RUN python -m pip install --no-cache-dir \
 # The ADD command below downloads the latest commit information. If it has changed since the last build
 # the following layers will not be cached, if it hasn't changed the following layers will rebuild.
 ADD "https://api.github.com/repos/braingeneers/braingeneerspy/commits?per_page=1" /tmp/latest_braingeneers_commit
-RUN python -m pip install --force-reinstall --no-cache-dir git+https://github.com/braingeneers/braingeneerspy.git#egg=braingeneerspy[all]
+
+# This installation method is necessary until the branch remove_hengenlab_dependency is merged into master
+# That branch removes a dependency on hengenlab's neuraltoolkit which was causing a bug.
+RUN python -m pip install --force-reinstall --no-cache-dir git+https://github.com/braingeneers/braingeneerspy.git@remove_hengenlab_dependency
+
+# This is the correct way to do the install
+# RUN python -m pip install --no-cache-dir braingeneers[all]
 
 ENV ENDPOINT=https://s3-west.nrp-nautilus.io
 ENTRYPOINT []
