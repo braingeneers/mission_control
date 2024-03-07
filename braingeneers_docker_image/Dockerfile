@@ -24,7 +24,7 @@ ADD "https://api.github.com/repos/braingeneers/braingeneerspy/commits?per_page=1
 
 # This installation method is necessary until the branch remove_hengenlab_dependency is merged into master
 # That branch removes a dependency on hengenlab's neuraltoolkit which was causing a bug.
-RUN python -m pip install --force-reinstall --no-cache-dir git+https://github.com/braingeneers/braingeneerspy.git@remove_hengenlab_dependency
+RUN python -m pip install --force-reinstall --no-cache-dir git+https://github.com/braingeneers/braingeneerspy.git@cached_load_data
 
 # This is the correct way to do the install
 # RUN python -m pip install --no-cache-dir braingeneers[all]
