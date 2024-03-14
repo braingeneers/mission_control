@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nextflow-sa-long-life
+  annotations:
+    kubernetes.io/service-account.name: nextflow-sa
+type: kubernetes.io/service-account-token
