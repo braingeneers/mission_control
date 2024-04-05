@@ -89,7 +89,7 @@ services:
 
   # Ella's website (maxwell related)
   mxvisuals:
-    image: mirellameelo/visualsmaxwell-frontend:v0.3
+    image: mirellameelo/visualsmaxwell-frontend:v1.0
     expose:
       - "3000"
     restart: always
@@ -103,7 +103,7 @@ services:
 
   # Ella's website (maxwell related)
   mxvisuals-backend:
-    image: mirellameelo/visualsmaxwell-backend:v0.3
+    image: mirellameelo/visualsmaxwell-backend:v0.9
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     restart: always
     command:
@@ -111,7 +111,7 @@ services:
       - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
       - "python3"
       - "-u"
-      - "main.py"
+      - "app.py"
     expose:
       - "5000"
     environment:
