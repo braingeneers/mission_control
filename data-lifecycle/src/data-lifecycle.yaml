@@ -20,6 +20,7 @@ backup:
   include_paths:
     - 's3://braingeneers/'
     - 's3://streamscope/'
+    - 's3://braingeneersdev/asrobbin/'
 
   # Directories with files that should be added or deleted at the same time
   # the latest modification time of all files under the directory is used
@@ -27,3 +28,4 @@ backup:
     - 's3://braingeneers/ephys/*'
     - 's3://braingeneers/imaging/*'
     - 's3://streamscope/experiments/*'
+    - 's3://braingneeersdev/asrobbin/cartpole/*'

@@ -16,7 +16,8 @@ RUN sudo apt-get update && sudo apt-get install -y \
 
 # Additional (optional) python packages
 RUN python -m pip install --no-cache-dir \
-    pyyaml
+    pyyaml \
+    plotly
 
 # The ADD command below downloads the latest commit information. If it has changed since the last build
 # the following layers will not be cached, if it hasn't changed the following layers will rebuild.
@@ -24,10 +25,10 @@ ADD "https://api.github.com/repos/braingeneers/braingeneerspy/commits?per_page=1
 
 # This installation method is necessary until the branch remove_hengenlab_dependency is merged into master
 # That branch removes a dependency on hengenlab's neuraltoolkit which was causing a bug.
-RUN python -m pip install --force-reinstall --no-cache-dir git+https://github.com/braingeneers/braingeneerspy.git@cached_load_data
+RUN python -m pip install --force-reinstall --no-cache-dir git+https://github.com/braingeneers/braingeneerspy.git@docker-image-latest
 
-# This is the correct way to do the install
+# This is the correct way to do the install - this is only commented so that a specific commit can be installed
 # RUN python -m pip install --no-cache-dir braingeneers[all]
 
-ENV ENDPOINT=https://s3-west.nrp-nautilus.io
+ENV ENDPOINT=https://s3.braingeneers.gi.ucsc.edu
 ENTRYPOINT []
