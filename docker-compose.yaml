@@ -369,6 +369,7 @@ services:
       - rustdesk-data:/root/db_v2.sqlite3
       - rustdesk-data:/root/db_v2.sqlite3-shm
       - rustdesk-data:/root/db_v2.sqlite3-wal
+      - secrets:/secrets
     networks:
       - braingeneers-net
     depends_on:
@@ -399,6 +400,7 @@ services:
       - rustdesk-data:/root/db_v2.sqlite3
       - rustdesk-data:/root/db_v2.sqlite3-shm
       - rustdesk-data:/root/db_v2.sqlite3-wal
+      - secrets:/secrets
     networks:
       - braingeneers-net
     depends_on:
