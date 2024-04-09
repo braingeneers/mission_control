@@ -15,7 +15,7 @@ services:
   # file would be found at `/secrets/prp-s3-credentials/credentials`.
   # The secret-fetcher container is typically a dependency of other containers that need access to the secrets.
   secret-fetcher:
-    image: braingeneers/secret-fetcher:v1.1
+    image: braingeneers/secret-fetcher:v1.2
     container_name: secret-fetcher
     user: root
     restart: always
