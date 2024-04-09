@@ -362,7 +362,7 @@ services:
       - '/secrets/rustdesk-credentials/id_ed25519:/root/.ssh/id_ed25519'
       - '--copy'
       - '/secrets/rustdesk-credentials/id_ed25519.pub:/root/.ssh/id_ed25519.pub'
-      - '/bin/bash'
+      - '/usr/bin/bash'
       - '-c'
       - 'hbbs -r rustdesk.example.com:21117'
     volumes:
@@ -393,7 +393,7 @@ services:
       - '/secrets/rustdesk-credentials/id_ed25519:/root/.ssh/id_ed25519'
       - '--copy'
       - '/secrets/rustdesk-credentials/id_ed25519.pub:/root/.ssh/id_ed25519.pub'
-      - '/bin/bash'
+      - '/usr/bin/bash'
       - '-c'
       - 'hbbr_entrypoint.sh'
     volumes:
