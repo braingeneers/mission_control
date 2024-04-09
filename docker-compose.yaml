@@ -395,7 +395,7 @@ services:
       - '/secrets/rustdesk-credentials/id_ed25519.pub:/root/.ssh/id_ed25519.pub'
       - '/usr/bin/bash'
       - '-c'
-      - 'hbbr_entrypoint.sh'
+      - './hbbr_entrypoint.sh'
     volumes:
       - rustdesk-data:/root/db_v2.sqlite3
       - rustdesk-data:/root/db_v2.sqlite3-shm
