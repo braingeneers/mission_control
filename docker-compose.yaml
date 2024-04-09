@@ -346,6 +346,24 @@ services:
       secret-fetcher:
         condition: service_healthy
 
+  # Listens to MQTT and launches workflows on the "start/workflow" topic; maintainer: lblauvel@ucsc.edu
+  nextflow-launcher:
+    image: quay.io/ucsc_cgl/nextflow-launcher:latest
+    container_name: nextflow-launcher
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - 'python3.11'
+      - '/usr/local/bin/run.py'
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+    volumes:
+      - secrets:/secrets
+      - /workflows:/workflows
+    networks:
+      - braingeneers-net
+    restart: always
+
   rustdesk-hbbs:
     container_name: hbbs
     ports:
