@@ -24,9 +24,6 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# todo remove debug line
-echo "DEBUG> APP_KEYS: $APP_KEYS"
-
 # Execute the remaining arguments as the command, with environment variables
 echo "Executing command: $@"
 exec env $ENV_VARS "$@"
