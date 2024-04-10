@@ -446,6 +446,7 @@ services:
       - secrets:/secrets
     restart: unless-stopped
 
+  # Job scanner service managed by Sury
   job-scanner:
     image: surygeng/job_scanner:v0.1
     container_name: job-scanner
@@ -465,6 +466,26 @@ services:
     volumes:
       - secrets:/secrets
     restart: unless-stopped
+
+  # Auto help desk service
+  auto-helpdesk:
+    image: sakachan/mqttconnection:latest
+    container_name: mqttconnection
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    restart: always
+    networks:
+      - braingeneers-net
+    command:
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
+      - "python"
+      - "-u"
+      - "mqttGeminiConnection.py"
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
 
 # The braingeneers-net network is used to connect the containers together.
 networks:
