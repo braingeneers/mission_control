@@ -123,6 +123,7 @@ def main():
                             'input_file': s3_input_file,
                             'output_dir': f"{params['bucket_slash_uuid']}/shared/"
                         })
+                        time.sleep(1)
                 else:
                     launch_nextflow_workflow(params)
         except Exception as e:  # this is a long-lived service; never say die
