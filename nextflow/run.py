@@ -13,11 +13,35 @@ import os
 import shutil
 import subprocess
 import pytz
+import boto3
 
 from uuid import uuid4
+from functools import lru_cache
 from datetime import datetime
 from braingeneers.iot import messaging
 from typing import Dict, List
+
+
+@lru_cache()
+def get_s3_client():
+    return boto3.client('s3')
+
+
+def list_uuid_original_data(bucket_slash_uuid: str) -> List[str]:
+    """
+    Lists all objects contained in s3://{bucket}/{uuid}/original/data/ .
+
+    Note: bucket_slash_uuid == {bucket}/{uuid}
+    """
+    s3 = get_s3_client()
+    assert '/' in bucket_slash_uuid, f'{bucket_slash_uuid} must be a string representing "bucket/uuid" .'
+    bucket, uuid = bucket_slash_uuid.split('/')
+    paginator = s3.get_paginator('list_objects_v2')
+    for page in paginator.paginate(Bucket=bucket, Prefix=f'{uuid}/original/data/'):
+        for obj in page.get('Contents', []):
+            obj_name = obj.get('Key', '/')
+            if not obj_name.endswith('/'):
+                yield f's3://{bucket}/{obj_name}'
 
 
 def get_current_commit_hash(url: str = '') -> str:
@@ -47,9 +71,8 @@ def launch_nextflow_workflow(params: Dict[str, str]) -> None:
     print(f'Now running: {nextflow_cmd}')
     current_time = datetime.now(tz=pytz.timezone('UTC')).strftime('%Y-%m-%d_%H-%M-%S')
     github_url_name = github_url.split('/')[-1][:-len('.git')] if github_url.endswith('.git') else github_url.split('/')[-1]
-    stdout_log = open(f'/workflows/{github_url_name}.{current_time}.stdout', 'w')
-    stderr_log = open(f'/workflows/{github_url_name}.{current_time}.stderr', 'w')
-    p = subprocess.Popen(' '.join(nextflow_cmd), stdout=stdout_log, stderr=stderr_log, shell=True, start_new_session=True)
+    log_file = open(f'/workflows/{github_url_name}.{current_time}.log', 'w')
+    p = subprocess.Popen(' '.join(nextflow_cmd), stdout=log_file, stderr=log_file, shell=True, start_new_session=True)
     print(f'Workflow has begun: {p}')
     print('Check workflow logs at: /workflows/')
 
@@ -60,7 +83,7 @@ def check_and_move_secrets(src: str, dsts: List[str]):
         if not os.path.exists(dst):
             if not os.path.exists(src):
                 raise RuntimeError(f'{src} does not exist!  Are your secrets mounted?')
-            os.makedirs(dst[:-len('/credentials')], exist_ok=True)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copyfile(src, dst)
 
 
@@ -91,7 +114,17 @@ def main():
             topic, params = queue.get()
             print(f'{topic}: {params}')
             if isinstance(params, dict):
-                launch_nextflow_workflow(params)
+                if params['url'] == 'https://github.com/DailyDreaming/convert_to_nwb':
+                    # a full s3 "path" must be specified at runtime in nextflow in order for the worker to import it
+                    # for this workflow specifically, we convert an input UUID into those paths path prior to running
+                    for s3_input_file in list_uuid_original_data(params['bucket_slash_uuid']):
+                        launch_nextflow_workflow(params={
+                            'url': params['url'],
+                            'input_file': s3_input_file,
+                            'output_dir': f"{params['bucket_slash_uuid']}/shared/"
+                        })
+                else:
+                    launch_nextflow_workflow(params)
         except Exception as e:  # this is a long-lived service; never say die
             print(f'ERROR: {e}\n{traceback.format_exc()}', file=sys.stderr)
         time.sleep(1)
