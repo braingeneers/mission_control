@@ -18,13 +18,14 @@ import boto3
 from uuid import uuid4
 from functools import lru_cache
 from datetime import datetime
+from braingeneers import get_default_endpoint
 from braingeneers.iot import messaging
 from typing import Dict, List
 
 
 @lru_cache()
 def get_s3_client():
-    return boto3.client('s3')
+    return boto3.client('s3', endpoint_url=get_default_endpoint())
 
 
 def list_uuid_original_data(bucket_slash_uuid: str) -> List[str]:
@@ -115,8 +116,8 @@ def main():
             print(f'{topic}: {params}')
             if isinstance(params, dict):
                 if params['url'] == 'https://github.com/DailyDreaming/convert_to_nwb':
+                    # for this workflow specifically, we convert an input UUID into full s3 "path"s prior to running
                     # a full s3 "path" must be specified at runtime in nextflow in order for the worker to import it
-                    # for this workflow specifically, we convert an input UUID into those paths path prior to running
                     for s3_input_file in list_uuid_original_data(params['bucket_slash_uuid']):
                         launch_nextflow_workflow(params={
                             'url': params['url'],

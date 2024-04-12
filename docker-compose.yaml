@@ -352,6 +352,10 @@ services:
     container_name: nextflow-launcher
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
+      - '--copy'
+      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
+      - '--copy'
+      - '/secrets/nextflow-service-account/kube-config:/root/.kube/config'
       - 'python3.11'
       - '/usr/local/bin/run.py'
     depends_on:
