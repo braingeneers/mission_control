@@ -388,9 +388,10 @@ services:
       - '-c'
       - 'hbbs -r rustdesk.example.com:21117'
     volumes:
-      - rustdesk-data:/root/db_v2.sqlite3
-      - rustdesk-data:/root/db_v2.sqlite3-shm
-      - rustdesk-data:/root/db_v2.sqlite3-wal
+#      - rustdesk-data:/root/db_v2.sqlite3
+#      - rustdesk-data:/root/db_v2.sqlite3-shm
+#      - rustdesk-data:/root/db_v2.sqlite3-wal
+      - rustdesk-data:/root/rustdesk-data
       - secrets:/secrets
     networks:
       - braingeneers-net
@@ -419,9 +420,10 @@ services:
       - '-c'
       - './hbbr_entrypoint.sh'
     volumes:
-      - rustdesk-data:/root/db_v2.sqlite3
-      - rustdesk-data:/root/db_v2.sqlite3-shm
-      - rustdesk-data:/root/db_v2.sqlite3-wal
+#      - rustdesk-data:/root/db_v2.sqlite3
+#      - rustdesk-data:/root/db_v2.sqlite3-shm
+#      - rustdesk-data:/root/db_v2.sqlite3-wal
+      - rustdesk-data:/root/rustdesk-data
       - secrets:/secrets
     networks:
       - braingeneers-net
@@ -488,6 +490,8 @@ services:
     volumes:
       - secrets:/secrets
     depends_on:
+      slack-bridge:
+        condition: service_started
       secret-fetcher:
         condition: service_healthy
 
