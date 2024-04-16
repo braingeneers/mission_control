@@ -18,7 +18,7 @@ services:
     image: braingeneers/secret-fetcher:latest
     container_name: secret-fetcher
     user: root
-    restart: always
+    restart: unless-stopped
     volumes:
       - ~/.kube/config:/.kube/config
       - secrets:/secrets
@@ -34,7 +34,7 @@ services:
   mqtt:
     image: braingeneers/mqtt:latest   # derived from emqx/emqx:5.0.4
     container_name: mqtt
-    restart: always
+    restart: unless-stopped
     ports:
       - "1883:1883"
       - "8083:8083"
@@ -53,7 +53,7 @@ services:
   nginx-proxy:
     image: jwilder/nginx-proxy:latest  # braingeneers/nginx-proxy:latest  # derived from jwilder/nginx-proxy:latest
     container_name: nginx-proxy
-    restart: always
+    restart: unless-stopped
     volumes:
       - vol-certs:/etc/nginx/certs  # Cache SSL certificates on the host
       - vol-vhost:/etc/nginx/vhost.d
@@ -92,7 +92,7 @@ services:
     image: mirellameelo/visualsmaxwell-frontend:v1.0
     expose:
       - "3000"
-    restart: always
+    restart: unless-stopped
     environment:
       VIRTUAL_HOST: "mxvisuals.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "3000"
@@ -105,7 +105,7 @@ services:
   mxvisuals-backend:
     image: mirellameelo/visualsmaxwell-backend:v0.9
     entrypoint: /secrets/entrypoint-secrets-setup.sh
-    restart: always
+    restart: unless-stopped
     command:
       - "--copy"
       - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
@@ -142,7 +142,7 @@ services:
       LETSENCRYPT_TEST: "false"   # true | false for debugging | production (remember to set corresponding value in NGINX)
       DEBUG: "0"   # 1 | 0 for debugging | production (remember to set corresponding value in nginx-proxy)
       # ACME_CA_URI: "https://acme-staging-v02.api.letsencrypt.org/directory"    # comment out for production use
-    restart: always
+    restart: unless-stopped
     volumes:
       - vol-certs:/etc/nginx/certs:rw  # Shared with nginx-proxy
       - vol-vhost:/etc/nginx/vhost.d
@@ -159,7 +159,7 @@ services:
     container_name: oauth2-proxy
     command: /run.sh
     entrypoint: /bin/sh
-    restart: always
+    restart: unless-stopped
     volumes:
       - vol-certs:/etc/ssl/certs  # SSL certificates
       - secrets:/secrets
@@ -181,7 +181,7 @@ services:
     container_name: dashboard
     expose:
       - "8050"
-    restart: always
+    restart: unless-stopped
     environment:
       - VIRTUAL_HOST=dashboard.braingeneers.gi.ucsc.edu
       - VIRTUAL_PORT=8050
@@ -203,7 +203,7 @@ services:
       - "3000:3000"
     networks:
       - braingeneers-net
-    restart: always
+    restart: unless-stopped
     depends_on:
       secret-fetcher:
         condition: service_healthy
@@ -215,7 +215,7 @@ services:
     container_name: shadows_frontend
     build: shadows_vue/
     image: shadows_viewer:latest
-    restart: always
+    restart: unless-stopped
     networks:
       - braingeneers-net
 #    ports:
@@ -255,13 +255,13 @@ services:
     volumes:
       - ./plotly-dash-picroscope-control-console/.env:/console/.env
       - secrets:/secrets
-    restart: always
+    restart: unless-stopped
 
   shadows-db:
     container_name: strapi-shadows-db
     build: strapi-shadows-db/
     image: mystrapi:latest
-    restart: always
+    restart: unless-stopped
     networks:
      - braingeneers-net
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -298,7 +298,7 @@ services:
     container_name: job-launcher
     networks:
       - braingeneers-net
-    restart: always
+    restart: unless-stopped
     depends_on:
       secret-fetcher:
         condition: service_healthy
@@ -313,7 +313,7 @@ services:
       braingeneers-net:
         aliases:
           - redis.braingeneers.gi.ucsc.edu
-    restart: always
+    restart: unless-stopped
     volumes:
       - secrets:/secrets
     depends_on:
@@ -325,7 +325,7 @@ services:
   # Centralizes MQTT messages of the "telemetry" topic to s3; maintainer: lblauvel@ucsc.edu
   mqtt-logging-s3:
     image: quay.io/ucsc_cgl/mqtt-logging-s3:latest
-    restart: always
+    restart: unless-stopped
     volumes:
       - secrets:/secrets
     networks:
@@ -337,7 +337,7 @@ services:
   # Checks s3 for log files and combines them on a schedule; maintainer: lblauvel@ucsc.edu
   mqtt-logging-s3-aggregator:
     image: quay.io/ucsc_cgl/mqtt-logging-s3-aggregator:latest
-    restart: always
+    restart: unless-stopped
     volumes:
       - secrets:/secrets
     networks:
@@ -366,7 +366,7 @@ services:
       - /workflows:/workflows
     networks:
       - braingeneers-net
-    restart: always
+    restart: unless-stopped
 
   rustdesk-hbbs:
     container_name: hbbs
@@ -400,7 +400,7 @@ services:
         condition: service_started
       secret-fetcher:
         condition: service_healthy
-    restart: always
+    restart: unless-stopped
 
   rustdesk-hbbr:
     container_name: hbbr
@@ -430,7 +430,7 @@ services:
     depends_on:
       secret-fetcher:
         condition: service_healthy
-    restart: always
+    restart: unless-stopped
 
   mqtt-job-listener:
     image: surygeng/spike_sorting_listener:v0.1
@@ -478,7 +478,7 @@ services:
     image: sakachan/mqttconnection:latest
     container_name: mqttconnection
     entrypoint: /secrets/entrypoint-secrets-setup.sh
-    restart: always
+    restart: unless-stopped
     networks:
       - braingeneers-net
     command:
