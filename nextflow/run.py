@@ -72,6 +72,8 @@ def launch_nextflow_workflow(params: Dict[str, str]) -> None:
     print(f'Now running: {nextflow_cmd}')
     current_time = datetime.now(tz=pytz.timezone('UTC')).strftime('%Y-%m-%d_%H-%M-%S')
     github_url_name = github_url.split('/')[-1][:-len('.git')] if github_url.endswith('.git') else github_url.split('/')[-1]
+    with open(f'/workflows/{github_url_name}.{current_time}.cmd', 'w') as f:
+        f.write(nextflow_cmd)
     log_file = open(f'/workflows/{github_url_name}.{current_time}.log', 'w')
     p = subprocess.Popen(' '.join(nextflow_cmd), stdout=log_file, stderr=log_file, shell=True, start_new_session=True)
     print(f'Workflow has begun: {p}')
