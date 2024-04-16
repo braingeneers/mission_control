@@ -77,25 +77,6 @@ users:
 
 ### RUNNING A WORKFLOW
 
-1. If you don't have it installed already, download the latest nextflow binary and make it executable:
-
-```commandline
-wget https://github.com/nextflow-io/nextflow/releases/download/v23.10.1/nextflow
-sudo chmod 1777 nextflow
-```
-
-2. Copy this nextflow config to the current directory:
-
-```commandline
-wget https://raw.githubusercontent.com/DailyDreaming/k8-nextflow/master/nextflow.config
-```
-
-Then run the workflow with the following command:
-
-```commandline
-./nextflow kuberun https://github.com/DailyDreaming/k8-nextflow -v whimvol:/workspace -head-cpus 1 -head-memory 256Mi
-```
-
-NOTE: The toy workflow tests two processes sharing a file, which should test shared access to the same file space [this is the purpose of the [PersistentVolumeClaim (PVC)](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)].
+There is a test workflow here: https://github.com/DailyDreaming/k8-nextflow
 
 NOTE: [FUSE](https://github.com/s3fs-fuse/s3fs-fuse) requires a plug-in installed on each worker, and so does not seem to be currently feasible without security considerations and cluster-wide changes.
