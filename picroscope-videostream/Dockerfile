@@ -50,6 +50,5 @@ ENTRYPOINT ["/entrypoint.sh"]
 
 # These files were originally defined as volumes in the docker-compose.yml file
 # The credentials were removed and accessible via secret-fetcher service
-COPY picroscope-videostream/tinc/ /etc/tinc/
-RUN mkdir -p /etc/nginx/http.d
-COPY picroscope-videostream/nginx-stuff/default.conf /etc/nginx/http.d/default.conf
+COPY tinc/ /etc/tinc/
+COPY nginx-stuff/default.conf /etc/nginx/http.d/default.conf
