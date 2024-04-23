@@ -1,0 +1,27 @@
+services:
+  picroscope-videostream:
+  # image: vimagick/tinc
+  #  image: a21584136eb9
+    build: .
+    container_name: tinc-livestream
+    ports:
+      - "700:700/tcp"
+      - "700:700/udp"
+      #- "0.0.0.0:8888:8888"
+      - "127.0.0.1:8888:8888"
+    volumes:
+     # - ./tinc:/public/home/pvbaudin/tinc/tinc
+      - ./tinc:/etc/tinc
+      - ./nginx-stuff/default.conf:/etc/nginx/http.d/default.conf
+     # usernames and passwords
+      - ./nginx-stuff/.htpasswd:/etc/nginx/.htpasswd
+    environment:
+      - IP_ADDR=128.114.198.51
+      - ADDRESS=10.20.30.1
+      - NETMASK=255.255.255.0
+      - NETWORK=10.20.30.0/24
+      - RUNMODE=server
+    cap_add:
+      - NET_ADMIN
+    dns: 8.8.8.8
+    restart: always

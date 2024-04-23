@@ -495,6 +495,51 @@ services:
       secret-fetcher:
         condition: service_healthy
 
+  # Live Stream Server for Picroscope (maintainer: Max, Pierre)
+  picroscope-videostream:
+    build: picroscope-videostream/
+    container_name: tinc-livestream
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - "--copy"
+      - "/secrets/picroscope-videostream/picroscope-videostream-rsa_key.priv:/etc/tinc/netname/rsa_key.priv"
+      - "--copy"
+      - "/secrets/picroscope-videostream/picroscope-videostream-evee:/etc/tinc/netname/hosts/evee"
+      - "--copy"
+      - "/secrets/picroscope-videostream/picroscope-videostream-home:/etc/tinc/netname/hosts/home"
+      - "--copy"
+      - "/secrets/picroscope-videostream/picroscope-videostream-octofarm:/etc/tinc/netname/hosts/octofarm"
+      - "--copy"
+      - "/secrets/picroscope-videostream/picroscope-videostream-server:/etc/tinc/netname/hosts/server"
+      - "--copy"
+      - "/secrets/picroscope-videostream/picroscope-videostream-nginx-htpasswd:/etc/nginx/.htpasswd"
+      - "/entrypoint.sh"
+    ports:
+      - "700:700/tcp"
+      - "700:700/udp"
+      - "127.0.0.1:8888:8888"
+#    volumes:
+#      - ./tinc:/etc/tinc
+#      - ./nginx-stuff/default.conf:/etc/nginx/http.d/default.conf
+#      # usernames and passwords
+#      - ./nginx-stuff/.htpasswd:/etc/nginx/.htpasswd
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+    environment:
+      - IP_ADDR=128.114.198.51
+      - ADDRESS=10.20.30.1
+      - NETMASK=255.255.255.0
+      - NETWORK=10.20.30.0/24
+      - RUNMODE=server
+    cap_add:
+      - NET_ADMIN
+    dns: 8.8.8.8
+    restart: unless-stopped
+
+
 # The braingeneers-net network is used to connect the containers together.
 networks:
   braingeneers-net:
