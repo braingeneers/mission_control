@@ -518,11 +518,6 @@ services:
       - "700:700/tcp"
       - "700:700/udp"
       - "127.0.0.1:8888:8888"
-#    volumes:
-#      - ./tinc:/etc/tinc
-#      - ./nginx-stuff/default.conf:/etc/nginx/http.d/default.conf
-#      # usernames and passwords
-#      - ./nginx-stuff/.htpasswd:/etc/nginx/.htpasswd
     volumes:
       - secrets:/secrets
     depends_on:
