@@ -7,7 +7,7 @@ FROM alpine
 
 #FROM nginx
 
-RUN apk add --no-cache iptables tinc nginx
+RUN apk add --no-cache iptables tinc=1.0.25-r0 nginx
 
 
 RUN apk --update add --no-cache openssh bash \
