@@ -2,12 +2,12 @@
 # Dockerfile for tinc
 #
 
-FROM alpine
+FROM alpine:3.10
 #MAINTAINER kev <noreply@easypi.pro>
 
 #FROM nginx
 
-RUN apk add --no-cache iptables tinc=1.0.25-r0 nginx
+RUN apk add --no-cache iptables tinc=1.0.35-r1 nginx
 
 
 RUN apk --update add --no-cache openssh bash \
