@@ -529,6 +529,11 @@ services:
       - NETMASK=255.255.255.0
       - NETWORK=10.20.30.0/24
       - RUNMODE=server
+      - VIRTUAL_HOST="livestream.braingeneers.gi.ucsc.edu"
+      - VIRTUAL_PORT="80"
+      - LETSENCRYPT_HOST="livestream.braingeneers.gi.ucsc.edu"
+      - LETSENCRYPT_EMAIL="braingeneers-admins-group@ucsc.edu"
+
     cap_add:
       - NET_ADMIN
     dns: 8.8.8.8
