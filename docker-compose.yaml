@@ -530,7 +530,7 @@ services:
       - NETWORK=10.20.30.0/24
       - RUNMODE=server
       - VIRTUAL_HOST="livestream.braingeneers.gi.ucsc.edu"
-      - VIRTUAL_PORT="80"
+      - VIRTUAL_PORT="700"
       - LETSENCRYPT_HOST="livestream.braingeneers.gi.ucsc.edu"
       - LETSENCRYPT_EMAIL="braingeneers-admins-group@ucsc.edu"
 
