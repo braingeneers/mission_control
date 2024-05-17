@@ -513,27 +513,31 @@ services:
       - "/secrets/picroscope-videostream/picroscope-videostream-server:/etc/tinc/netname/hosts/server"
       - "--copy"
       - "/secrets/picroscope-videostream/picroscope-videostream-nginx-htpasswd:/etc/nginx/.htpasswd"
+      - "bash"
+      - "-c"
       - "/entrypoint.sh"
+    expose:
+      - "8888"
     ports:
       - "700:700/tcp"
       - "700:700/udp"
-      - "127.0.0.1:8888:8888"
     volumes:
       - secrets:/secrets
     depends_on:
       secret-fetcher:
         condition: service_healthy
     environment:
-      - IP_ADDR=128.114.198.51
-      - ADDRESS=10.20.30.1
-      - NETMASK=255.255.255.0
-      - NETWORK=10.20.30.0/24
-      - RUNMODE=server
-      - VIRTUAL_HOST="livestream.braingeneers.gi.ucsc.edu"
-      - VIRTUAL_PORT="700"
-      - LETSENCRYPT_HOST="livestream.braingeneers.gi.ucsc.edu"
-      - LETSENCRYPT_EMAIL="braingeneers-admins-group@ucsc.edu"
-
+        IP_ADDR: "128.114.198.51"
+        ADDRESS: "10.20.30.1"
+        NETMASK: "255.255.255.0"
+        NETWORK: "10.20.30.0/24"
+        RUNMODE: "server"
+        VIRTUAL_HOST: "livestream.braingeneers.gi.ucsc.edu"
+        VIRTUAL_PORT: "8888"
+        LETSENCRYPT_HOST: "livestream.braingeneers.gi.ucsc.edu"
+        LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+    networks:
+      - braingeneers-net
     cap_add:
       - NET_ADMIN
     dns: 8.8.8.8
