@@ -6,6 +6,19 @@ version: '3.8'
 #   This is obtained by logging into https://portal.nrp-nautlius.io and clicking "Get Config".
 #   You must have access to the braingeneers namespace. If you don't have access see the
 #   wiki Permissions page or Onboarding page for instructions.
+#
+# BUG WARNING:
+#   Define environment variables using dictionary form, don't use "=". Although it's
+#   legal yaml syntax the nginx-proxy service will not work correctly when it parses the services.secrets:
+#   follow the example in the whoami demo service.
+#
+#   Do this:
+#     environment:
+#       VIRTUAL_HOST: "whoami.braingeneers.gi.ucsc.edu"
+#
+#    Don't do this:
+#      environment:
+#        - VIRTUAL_HOST=whoami.braingeneers.gi.ucsc.edu
 # ===========================================================================================
 
 services:
