@@ -167,10 +167,10 @@ services:
       - braingeneers-net
     environment:
       # Settings to define a subdomain for this application
-      - VIRTUAL_HOST=auth.braingeneers.gi.ucsc.edu
-      - VIRTUAL_PORT=80
-      - LETSENCRYPT_HOST=auth.braingeneers.gi.ucsc.edu
-      - LETSENCRYPT_EMAIL=braingeners-admins-group@ucsc.edu
+      VIRTUAL_HOST: "auth.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "80"
+      LETSENCRYPT_HOST: "auth.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeners-admins-group@ucsc.edu"
     depends_on:
       secret-fetcher:
         condition: service_healthy
@@ -183,10 +183,10 @@ services:
       - "8050"
     restart: unless-stopped
     environment:
-      - VIRTUAL_HOST=dashboard.braingeneers.gi.ucsc.edu
-      - VIRTUAL_PORT=8050
-      - LETSENCRYPT_HOST=dashboard.braingeneers.gi.ucsc.edu
-      - LETSENCRYPT_EMAIL=braingeners-admins-group@ucsc.edu
+      VIRTUAL_HOST: "dashboard.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8050"
+      LETSENCRYPT_HOST: "dashboard.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeners-admins-group@ucsc.edu"
     volumes:
       - ~/.aws/credentials:/root/.aws/credentials:ro  # AWS credentials for your application
     networks:
@@ -218,21 +218,17 @@ services:
     restart: unless-stopped
     networks:
       - braingeneers-net
-#    ports:
-#      - "127.0.0.1:8057:80"
     environment:
-      - VIRTUAL_HOST=datahub.braingeneers.gi.ucsc.edu
-      - VIRTUAL_PORT=80
-      - LETSENCRYPT_HOST="datahub.braingeneers.gi.ucsc.edu"
-      - LETSENCRYPT_EMAIL="braingeneers-admins-group@ucsc.edu"
+      VIRTUAL_HOST: "datahub.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "80"
+      LETSENCRYPT_HOST: "datahub.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
 
   # picroscope experiment control console
   # plotly dash
   picroscope-console:
     build:  plotly-dash-picroscope-control-console/ 
     container_name: plotly-picroscope-console
-      # ports:
-      #      - "127.0.0.1:8051:8050"
     networks:
       - braingeneers-net
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -245,10 +241,10 @@ services:
       - '-c'
       - 'python app.py'
     environment:
-      - VIRTUAL_HOST=picroscope.braingeneers.gi.ucsc.edu
-      - VIRTUAL_PORT=8050
-      - LETSENCRYPT_HOST="picroscope.braingeneers.gi.ucsc.edu"
-      - LETSENCRYPT_EMAIL="braingeneers-admins-group@ucsc.edu"
+      VIRTUAL_HOST: "picroscope.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8050"
+      LETSENCRYPT_HOST: "picroscope.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     depends_on:
       secret-fetcher:
         condition: service_healthy
@@ -276,11 +272,10 @@ services:
       - '-c'
       - 'echo "app keys and salt: $$APP_KEYS $$API_TOKEN_SALT" && cron && npm run develop'
     environment:
-      - VIRTUAL_HOST=shadows-db.braingeneers.gi.ucsc.edu
-      - VIRTUAL_PORT=1337
-      - LETSENCRYPT_HOST="shadows-db.braingeneers.gi.ucsc.edu"
-      - LETSENCRYPT_EMAIL="braingeneers-admins-group@ucsc.edu"
-#    user: "0:989"
+      VIRTUAL_HOST: "shadows-db.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "1337"
+      LETSENCRYPT_HOST: "shadows-db.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     depends_on:
       secret-fetcher:
         condition: service_healthy
