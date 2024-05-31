@@ -481,6 +481,34 @@ services:
       - secrets:/secrets
     restart: unless-stopped
 
+  # maxwell recording dashboard managed by Sury
+  maxwell-dashboard:
+    image: surygeng/maxwell_dashboard:v0.1
+    container_name: maxwell-dashboard
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    expose: 
+      - "8050"
+    command:
+      - '--copy'
+      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
+      - '--copy'
+      - '/secrets/kube-config/config:/root/.kube/config'
+      - 'python'
+      - 'app.py'
+    environment:
+      VIRTUAL_HOST: "mxwdash.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8050"
+      LETSENCRYPT_HOST: "mxwdash.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+    networks:
+      - braingeneers-net
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+    volumes:
+      - secrets:/secrets
+    restart: unless-stopped
+
   # Auto help desk service
   auto-helpdesk:
     image: sakachan/mqttconnection:latest
