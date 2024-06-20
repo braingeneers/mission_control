@@ -62,6 +62,50 @@ services:
         aliases:
           - mqtt.braingeneers.gi.ucsc.edu
 
+
+  # The oauth2_proxy container is used to authenticate users to cilogon.org before they can access braingeneers services
+  # All traffic is routed through oauth2-proxy and, after authentication, it forwards to service-proxy.
+  oauth2-proxy:
+    image: braingeneers/oauth2-proxy:latest
+    container_name: oauth2-proxy
+    command: /run.sh
+    entrypoint: /bin/sh
+    restart: unless-stopped
+    volumes:
+      - vol-certs:/etc/ssl/certs  # SSL certificates
+      - secrets:/secrets
+    networks:
+      - braingeneers-net
+    ports:
+      - "8080:80"
+      - "8443:443"
+    environment:
+      LETSENCRYPT_HOST: "auth.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeners-admins-group@ucsc.edu"
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+
+  # The service-proxy container is used to route traffic to the appropriate service based on the domain name.
+  # Environment variables VIRTUAL_HOST and VIRTUAL_PORT are used to configure the routing.
+  # This second proxy is being configured for authentication with oauth2-proxy
+  service-proxy:
+    image: jwilder/nginx-proxy:latest  # braingeneers/nginx-proxy:latest  # derived from jwilder/nginx-proxy:latest
+    container_name: service-proxy
+    restart: unless-stopped
+    volumes:
+      - vol-certs:/etc/nginx/certs  # Cache SSL certificates on the host
+      - vol-vhost:/etc/nginx/vhost.d
+      - vol-html:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro  # Unix socket mount to access docker API read-only
+    networks:
+      - braingeneers-net
+#    environment:
+#        ENABLE_OAUTH2_PROXY: "true"
+#        OAUTH2_PROXY_HEADER_NAME: "X-Auth-Request-Email"
+#        OAUTH2_PROXY_PASS_URL: "http://oauth2-proxy"
+#        OAUTH2_PROXY_SKIP_DOMAINS: "auth.braingeneers.gi.ucsc.edu"
+
   # The nginx-proxy container is used to route traffic to the appropriate service based on the domain name.
   nginx-proxy:
     image: jwilder/nginx-proxy:latest  # braingeneers/nginx-proxy:latest  # derived from jwilder/nginx-proxy:latest
@@ -147,9 +191,9 @@ services:
     image: jrcs/letsencrypt-nginx-proxy-companion
     container_name: letsencrypt
     environment:
-      VIRTUAL_HOST: "auth.braingeneers.gi.ucsc.edu"
+      VIRTUAL_HOST: "ssl.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "80"
-      LETSENCRYPT_HOST: "auth.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_HOST: "ssl.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
       NGINX_PROXY_CONTAINER: "nginx-proxy"
       LETSENCRYPT_TEST: "false"   # true | false for debugging | production (remember to set corresponding value in NGINX)
@@ -166,27 +210,6 @@ services:
     networks:
       - braingeneers-net
 
-  # The oauth2_proxy container is used to authenticate users before they can access braingeneers services.
-  oauth2-proxy:
-    image: braingeneers/oauth2-proxy:latest
-    container_name: oauth2-proxy
-    command: /run.sh
-    entrypoint: /bin/sh
-    restart: unless-stopped
-    volumes:
-      - vol-certs:/etc/ssl/certs  # SSL certificates
-      - secrets:/secrets
-    networks:
-      - braingeneers-net
-    environment:
-      # Settings to define a subdomain for this application
-      VIRTUAL_HOST: "auth.braingeneers.gi.ucsc.edu"
-      VIRTUAL_PORT: "80"
-      LETSENCRYPT_HOST: "auth.braingeneers.gi.ucsc.edu"
-      LETSENCRYPT_EMAIL: "braingeners-admins-group@ucsc.edu"
-    depends_on:
-      secret-fetcher:
-        condition: service_healthy
 
   # The dashboard container is used to host the braingeneers dashboard.
   dashboard:

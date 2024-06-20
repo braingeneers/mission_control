@@ -1,0 +1,11 @@
+location / {
+    # Exclude the Let's Encrypt ACME Challenge files from authentication
+    location ^~ /.well-known/acme-challenge/ {
+        auth_basic off;
+        allow all;
+        root /usr/share/nginx/html;
+        try_files $uri =404;
+        break;
+    }
+
+}

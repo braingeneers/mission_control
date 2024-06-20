@@ -18,7 +18,6 @@ sleep 2  # allow time for nginx to load first in case the cert already existed (
 echo "Copying cilogon.org certificates to /etc/ssl/certs/"
 cp /tmp/cilogon-basic.pem /etc/ssl/certs/cilogon-basic.crt
 cp /tmp/cilogon-openid.pem /etc/ssl/certs/cilogon-openid.crt
-# cat /etc/ssl/certs/*.crt > /etc/ssl/certs/ca-certificates.crt
 update-ca-certificates
 
 export OAUTH2_PROXY_PROVIDER=oidc
@@ -34,11 +33,17 @@ export OAUTH2_PROXY_CLIENT_ID=$(cat $OAUTH2_PROXY_CLIENT_ID_FILE);
 export OAUTH2_PROXY_CLIENT_SECRET=$(cat $OAUTH2_PROXY_CLIENT_SECRET_FILE);
 export OAUTH2_PROXY_COOKIE_SECRET=$(head -c24 /dev/urandom | base64);
 
-echo oauth2 proxy file: "$OAUTH2_PROXY_CLIENT_ID_FILE"
-echo Email domain: "$OAUTH2_PROXY_EMAIL_DOMAINS"
-echo client-id: $(cat /secrets/ci-logon-auth/cilogon-client-id)
-
 echo "Starting oauth2-proxy"
-/bin/oauth2-proxy --http-address ":80"
+/bin/oauth2-proxy \
+  --http-address ":80" \
+  --https-address ":443" \
+  --upstream="http://service-proxy" \
+  --pass-host-header \
+  --set-authorization-header=true \
+  --scope="org.cilogon.userinfo email openid" \
+  --cookie-domain=".braingeneers.gi.ucsc.edu" \
+  --pass-access-token \
+  --whitelist-domain=".braingeneers.gi.ucsc.edu" \
+  --redirect-url="https://braingeneers.gi.ucsc.edu:8443/oauth2/callback"
 
-sleep 6000
+sleep 6000  # avoid fast crash loop
