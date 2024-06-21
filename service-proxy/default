@@ -1,7 +1,32 @@
 # Global auth settings
 set $auth_redirect 0;
 # set $original_url "https://$host$request_uri";
-set $original_url "https%3A%2F%2Fwhoami.braingeneers.gi.ucsc.edu%3A8443%2F";
+
+# Construct the original URL with the port 8443
+set $original_url "https://$host:8443$request_uri";
+
+# Map to URL encode certain characters
+map $original_url $encoded_url {
+    default $original_url;
+    "~" "%7E";
+    " " "%20";
+    "!" "%21";
+    "#" "%23";
+    "$" "%24";
+    "&" "%26";
+    "'" "%27";
+    "(" "%28";
+    ")" "%29";
+    "*" "%2A";
+    "+" "%2B";
+    "," "%2C";
+    "/" "%2F";
+    ":" "%3A";
+    ";" "%3B";
+    "=" "%3D";
+    "?" "%3F";
+    "@" "%40";
+}
 
 if ($host != auth.braingeneers.gi.ucsc.edu) {
     set $auth_redirect 1;
