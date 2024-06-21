@@ -105,13 +105,7 @@ services:
       - braingeneers-net
     environment:
       - DEFAULT_HOST=auth.braingeneers.gi.ucsc.edu
-    command: >
-      /bin/bash -c "
-      apt-get update && 
-      apt-get install -y lua5.1 liblua5.1-0-dev luarocks &&
-      luarocks install lua-resty-http &&
-      nginx -g 'daemon off;'
-      "
+
 
   # The nginx-proxy container is used to route traffic to the appropriate service based on the domain name.
   nginx-proxy:
