@@ -22,6 +22,5 @@ if ($cookie_oauth2_proxy = "") {
 }
 
 if ($auth_redirect = 1) {
-    # Include port 8443 explicitly in the state parameter
-    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=https://whoami.braingeneers.gi.ucsc.edu:8443$request_uri;
+    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$original_url;
 }
