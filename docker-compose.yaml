@@ -106,9 +106,10 @@ services:
     environment:
       - DEFAULT_HOST=auth.braingeneers.gi.ucsc.edu
     command: >
-      /bin/sh -c "
-      apk add --no-cache lua5.1 lua5.1-dev luarocks5.1 &&
-      luarocks-5.1 install lua-resty-http &&
+      /bin/bash -c "
+      apt-get update && 
+      apt-get install -y lua5.1 liblua5.1-0-dev luarocks &&
+      luarocks install lua-resty-http &&
       nginx -g 'daemon off;'
       "
 
