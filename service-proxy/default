@@ -1,6 +1,19 @@
 # Global auth settings
 set $auth_redirect 0;
-set $original_url "https://$host$request_uri";
+
+# This works with redirects:
+# https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=https://whoami.braingeneers.gi.ucsc.edu/
+# https://cilogon.org/authorize?approval_prompt=force&client_id=cilogon%3A%2Fclient_id%2Facda6e66644aeaf0a2dffb03488f972&code_challenge=Lr2ijn6gT7eFfGIMrDf_1NERVeAMcT1NoWg7Rie1T50&code_challenge_method=S256&redirect_uri=https%3A%2F%2Fauth.braingeneers.gi.ucsc.edu%3A8443%2Foauth2%2Fcallback&response_type=code&scope=org.cilogon.userinfo+email+openid&state=MhsGdHlnEhLgRahkhtLSVGlmZwmk8fMJCZo98K2zgUA%3Ahttps%3A%2F%2Fwhoami.braingeneers.gi.ucsc.edu%2F
+#set $original_url "https://$host$request_uri";
+
+# This doesn't work, state is lost with redirects:
+set $original_url "https://$host:8443$request_uri";
+# 
+#
+
+# This doesn't work, state is lost with redirects:
+#
+#
 #set $original_url "https%3A%2F%2Fwhoami.braingeneers.gi.ucsc.edu%3A8443%2F";
 
 if ($host != auth.braingeneers.gi.ucsc.edu) {
