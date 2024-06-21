@@ -78,4 +78,5 @@ echo "Starting oauth2-proxy"
   --proxy-prefix="/oauth2" \
   --upstream="http://service-proxy:80" \
   --redeem-url="https://cilogon.org/oauth2/token" \
-  --validate-url="https://cilogon.org/oauth2/userinfo"
+  --validate-url="https://cilogon.org/oauth2/userinfo" \
+  --encode-state=true
