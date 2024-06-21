@@ -18,6 +18,5 @@ if ($cookie_oauth2_proxy = "") {
 }
 
 if ($auth_redirect = 1) {
-    set_escape_uri $encoded_original_url $original_url;
-    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$encoded_original_url;
+    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=https%3A%2F%2Fwhoami.braingeneers.gi.ucsc.edu%3A8443%2F;
 }
