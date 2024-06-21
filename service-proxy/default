@@ -1,0 +1,14 @@
+# Global auth settings
+set $auth_redirect 0;
+
+if ($host != auth.braingeneers.gi.ucsc.edu) {
+    set $auth_redirect 1;
+}
+
+if ($cookie_oauth2_proxy = "") {
+    set $auth_redirect 1;
+}
+
+if ($auth_redirect = 1) {
+    return 302 $scheme://$host/oauth2/start?rd=$request_uri;
+}
