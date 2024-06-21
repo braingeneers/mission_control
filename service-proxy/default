@@ -1,0 +1,10 @@
+# Global auth settings
+set $auth_request_uri "";
+if ($http_x_auth_request) {
+    set $auth_request_uri $http_x_auth_request;
+}
+
+if ($auth_request_uri) {
+    auth_request $auth_request_uri;
+    error_page 401 = /oauth2/start;
+}
