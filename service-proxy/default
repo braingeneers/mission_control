@@ -1,6 +1,6 @@
 # Global auth settings
 set $auth_redirect 0;
-set $original_url "https://$host$request_uri";
+set $original_url "https://$host:8443$request_uri";
 
 if ($host != auth.braingeneers.gi.ucsc.edu) {
     set $auth_redirect 1;
