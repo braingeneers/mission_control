@@ -35,8 +35,7 @@ echo "Debug> OAUTH2_PROXY_COOKIE_SECRET=${OAUTH2_PROXY_COOKIE_SECRET}"
 echo "Encoded secret length: ${#OAUTH2_PROXY_COOKIE_SECRET}"
 echo "Decoded secret length: $(echo -n $OAUTH2_PROXY_COOKIE_SECRET | base64 -d | wc -c)"
 
-# Add this line to get the external port from an environment variable, defaulting to 8443
-EXTERNAL_PORT=${EXTERNAL_PORT:-8443}
+EXTERNAL_PORT=${EXTERNAL_PORT:-443}
 
 echo "Starting oauth2-proxy"
 /bin/oauth2-proxy \
@@ -70,6 +69,14 @@ echo "Starting oauth2-proxy"
   --pass-user-headers=true \
   --real-client-ip-header="X-Forwarded-For" \
   --code-challenge-method="S256" \
-  --set-xauthrequest=true
+  --skip-jwt-bearer-tokens=true \
+  --set-authorization-header=true \
+  --set-xauthrequest=true \
+  --whitelist-domain="*.braingeneers.gi.ucsc.edu" \
+  --cookie-domain=".braingeneers.gi.ucsc.edu" \
+  --proxy-prefix="/oauth2" \
+  --upstream="http://service-proxy:${EXTERNAL_PORT}" \
+  --redeem-url="https://cilogon.org/oauth2/token" \
+  --validate-url="https://cilogon.org/oauth2/userinfo"
 
 sleep 6000  # avoid fast crash loop and allow for debugging
