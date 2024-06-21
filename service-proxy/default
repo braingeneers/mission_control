@@ -5,13 +5,11 @@ set $original_port $server_port;
 # If using standard HTTPS port, don't include it in the redirect
 if ($server_port = 443) {
     set $original_port "";
+} else {
+    set $original_port ":$server_port";
 }
 
-set $original_url "https://$host";
-if ($original_port != "") {
-    set $original_url "$original_url:$original_port";
-}
-set $original_url "$original_url$request_uri";
+set $original_url "https://$host$original_port$request_uri";
 
 if ($host != auth.braingeneers.gi.ucsc.edu) {
     set $auth_redirect 1;
