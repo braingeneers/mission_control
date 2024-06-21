@@ -10,5 +10,5 @@ if ($cookie_oauth2_proxy = "") {
 }
 
 if ($auth_redirect = 1) {
-    return 302 $scheme://$host/oauth2/start?rd=$request_uri;
+    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$scheme://$host$request_uri;
 }
