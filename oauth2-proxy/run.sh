@@ -75,7 +75,7 @@ echo "Starting oauth2-proxy"
   --whitelist-domain="*.braingeneers.gi.ucsc.edu" \
   --cookie-domain=".braingeneers.gi.ucsc.edu" \
   --proxy-prefix="/oauth2" \
-  --upstream="http://service-proxy:${EXTERNAL_PORT}" \
+  --upstream="http://service-proxy:80" \
   --redeem-url="https://cilogon.org/oauth2/token" \
   --validate-url="https://cilogon.org/oauth2/userinfo"
 

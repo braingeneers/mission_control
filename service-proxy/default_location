@@ -1,5 +1,5 @@
 auth_request /oauth2/auth;
-error_page 401 = /oauth2/start;
+error_page 401 = /oauth2/start?rd=$request_uri;
 
 # pass information via X-User and X-Email headers
 auth_request_set $user   $upstream_http_x_auth_request_user;
@@ -10,3 +10,6 @@ proxy_set_header X-Email $email;
 # if you enabled --pass-access-token, this will pass the token to the backend
 auth_request_set $token  $upstream_http_x_auth_request_access_token;
 proxy_set_header X-Access-Token $token;
+
+# preserve the original host
+proxy_set_header Host $http_host;
