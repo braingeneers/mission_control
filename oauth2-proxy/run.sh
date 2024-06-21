@@ -72,7 +72,8 @@ echo "Starting oauth2-proxy"
   --skip-jwt-bearer-tokens=true \
   --set-authorization-header=true \
   --set-xauthrequest=true \
-  --whitelist-domain="*.braingeneers.gi.ucsc.edu" \
+  --whitelist-domain=".braingeneers.gi.ucsc.edu:8443" \
+  --whitelist-domain=".braingeneers.gi.ucsc.edu" \
   --cookie-domain=".braingeneers.gi.ucsc.edu" \
   --proxy-prefix="/oauth2" \
   --upstream="http://service-proxy:80" \
