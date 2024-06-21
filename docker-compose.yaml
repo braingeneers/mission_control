@@ -80,6 +80,7 @@ services:
       VIRTUAL_PORT: "80"
       LETSENCRYPT_HOST: "auth.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeners-admins-group@ucsc.edu"
+      EXTERNAL_PORT: "8443"  # In testing we used 8443, in production it's 443
     depends_on:
       secret-fetcher:
         condition: service_healthy

@@ -35,6 +35,9 @@ echo "Debug> OAUTH2_PROXY_COOKIE_SECRET=${OAUTH2_PROXY_COOKIE_SECRET}"
 echo "Encoded secret length: ${#OAUTH2_PROXY_COOKIE_SECRET}"
 echo "Decoded secret length: $(echo -n $OAUTH2_PROXY_COOKIE_SECRET | base64 -d | wc -c)"
 
+# Add this line to get the external port from an environment variable, defaulting to 8443
+EXTERNAL_PORT=${EXTERNAL_PORT:-8443}
+
 echo "Starting oauth2-proxy"
 /bin/oauth2-proxy \
   --http-address ":80" \
@@ -44,14 +47,14 @@ echo "Starting oauth2-proxy"
   --scope="org.cilogon.userinfo email openid" \
   --pass-access-token \
   --whitelist-domain=".braingeneers.gi.ucsc.edu" \
-  --redirect-url="https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/callback" \
+  --redirect-url="https://auth.braingeneers.gi.ucsc.edu:${EXTERNAL_PORT}/oauth2/callback" \
   --skip-provider-button \
   --request-logging=true \
   --auth-logging=true \
   --standard-logging=true \
   --proxy-prefix="/oauth2" \
   --cookie-name="_oauth2_proxy" \
-  --cookie-domain="auth.braingeneers.gi.ucsc.edu" \
+  --cookie-domain=".braingeneers.gi.ucsc.edu" \
   --cookie-secure=true \
   --cookie-httponly=true \
   --cookie-refresh="120h" \
@@ -66,6 +69,7 @@ echo "Starting oauth2-proxy"
   --pass-authorization-header=true \
   --pass-user-headers=true \
   --real-client-ip-header="X-Forwarded-For" \
-  --code-challenge-method="S256"
+  --code-challenge-method="S256" \
+  --set-xauthrequest=true
 
 sleep 6000  # avoid fast crash loop and allow for debugging

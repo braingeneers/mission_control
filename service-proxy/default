@@ -1,11 +1,5 @@
 # Global auth settings
 set $auth_redirect 0;
-set $original_port $server_port;
-
-# If using standard HTTPS port, don't include it in the redirect
-if ($server_port = 443) {
-    set $original_port "";
-}
 
 if ($host != auth.braingeneers.gi.ucsc.edu) {
     set $auth_redirect 1;
@@ -16,5 +10,5 @@ if ($cookie_oauth2_proxy = "") {
 }
 
 if ($auth_redirect = 1) {
-    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$scheme://$host:$original_port$request_uri;
+    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$scheme://$host$request_uri;
 }
