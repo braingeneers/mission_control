@@ -1,0 +1,4 @@
+if ($skip_auth) {
+    auth_request off;
+}
+proxy_pass http://auth.braingeneers.gi.ucsc.edu;
