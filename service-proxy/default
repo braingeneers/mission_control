@@ -12,18 +12,3 @@ if ($cookie_oauth2_proxy = "") {
 if ($auth_redirect = 1) {
     return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$scheme://$host:$server_port$request_uri;
 }
-
-location / {
-    auth_request /oauth2/auth;
-    error_page 401 = /oauth2/start;
-
-    # pass information via X-User and X-Email headers
-    auth_request_set $user   $upstream_http_x_auth_request_user;
-    auth_request_set $email  $upstream_http_x_auth_request_email;
-    proxy_set_header X-User  $user;
-    proxy_set_header X-Email $email;
-
-    # if you enabled --pass-access-token, this will pass the token to the backend
-    auth_request_set $token  $upstream_http_x_auth_request_access_token;
-    proxy_set_header X-Access-Token $token;
-}
