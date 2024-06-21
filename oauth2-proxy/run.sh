@@ -78,5 +78,3 @@ echo "Starting oauth2-proxy"
   --upstream="http://service-proxy:80" \
   --redeem-url="https://cilogon.org/oauth2/token" \
   --validate-url="https://cilogon.org/oauth2/userinfo"
-
-sleep 6000  # avoid fast crash loop and allow for debugging
