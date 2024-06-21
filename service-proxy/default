@@ -1,0 +1,12 @@
+# Global auth settings
+auth_request /oauth2/auth;
+error_page 401 = /oauth2/start;
+
+# Skip auth for the auth subdomain
+if ($host = auth.braingeneers.gi.ucsc.edu) {
+    set $skip_auth 1;
+}
+
+if ($skip_auth = 1) {
+    auth_request off;
+}
