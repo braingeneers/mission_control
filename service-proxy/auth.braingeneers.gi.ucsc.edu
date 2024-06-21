@@ -1,5 +1,3 @@
 location / {
     auth_request off;
 }
-
-include /etc/nginx/vhost.d/oauth2_proxy.conf;
