@@ -1,20 +1,7 @@
 # Global auth settings
 set $auth_redirect 0;
-set $original_url "";
-
-# Construct the original URL with the port 8443
-set $original_url "https://$host:8443$request_uri";
-
-# URL-encode the state parameter (this is a manual approach for key characters)
-set $state_param "";
-set $state_param_escape "";
-
-# Example of manually encoding the state parameter
-if ($original_url ~* (.*)) {
-    set $state_param $1;
-    set $state_param_escape $state_param;
-    set $state_param_escape $escape_uri;
-}
+set $original_url "https://$host$request_uri";
+#set $original_url "https%3A%2F%2Fwhoami.braingeneers.gi.ucsc.edu%3A8443%2F";
 
 if ($host != auth.braingeneers.gi.ucsc.edu) {
     set $auth_redirect 1;
