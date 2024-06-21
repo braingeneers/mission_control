@@ -87,31 +87,30 @@ services:
   # The service-proxy container is used to route traffic to the appropriate service based on the domain name.
   # Environment variables VIRTUAL_HOST and VIRTUAL_PORT are used to configure the routing.
   # This second proxy is being configured for authentication with oauth2-proxy
-  services:
-    service-proxy:
-      image: jwilder/nginx-proxy:latest
-      container_name: service-proxy
-      restart: unless-stopped
-      volumes:
-        - vol-certs:/etc/nginx/certs
-        - vol-vhost:/etc/nginx/vhost.d
-        - vol-html:/usr/share/nginx/html
-        - /var/run/docker.sock:/tmp/docker.sock:ro
-        - ./service-proxy/oauth2_proxy.conf:/etc/nginx/vhost.d/default_location
-        - ./service-proxy/auth.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu
-      ports:
-        - "8080:80"
-        - "8443:443"
-      networks:
-        - braingeneers-net
-      environment:
-        - DEFAULT_HOST=auth.braingeneers.gi.ucsc.edu
-      command: >
-        /bin/sh -c "
-        apk add --no-cache lua5.1 lua5.1-dev luarocks5.1 &&
-        luarocks-5.1 install lua-resty-http &&
-        nginx -g 'daemon off;'
-        "
+  service-proxy:
+    image: jwilder/nginx-proxy:latest
+    container_name: service-proxy
+    restart: unless-stopped
+    volumes:
+      - vol-certs:/etc/nginx/certs
+      - vol-vhost:/etc/nginx/vhost.d
+      - vol-html:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./service-proxy/oauth2_proxy.conf:/etc/nginx/vhost.d/default_location
+      - ./service-proxy/auth.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu
+    ports:
+      - "8080:80"
+      - "8443:443"
+    networks:
+      - braingeneers-net
+    environment:
+      - DEFAULT_HOST=auth.braingeneers.gi.ucsc.edu
+    command: >
+      /bin/sh -c "
+      apk add --no-cache lua5.1 lua5.1-dev luarocks5.1 &&
+      luarocks-5.1 install lua-resty-http &&
+      nginx -g 'daemon off;'
+      "
 
   # The nginx-proxy container is used to route traffic to the appropriate service based on the domain name.
   nginx-proxy:
