@@ -1,6 +1,13 @@
 # Global auth settings
 set $auth_redirect 0;
-set $original_url "https://$host$request_uri";
+set $original_url "https://$host:8443$request_uri";
+set $escaped_original_url "";
+
+# Escape the original URL
+set_by_lua_block $escaped_original_url {
+    local escape_uri = ngx.escape_uri
+    return escape_uri(ngx.var.original_url)
+}
 
 if ($host != auth.braingeneers.gi.ucsc.edu) {
     set $auth_redirect 1;
@@ -11,5 +18,5 @@ if ($cookie_oauth2_proxy = "") {
 }
 
 if ($auth_redirect = 1) {
-    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$original_url;
+    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$escaped_original_url;
 }
