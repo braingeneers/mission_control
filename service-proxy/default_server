@@ -1,0 +1,5 @@
+# Global auth settings
+auth_request /oauth2/auth;
+error_page 401 = /oauth2/start;
+
+include /etc/nginx/vhost.d/oauth2_proxy.conf;
