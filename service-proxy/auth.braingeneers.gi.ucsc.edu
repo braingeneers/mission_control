@@ -1,0 +1,3 @@
+location / {
+    auth_request off;
+}

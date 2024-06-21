@@ -2,7 +2,6 @@
 set -v
 
 echo "Verifying secrets are available..."
-#until (cat /secrets/ci-logon-auth/cilogon-client-id && cat /secrets/ci-logon-auth/cilogon-client-secret) >/dev/null 2>&1; do
 until cat /secrets/ci-logon-auth/cilogon-client-id && cat /secrets/ci-logon-auth/cilogon-client-secret; do
   echo 'Waiting for secrets to become available...';
   sleep 5;
@@ -24,26 +23,49 @@ export OAUTH2_PROXY_PROVIDER=oidc
 export OAUTH2_PROXY_OIDC_ISSUER_URL=https://cilogon.org
 export OAUTH2_PROXY_LOGIN_URL=https://cilogon.org/authorize
 export OAUTH2_PROXY_EMAIL_DOMAINS=*
-export OAUTH2_PROXY_COOKIE_REFRESH=120h
-export OAUTH2_PROXY_COOKIE_EXPIRE=168h
 export OAUTH2_PROXY_CLIENT_ID_FILE=/secrets/ci-logon-auth/cilogon-client-id
 export OAUTH2_PROXY_CLIENT_SECRET_FILE=/secrets/ci-logon-auth/cilogon-client-secret
+export OAUTH2_PROXY_COOKIE_SECRET_FILE=/secrets/ci-logon-auth/cilogon-cookie-secret
 
 export OAUTH2_PROXY_CLIENT_ID=$(cat $OAUTH2_PROXY_CLIENT_ID_FILE);
 export OAUTH2_PROXY_CLIENT_SECRET=$(cat $OAUTH2_PROXY_CLIENT_SECRET_FILE);
-export OAUTH2_PROXY_COOKIE_SECRET=$(head -c24 /dev/urandom | base64);
+export OAUTH2_PROXY_COOKIE_SECRET=$(cat $OAUTH2_PROXY_COOKIE_SECRET_FILE);
+
+echo "Debug> OAUTH2_PROXY_COOKIE_SECRET=${OAUTH2_PROXY_COOKIE_SECRET}"
+echo "Encoded secret length: ${#OAUTH2_PROXY_COOKIE_SECRET}"
+echo "Decoded secret length: $(echo -n $OAUTH2_PROXY_COOKIE_SECRET | base64 -d | wc -c)"
 
 echo "Starting oauth2-proxy"
 /bin/oauth2-proxy \
   --http-address ":80" \
-  --https-address ":443" \
-  --upstream="http://service-proxy" \
+  --reverse-proxy=true \
   --pass-host-header \
   --set-authorization-header=true \
   --scope="org.cilogon.userinfo email openid" \
-  --cookie-domain=".braingeneers.gi.ucsc.edu" \
   --pass-access-token \
   --whitelist-domain=".braingeneers.gi.ucsc.edu" \
-  --redirect-url="https://braingeneers.gi.ucsc.edu:8443/oauth2/callback"
+  --redirect-url="https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/callback" \
+  --skip-provider-button \
+  --request-logging=true \
+  --auth-logging=true \
+  --standard-logging=true \
+  --proxy-prefix="/oauth2" \
+  --cookie-name="_oauth2_proxy" \
+  --cookie-domain="auth.braingeneers.gi.ucsc.edu" \
+  --cookie-secure=true \
+  --cookie-httponly=true \
+  --cookie-refresh="120h" \
+  --cookie-expire="168h" \
+  --cookie-path="/" \
+  --set-xauthrequest=true \
+  --provider="oidc" \
+  --oidc-issuer-url="https://cilogon.org" \
+  --login-url="https://cilogon.org/authorize" \
+  --email-domain="*" \
+  --skip-auth-regex="^/oauth2" \
+  --pass-authorization-header=true \
+  --pass-user-headers=true \
+  --real-client-ip-header="X-Forwarded-For" \
+  --code-challenge-method="S256"
 
-sleep 6000  # avoid fast crash loop
+sleep 6000  # avoid fast crash loop and allow for debugging

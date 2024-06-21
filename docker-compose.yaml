@@ -64,7 +64,6 @@ services:
 
 
   # The oauth2_proxy container is used to authenticate users to cilogon.org before they can access braingeneers services
-  # All traffic is routed through oauth2-proxy and, after authentication, it forwards to service-proxy.
   oauth2-proxy:
     image: braingeneers/oauth2-proxy:latest
     container_name: oauth2-proxy
@@ -76,10 +75,9 @@ services:
       - secrets:/secrets
     networks:
       - braingeneers-net
-    ports:
-      - "8080:80"
-      - "8443:443"
     environment:
+      VIRTUAL_HOST: "auth.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "80"
       LETSENCRYPT_HOST: "auth.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeners-admins-group@ucsc.edu"
     depends_on:
@@ -98,13 +96,15 @@ services:
       - vol-vhost:/etc/nginx/vhost.d
       - vol-html:/usr/share/nginx/html
       - /var/run/docker.sock:/tmp/docker.sock:ro  # Unix socket mount to access docker API read-only
+      - service-proxy/oauth2_proxy.conf:/etc/nginx/vhost.d/default_location
+      - service-proxy/auth.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu
+    ports:
+      - "8080:80"
+      - "8443:443"
     networks:
       - braingeneers-net
-#    environment:
-#        ENABLE_OAUTH2_PROXY: "true"
-#        OAUTH2_PROXY_HEADER_NAME: "X-Auth-Request-Email"
-#        OAUTH2_PROXY_PASS_URL: "http://oauth2-proxy"
-#        OAUTH2_PROXY_SKIP_DOMAINS: "auth.braingeneers.gi.ucsc.edu"
+    environment:
+      - DEFAULT_HOST=auth.braingeneers.gi.ucsc.edu
 
   # The nginx-proxy container is used to route traffic to the appropriate service based on the domain name.
   nginx-proxy:
