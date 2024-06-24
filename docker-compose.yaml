@@ -89,7 +89,7 @@ services:
   # Environment variables VIRTUAL_HOST and VIRTUAL_PORT are used to configure the routing.
   # This second proxy is being configured for authentication with oauth2-proxy
   service-proxy:
-    image: jwilder/nginx-proxy:latest
+    image: nginxproxy/nginx-proxy:latest
     container_name: service-proxy
     restart: unless-stopped
     volumes:
@@ -637,12 +637,9 @@ services:
     command:
       - '--copy'
       - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
-      - /bin/bash
-      - -c
-      - |
-        sqlite3 -init create.sql data/braingeneers.db .quit
-        cron
-        python main.py
+      - '/bin/bash'
+      - '-c'
+      - 'sqlite3 -init create.sql data/braingeneers.db .quit; cron; python main.py'
     networks:
       - braingeneers-net
 
