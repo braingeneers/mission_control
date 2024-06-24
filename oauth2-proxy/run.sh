@@ -26,6 +26,8 @@ export OAUTH2_PROXY_EMAIL_DOMAINS=*
 export OAUTH2_PROXY_CLIENT_ID_FILE=/secrets/ci-logon-auth/cilogon-client-id
 export OAUTH2_PROXY_CLIENT_SECRET_FILE=/secrets/ci-logon-auth/cilogon-client-secret
 export OAUTH2_PROXY_COOKIE_SECRET_FILE=/secrets/ci-logon-auth/cilogon-cookie-secret
+export OAUTH2_PROXY_LOG_LEVEL=debug
+export OAUTH2_PROXY_LOG_FORMAT=json
 
 export OAUTH2_PROXY_CLIENT_ID=$(cat $OAUTH2_PROXY_CLIENT_ID_FILE);
 export OAUTH2_PROXY_CLIENT_SECRET=$(cat $OAUTH2_PROXY_CLIENT_SECRET_FILE);
@@ -78,5 +80,4 @@ echo "Starting oauth2-proxy"
   --proxy-prefix="/oauth2" \
   --upstream="http://service-proxy:80" \
   --redeem-url="https://cilogon.org/oauth2/token" \
-  --validate-url="https://cilogon.org/oauth2/userinfo" \
-  --encode-state=true
+  --validate-url="https://cilogon.org/oauth2/userinfo"
