@@ -1,29 +1,21 @@
 # Global auth settings
-set $auth_redirect 0;
+set $auth_required 1;
+set $original_url $scheme://$http_host$request_uri;
 
-# This works with redirects:
-# https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=https://whoami.braingeneers.gi.ucsc.edu/
-# https://cilogon.org/authorize?approval_prompt=force&client_id=cilogon%3A%2Fclient_id%2Facda6e66644aeaf0a2dffb03488f972&code_challenge=Lr2ijn6gT7eFfGIMrDf_1NERVeAMcT1NoWg7Rie1T50&code_challenge_method=S256&redirect_uri=https%3A%2F%2Fauth.braingeneers.gi.ucsc.edu%3A8443%2Foauth2%2Fcallback&response_type=code&scope=org.cilogon.userinfo+email+openid&state=MhsGdHlnEhLgRahkhtLSVGlmZwmk8fMJCZo98K2zgUA%3Ahttps%3A%2F%2Fwhoami.braingeneers.gi.ucsc.edu%2F
-#set $original_url "https://$host$request_uri";
-
-# This doesn't work, state is lost with redirects:
-# https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=https://whoami.braingeneers.gi.ucsc.edu:8443/
-# https://cilogon.org/authorize?approval_prompt=force&client_id=cilogon%3A%2Fclient_id%2Facda6e66644aeaf0a2dffb03488f972&code_challenge=GHuwmpf24J44O1ajbhxmbAaXqQso5O4gsWIpRyFWr6g&code_challenge_method=S256&redirect_uri=https%3A%2F%2Fauth.braingeneers.gi.ucsc.edu%3A8443%2Foauth2%2Fcallback&response_type=code&scope=org.cilogon.userinfo+email+openid&state=XoNB2ZyPgGOAcd8JxOl7uwmpSEvl-0PpiIEDIDp4FHQ%3A%2F
-set $original_url "https://$host:8443$request_uri";
-
-# URL encoding doesn't work, state is lost with redirects:
-# https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=https%3A%2F%2Fwhoami.braingeneers.gi.ucsc.edu%3A8443%2F
-# https://cilogon.org/authorize?approval_prompt=force&client_id=cilogon%3A%2Fclient_id%2Facda6e66644aeaf0a2dffb03488f972&code_challenge=-9qpp7MjAyfrxS75WoEDH8i04Eo8XFueEuV_0O3ImDE&code_challenge_method=S256&redirect_uri=https%3A%2F%2Fauth.braingeneers.gi.ucsc.edu%3A8443%2Foauth2%2Fcallback&response_type=code&scope=org.cilogon.userinfo+email+openid&state=0H7R503ti9gI1XbADIDyl6jjzk0SODHoCc-Sc1YK5JU%3A%2F
-#set $original_url "https%3A%2F%2Fwhoami.braingeneers.gi.ucsc.edu%3A8443%2F";
-
-if ($host != auth.braingeneers.gi.ucsc.edu) {
-    set $auth_redirect 1;
+# Check if the host is the auth subdomain
+if ($host = auth.braingeneers.gi.ucsc.edu) {
+    set $auth_required 0;
 }
 
-if ($cookie_oauth2_proxy = "") {
-    set $auth_redirect 1;
-}
+# Preserve the original request details
+set $original_request_uri $request_uri;
+set $original_host $http_host;
 
-if ($auth_redirect = 1) {
-    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$original_url;
-}
+# Add logging for debugging
+log_format auth_log '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for" '
+                    'auth_required=$auth_required auth_status=$auth_status';
+
+access_log /var/log/nginx/access.log auth_log;
+error_log /var/log/nginx/error.log debug;

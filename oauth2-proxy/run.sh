@@ -26,6 +26,8 @@ export OAUTH2_PROXY_EMAIL_DOMAINS=*
 export OAUTH2_PROXY_CLIENT_ID_FILE=/secrets/ci-logon-auth/cilogon-client-id
 export OAUTH2_PROXY_CLIENT_SECRET_FILE=/secrets/ci-logon-auth/cilogon-client-secret
 export OAUTH2_PROXY_COOKIE_SECRET_FILE=/secrets/ci-logon-auth/cilogon-cookie-secret
+export OAUTH2_PROXY_LOG_LEVEL=debug
+export OAUTH2_PROXY_LOG_FORMAT=json
 
 export OAUTH2_PROXY_CLIENT_ID=$(cat $OAUTH2_PROXY_CLIENT_ID_FILE);
 export OAUTH2_PROXY_CLIENT_SECRET=$(cat $OAUTH2_PROXY_CLIENT_SECRET_FILE);
@@ -41,10 +43,10 @@ echo "Starting oauth2-proxy"
 /bin/oauth2-proxy \
   --http-address ":80" \
   --reverse-proxy=true \
-  --pass-host-header \
+  --pass-host-header=true \
   --set-authorization-header=true \
   --scope="org.cilogon.userinfo email openid" \
-  --pass-access-token \
+  --pass-access-token=true \
   --whitelist-domain=".braingeneers.gi.ucsc.edu" \
   --redirect-url="https://auth.braingeneers.gi.ucsc.edu:${EXTERNAL_PORT}/oauth2/callback" \
   --skip-provider-button \
@@ -59,10 +61,9 @@ echo "Starting oauth2-proxy"
   --cookie-refresh="120h" \
   --cookie-expire="168h" \
   --cookie-path="/" \
+  --set-authorization-header=true \
   --set-xauthrequest=true \
   --provider="oidc" \
-  --oidc-issuer-url="https://cilogon.org" \
-  --login-url="https://cilogon.org/authorize" \
   --email-domain="*" \
   --skip-auth-regex="^/oauth2" \
   --pass-authorization-header=true \
@@ -70,13 +71,12 @@ echo "Starting oauth2-proxy"
   --real-client-ip-header="X-Forwarded-For" \
   --code-challenge-method="S256" \
   --skip-jwt-bearer-tokens=true \
-  --set-authorization-header=true \
-  --set-xauthrequest=true \
   --whitelist-domain=".braingeneers.gi.ucsc.edu:8443" \
   --whitelist-domain=".braingeneers.gi.ucsc.edu" \
   --cookie-domain=".braingeneers.gi.ucsc.edu" \
   --proxy-prefix="/oauth2" \
-  --upstream="http://service-proxy:80" \
+  --upstream="file:///dev/null" \
+  --oidc-issuer-url="https://cilogon.org" \
+  --login-url="https://cilogon.org/authorize" \
   --redeem-url="https://cilogon.org/oauth2/token" \
-  --validate-url="https://cilogon.org/oauth2/userinfo" \
-  --encode-state=true
+  --validate-url="https://cilogon.org/oauth2/userinfo"
