@@ -1,2 +1,0 @@
-# Disable auth for the auth subdomain
-auth_request off;
