@@ -10,3 +10,10 @@ if ($host = auth.braingeneers.gi.ucsc.edu) {
 # Preserve the original request details
 set $original_request_uri $request_uri;
 set $original_host $http_host;
+
+# Define the auth error handling here
+error_page 401 = @error401;
+
+location @error401 {
+    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$original_url;
+}
