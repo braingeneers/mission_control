@@ -16,3 +16,5 @@ if ($cookie_oauth2_proxy != "") {
 if ($auth_required = 1) {
     return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$original_url;
 }
+
+# If we're not redirecting, pass the request to the backend

@@ -1,8 +1,10 @@
-auth_request /oauth2/auth;
-auth_request_set $auth_status $upstream_status;
+# Only perform auth_request if auth is required
+if ($auth_required = 1) {
+    auth_request /oauth2/auth;
+    error_page 401 = @error401;
+}
 
-# Handle 401 errors
-if ($auth_status = 401) {
+location @error401 {
     return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$request_uri;
 }
 
@@ -18,3 +20,13 @@ proxy_set_header X-Access-Token $token;
 
 # preserve the original host
 proxy_set_header Host $http_host;
+
+# Add these headers to ensure the backend receives the original client's IP
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+
+# If auth is not required (user is authenticated), proxy the request to the backend
+if ($auth_required = 0) {
+    proxy_pass http://backend;
+}
