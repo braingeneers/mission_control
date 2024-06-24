@@ -1,20 +1,12 @@
 # Global auth settings
 set $auth_required 1;
-set $original_url "https://$host:8443$request_uri";
+set $original_url $scheme://$http_host$request_uri;
 
 # Check if the host is the auth subdomain
 if ($host = auth.braingeneers.gi.ucsc.edu) {
     set $auth_required 0;
 }
 
-# Check if the oauth2_proxy cookie is set
-if ($cookie_oauth2_proxy != "") {
-    set $auth_required 0;
-}
-
-# Redirect to auth only if auth is required
-if ($auth_required = 1) {
-    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$original_url;
-}
-
-# If we're not redirecting, pass the request to the backend
+# Preserve the original request details
+set $original_request_uri $request_uri;
+set $original_host $http_host;
