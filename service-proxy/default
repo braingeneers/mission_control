@@ -11,9 +11,11 @@ if ($host = auth.braingeneers.gi.ucsc.edu) {
 set $original_request_uri $request_uri;
 set $original_host $http_host;
 
-# Define the auth error handling here
-error_page 401 = @error401;
+# Add logging for debugging
+log_format auth_log '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for" '
+                    'auth_required=$auth_required auth_status=$auth_status';
 
-location @error401 {
-    return 302 $scheme://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$original_url;
-}
+access_log /var/log/nginx/access.log auth_log;
+error_log /var/log/nginx/error.log debug;
