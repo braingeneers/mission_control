@@ -612,6 +612,40 @@ services:
     restart: unless-stopped
 
 
+  # Search engine and browser for experiments in NRP S3
+  search:
+    image: braingeneers/search
+    container_name: search
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      VIRTUAL_HOST: "search.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8080"
+      LETSENCRYPT_HOST: "search.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeners-admins-group@ucsc.edu"
+      S3_ENDPOINT: "https://s3.braingeneers.gi.ucsc.edu"
+      S3_PROFILE: "prp-braingeneers"
+      S3_BUCKET: "braingeneers"
+    volumes:
+      - search-db:/root/data
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - '--copy'
+      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
+      - /bin/bash
+      - -c
+      - |
+        sqlite3 -init create.sql data/braingeneers.db .quit
+        cron
+        python main.py
+    networks:
+      - braingeneers-net
+
 # The braingeneers-net network is used to connect the containers together.
 networks:
   braingeneers-net:
@@ -639,3 +673,6 @@ volumes:
 
   # Volume for rustdesk
   rustdesk-data:
+
+  # Volume for search
+  search-db:
