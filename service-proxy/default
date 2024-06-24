@@ -10,12 +10,3 @@ if ($host = auth.braingeneers.gi.ucsc.edu) {
 # Preserve the original request details
 set $original_request_uri $request_uri;
 set $original_host $http_host;
-
-# Add logging for debugging
-log_format auth_log '$remote_addr - $remote_user [$time_local] "$request" '
-                    '$status $body_bytes_sent "$http_referer" '
-                    '"$http_user_agent" "$http_x_forwarded_for" '
-                    'auth_required=$auth_required auth_status=$auth_status';
-
-access_log /var/log/nginx/access.log auth_log;
-error_log /var/log/nginx/error.log debug;
