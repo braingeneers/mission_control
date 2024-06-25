@@ -1,4 +1,2 @@
 # This file will be included inside the location block for each service
-
-# Proxy to the backend service
-proxy_pass http://$upstream;
+# The proxy_pass directive is dynamically generated, so we don't need to specify it here
