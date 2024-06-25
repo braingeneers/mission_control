@@ -77,7 +77,7 @@ services:
       - vol-vhost:/etc/nginx/vhost.d
       - vol-html:/usr/share/nginx/html
       - /var/run/docker.sock:/tmp/docker.sock:ro
-      - ./service-proxy-frontend/custom_nginx.tmpl:/etc/nginx/custom_nginx.tmpl
+#      - ./service-proxy-frontend/custom_nginx.tmpl:/etc/nginx/custom_nginx.tmpl
     ports:
       - "8080:80"
       - "8443:443"
