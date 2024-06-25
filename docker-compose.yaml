@@ -74,7 +74,7 @@ services:
       - '/secrets/oauth2-proxy/oauth2.env'
       - '/bin/bash'
       - '-c'
-      - '/usr/bin/oauth2_proxy'
+      - '/usr/bin/oauth2_proxy && sleep 600'
     networks:
       - braingeneers-net
     environment:
