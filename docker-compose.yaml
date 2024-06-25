@@ -68,7 +68,7 @@ services:
     image: quay.io/oauth2-proxy/oauth2-proxy
     container_name: oauth2-proxy
     restart: unless-stopped
-    entrypoint: /bin/bash -c 'ls /secrets'
+    entrypoint: /bin/sh -c 'ls /secrets'
     command:
       - '--env'
       - '/secrets/oauth2-proxy/oauth2.env'
