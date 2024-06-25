@@ -1,8 +1,9 @@
 #!/bin/sh
+echo "Starting secrets setup script"
 
 ENV_VARS=""
 
-# Loop through arguments and copy as defined, and export environment variables from a file
+# Loop through arguments and perform copy and env operations
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --copy)
