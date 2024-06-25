@@ -62,6 +62,30 @@ services:
         aliases:
           - mqtt.braingeneers.gi.ucsc.edu
 
+  # The service-proxy container is used to route traffic to the appropriate service based on the domain name.
+  # Environment variables VIRTUAL_HOST and VIRTUAL_PORT are used to configure the routing.
+  # The order of operations of the proxies and authentication is as follows:
+  #   1. service-proxy-frontend - handles http/https requests, http->https and https is terminated and forward to oauth2-proxy
+  #   2. oauth2-proxy           - authenticates the user and forwards the request to the service-proxy-backend
+  #   3. service-proxy-backend  - forwards the request to the appropriate service
+  service-proxy-frontend:
+    image: nginxproxy/nginx-proxy:latest
+    container_name: service-proxy
+    restart: unless-stopped
+    volumes:
+      - vol-certs:/etc/nginx/certs
+      - vol-vhost:/etc/nginx/vhost.d
+      - vol-html:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./service-proxy/auth.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu_location
+      - ./service-proxy/default:/etc/nginx/vhost.d/default
+    ports:
+      - "8080:80"
+      - "8443:443"
+    networks:
+      - braingeneers-net
+    environment:
+      - DEFAULT_HOST=auth.braingeneers.gi.ucsc.edu
 
   # The oauth2_proxy container is used to authenticate users to cilogon.org before they can access braingeneers services
   oauth2-proxy:
@@ -87,10 +111,7 @@ services:
       secret-fetcher:
         condition: service_healthy
 
-  # The service-proxy container is used to route traffic to the appropriate service based on the domain name.
-  # Environment variables VIRTUAL_HOST and VIRTUAL_PORT are used to configure the routing.
-  # This second proxy is being configured for authentication with oauth2-proxy
-  service-proxy:
+  service-proxy-backend:
     image: nginxproxy/nginx-proxy:latest
     container_name: service-proxy
     restart: unless-stopped
@@ -99,15 +120,10 @@ services:
       - vol-vhost:/etc/nginx/vhost.d
       - vol-html:/usr/share/nginx/html
       - /var/run/docker.sock:/tmp/docker.sock:ro
-      - ./service-proxy/auth.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu_location
-      - ./service-proxy/default:/etc/nginx/vhost.d/default
-    ports:
-      - "8080:80"
-      - "8443:443"
+    expose:
+      - "80"
     networks:
       - braingeneers-net
-    environment:
-      - DEFAULT_HOST=auth.braingeneers.gi.ucsc.edu
 
   # The nginx-proxy container is used to route traffic to the appropriate service based on the domain name.
   nginx-proxy:
