@@ -72,7 +72,7 @@ services:
     command:
       - '--env'
       - '/secrets/oauth2-proxy/oauth2.env'
-      - '/bin/bash'
+      - '/bin/sh'
       - '-c'
       - '/usr/bin/oauth2_proxy -config=/etc/oauth2-proxy/oauth2-proxy.cfg'
     networks:
