@@ -77,15 +77,13 @@ services:
       - vol-vhost:/etc/nginx/vhost.d
       - vol-html:/usr/share/nginx/html
       - /var/run/docker.sock:/tmp/docker.sock:ro
-      - ./service-proxy-frontend/custom_nginx.tmpl:/etc/nginx/custom_nginx.tmpl
+      - ./service-proxy-frontend/default:/etc/nginx/vhost.d/default
+      - ./service-proxy-frontend/default_location:/etc/nginx/vhost.d/default_location
     ports:
       - "8080:80"
       - "8443:443"
     networks:
       - braingeneers-net
-    environment:
-      - DEFAULT_HOST=auth.braingeneers.gi.ucsc.edu
-      - NGINX_TEMPLATE=/etc/nginx/custom_nginx.tmpl
 
   # The oauth2_proxy container is used to authenticate users to cilogon.org before they can access braingeneers services
   oauth2-proxy:
