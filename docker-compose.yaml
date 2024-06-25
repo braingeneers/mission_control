@@ -77,8 +77,7 @@ services:
       - vol-vhost:/etc/nginx/vhost.d
       - vol-html:/usr/share/nginx/html
       - /var/run/docker.sock:/tmp/docker.sock:ro
-      - ./service-proxy-frontend/auth.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu_location
-      - ./service-proxy-frontend/default_location_override:/etc/nginx/vhost.d/default_location_override
+      - ./service-proxy-frontend/custom_nginx.tmpl:/etc/nginx/custom_nginx.tmpl
     ports:
       - "8080:80"
       - "8443:443"
