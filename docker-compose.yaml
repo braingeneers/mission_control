@@ -100,6 +100,7 @@ services:
       - vol-html:/usr/share/nginx/html
       - /var/run/docker.sock:/tmp/docker.sock:ro
       - ./service-proxy/default:/etc/nginx/vhost.d/default
+      - ./service-proxy/default_location:/etc/nginx/vhost.d/default_location
       - ./service-proxy/auth.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu
     ports:
       - "8080:80"

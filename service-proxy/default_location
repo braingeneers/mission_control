@@ -1,0 +1,4 @@
+# This file will be included inside the location block for each service
+
+# Proxy to the backend service
+proxy_pass http://$upstream;
