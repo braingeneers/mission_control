@@ -70,7 +70,7 @@ services:
   #   3. service-proxy-backend  - forwards the request to the appropriate service
   service-proxy-frontend:
     image: nginxproxy/nginx-proxy:latest
-    container_name: service-proxy
+    container_name: service-proxy-frontend
     restart: unless-stopped
     volumes:
       - vol-certs:/etc/nginx/certs
@@ -113,7 +113,7 @@ services:
 
   service-proxy-backend:
     image: nginxproxy/nginx-proxy:latest
-    container_name: service-proxy
+    container_name: service-proxy-backend
     restart: unless-stopped
     volumes:
       - vol-certs:/etc/nginx/certs
