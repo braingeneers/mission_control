@@ -1,11 +1,1 @@
-# First, try the authentication
-auth_request /oauth2/auth;
-error_page 401 = /oauth2/sign_in;
-
-# If authentication succeeds, set the user and email headers
-auth_request_set $user   $upstream_http_x_auth_request_user;
-auth_request_set $email  $upstream_http_x_auth_request_email;
-proxy_set_header X-User  $user;
-proxy_set_header X-Email $email;
-
-# The proxy_pass directive will be handled by the dynamically generated location block
+# Global settings for all locations
