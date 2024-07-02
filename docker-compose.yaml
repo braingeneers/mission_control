@@ -65,6 +65,7 @@ services:
   service-proxy:
     image: nginxproxy/nginx-proxy:latest
     container_name: service-proxy
+    restart: unless-stopped
     ports:
       - "8080:80"
       - "8443:443"
@@ -73,13 +74,10 @@ services:
       - vol-vhost:/etc/nginx/vhost.d
       - vol-html:/usr/share/nginx/html
       - /var/run/docker.sock:/tmp/docker.sock:ro
-      - ./service-proxy/default:/etc/nginx/vhost.d/default:ro
-      - ./service-proxy/default_location:/etc/nginx/vhost.d/default_location:ro
-      - ./service-proxy/auth.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu:ro
-      - ./service-proxy/auth.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu_location:ro
-    environment:
-      - DEFAULT_HOST=auth.braingeneers.gi.ucsc.edu
-      - DEBUG=true
+#      - ./service-proxy/default:/etc/nginx/vhost.d/default:ro
+#      - ./service-proxy/default_location:/etc/nginx/vhost.d/default_location:ro
+#      - ./service-proxy/auth.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu:ro
+#      - ./service-proxy/auth.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu_location:ro
     networks:
       - braingeneers-net
 
