@@ -8,6 +8,3 @@ auth_request_set $auth_email $upstream_http_x_auth_request_email;
 proxy_set_header X-User $auth_user;
 proxy_set_header X-Email $auth_email;
 proxy_set_header X-Auth-Request-Redirect $request_uri;
-
-# Increase logging level
-error_log /var/log/nginx/error.log debug;
