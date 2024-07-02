@@ -77,6 +77,8 @@ services:
       - ./service-proxy/auth.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu:ro
     environment:
       - DEFAULT_HOST=auth.braingeneers.gi.ucsc.edu
+    networks:
+      - braingeneers-net
 
   # The oauth2_proxy container is used to authenticate users to cilogon.org before they can access braingeneers services
   oauth2-proxy:
