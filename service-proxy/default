@@ -31,11 +31,12 @@ location = /_oauth2_proxy_auth {
     proxy_set_header X-Real-IP        $remote_addr;
     proxy_set_header X-Scheme         $scheme;
     proxy_set_header X-Auth-Request-Redirect $request_uri;
+    proxy_set_header X-Original-Host  $host;
 }
 
 # Redirect to OAuth2 Proxy start endpoint
 location @error401 {
-    return 302 https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$request_uri;
+    return 302 https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=https://$host$request_uri;
 }
 
 # Proxy OAuth2 endpoints
@@ -45,4 +46,5 @@ location /oauth2/ {
     proxy_set_header X-Real-IP        $remote_addr;
     proxy_set_header X-Scheme         $scheme;
     proxy_set_header X-Auth-Request-Redirect $request_uri;
+    proxy_set_header X-Original-Host  $host;
 }
