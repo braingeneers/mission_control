@@ -1,6 +1,8 @@
 # Enable auth_request for all other vhosts
 auth_request /_oauth2_proxy_auth;
-error_page 401 = /_oauth2_proxy_start;
+
+# Capture the login URL
+auth_request_set $auth_resp_login_url $upstream_http_location;
 
 # Pass OAuth information to backend
 auth_request_set $user               $upstream_http_x_auth_request_user;
@@ -31,13 +33,23 @@ location = /_oauth2_proxy_auth {
     proxy_set_header X-Auth-Request-Redirect $request_uri;
 }
 
-# Set the sign_in location
-location /_oauth2_proxy_start {
-    proxy_pass       http://oauth2-proxy:4180/oauth2/start;
+# Redirect to OAuth2 Proxy login page
+location ~ ^/(?!_oauth2_proxy_) {
+    error_page 401 = @error401;
+
+    # Your existing location configuration here
+}
+
+# Handle 401 errors
+location @error401 {
+    return 302 $auth_resp_login_url;
+}
+
+# Proxy OAuth2 login and callback
+location /_oauth2_proxy/ {
+    proxy_pass       http://oauth2-proxy:4180/oauth2/;
     proxy_set_header Host             $host;
     proxy_set_header X-Real-IP        $remote_addr;
     proxy_set_header X-Scheme         $scheme;
-    # nginx auth_request includes headers but not body
-    proxy_set_header Content-Length   "";
-    proxy_pass_request_body           off;
+    proxy_set_header X-Auth-Request-Redirect $request_uri;
 }
