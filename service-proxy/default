@@ -23,7 +23,7 @@ proxy_set_header X-Family-Name         $family_name;
 proxy_set_header X-Preferred-Username  $preferred_username;
 proxy_set_header X-Subject             $sub;
 
-set $custom_port "8443";
+set $custom_port "";
 
 # Set the auth_request directive
 location = /_oauth2_proxy_auth {
