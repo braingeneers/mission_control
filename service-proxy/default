@@ -23,8 +23,6 @@ proxy_set_header X-Family-Name         $family_name;
 proxy_set_header X-Preferred-Username  $preferred_username;
 proxy_set_header X-Subject             $sub;
 
-set $custom_port "";
-
 # Set the auth_request directive
 location = /_oauth2_proxy_auth {
     internal;
@@ -38,7 +36,7 @@ location = /_oauth2_proxy_auth {
 
 # Redirect to OAuth2 Proxy start endpoint
 location @error401 {
-    return 302 "https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=https://$host:$custom_port$request_uri";
+    return 302 "https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=https://$host$request_uri";
 }
 
 # Proxy OAuth2 endpoints
@@ -47,6 +45,6 @@ location /oauth2/ {
     proxy_set_header Host             $host;
     proxy_set_header X-Real-IP        $remote_addr;
     proxy_set_header X-Scheme         $scheme;
-    proxy_set_header X-Auth-Request-Redirect "https://$host:$custom_port$request_uri";
+    proxy_set_header X-Auth-Request-Redirect "https://$host$request_uri";
     proxy_set_header X-Original-Host  $host;
 }
