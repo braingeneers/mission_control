@@ -1,1 +1,9 @@
 # Custom configuration for auth domain at the server level
+
+# Disable auth_request for this vhost
+auth_request off;
+
+# Set headers
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
