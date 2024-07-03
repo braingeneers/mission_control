@@ -62,6 +62,9 @@ services:
         aliases:
           - mqtt.braingeneers.gi.ucsc.edu
 
+  # This is a proxy service that auto discovers other services that have env variables:
+  # VIRTUAL_HOST, VIRTUAL_PORT, LETSENCRYPT_HOST, LETSENCRYPT_EMAIL set. It also forces authentication through
+  # oauth2_proxy. The service-proxy container is used to route traffic to the appropriate service based on the domain name.
   service-proxy:
     image: nginxproxy/nginx-proxy:latest
     container_name: service-proxy
@@ -79,7 +82,7 @@ services:
     networks:
       - braingeneers-net
 
-  # The oauth2_proxy container is used to authenticate users to cilogon.org before they can access braingeneers services
+  # The oauth2_proxy container is used to authenticate users to cilogon.org before they can access braingeneers services.
   oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:latest-alpine
     container_name: oauth2-proxy
