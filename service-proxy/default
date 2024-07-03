@@ -1,8 +1,8 @@
 # Enable auth_request for all other vhosts
 auth_request /_oauth2_proxy_auth;
 
-# Capture the login URL
-auth_request_set $auth_resp_login_url $upstream_http_location;
+# Handle 401 errors with a redirect to the OAuth2 start endpoint
+error_page 401 = @error401;
 
 # Pass OAuth information to backend
 auth_request_set $user               $upstream_http_x_auth_request_user;
@@ -33,21 +33,14 @@ location = /_oauth2_proxy_auth {
     proxy_set_header X-Auth-Request-Redirect $request_uri;
 }
 
-# Redirect to OAuth2 Proxy login page
-location ~ ^/(?!_oauth2_proxy_) {
-    error_page 401 = @error401;
-
-    # Your existing location configuration here
-}
-
-# Handle 401 errors
+# Redirect to OAuth2 Proxy start endpoint
 location @error401 {
-    return 302 $auth_resp_login_url;
+    return 302 https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=$request_uri;
 }
 
-# Proxy OAuth2 login and callback
-location /_oauth2_proxy/ {
-    proxy_pass       http://oauth2-proxy:4180/oauth2/;
+# Proxy OAuth2 endpoints
+location /oauth2/ {
+    proxy_pass       http://oauth2-proxy:4180;
     proxy_set_header Host             $host;
     proxy_set_header X-Real-IP        $remote_addr;
     proxy_set_header X-Scheme         $scheme;
