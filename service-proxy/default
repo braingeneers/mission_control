@@ -32,8 +32,8 @@ location = /_oauth2_proxy_auth {
 }
 
 # Set the sign_in location
-location /_oauth2_proxy/ {
-    proxy_pass       http://oauth2-proxy:4180/oauth2/;
+location /_oauth2_proxy_sign_in {
+    proxy_pass       http://oauth2-proxy:4180/oauth2/sign_in;
     proxy_set_header Host             $host;
     proxy_set_header X-Real-IP        $remote_addr;
     proxy_set_header X-Scheme         $scheme;
