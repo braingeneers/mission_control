@@ -1,6 +1,6 @@
 # Enable auth_request for all other vhosts
 auth_request /_oauth2_proxy_auth;
-error_page 401 = /_oauth2_proxy_sign_in;
+error_page 401 = /_oauth2_proxy_start;
 
 # Pass OAuth information to backend
 auth_request_set $user               $upstream_http_x_auth_request_user;
@@ -32,8 +32,8 @@ location = /_oauth2_proxy_auth {
 }
 
 # Set the sign_in location
-location /_oauth2_proxy_sign_in {
-    proxy_pass       http://oauth2-proxy:4180/oauth2/sign_in;
+location /_oauth2_proxy_start {
+    proxy_pass       http://oauth2-proxy:4180/oauth2/start;
     proxy_set_header Host             $host;
     proxy_set_header X-Real-IP        $remote_addr;
     proxy_set_header X-Scheme         $scheme;
