@@ -1,7 +1,10 @@
-# Enable auth_request for all other vhosts
+# Enable auth_request for all other vhosts, this will cause an
+# authentication check to be sent to /_oauth2_proxy_auth, expecting a 20x or 401 response,
+# 20x will allow the request to continue, 401 will be handled in the next directive.
 auth_request /_oauth2_proxy_auth;
 
-# Handle 401 errors with a redirect to the OAuth2 start endpoint
+# Handle 401 errors (which means authentication failed) and it will redirect to the OAuth2 Proxy start endpoint
+# as defined in the @error401 location block below.
 error_page 401 = @error401;
 
 # Pass OAuth information to backend
@@ -14,6 +17,7 @@ auth_request_set $family_name        $upstream_http_x_auth_request_family_name;
 auth_request_set $preferred_username $upstream_http_x_auth_request_preferred_username;
 auth_request_set $sub                $upstream_http_x_auth_request_sub;
 
+# Set the headers to pass to the backend
 proxy_set_header X-User                $user;
 proxy_set_header X-Email               $email;
 proxy_set_header X-Groups              $groups;
@@ -23,7 +27,8 @@ proxy_set_header X-Family-Name         $family_name;
 proxy_set_header X-Preferred-Username  $preferred_username;
 proxy_set_header X-Subject             $sub;
 
-# Set the auth_request directive
+# This location block will perform the authentication check. Note that this overrides the applications
+# use of /_oauth2_proxy_auth path, but it's highly unlikely that this will conflict with any application in practice.
 location = /_oauth2_proxy_auth {
     internal;
     proxy_pass       http://oauth2-proxy:4180/oauth2/auth;
@@ -37,14 +42,4 @@ location = /_oauth2_proxy_auth {
 # Redirect to OAuth2 Proxy start endpoint
 location @error401 {
     return 302 "https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=https://$host$request_uri";
-}
-
-# Proxy OAuth2 endpoints
-location /oauth2/ {
-    proxy_pass       http://oauth2-proxy:4180;
-    proxy_set_header Host             $host;
-    proxy_set_header X-Real-IP        $remote_addr;
-    proxy_set_header X-Scheme         $scheme;
-    proxy_set_header X-Auth-Request-Redirect "https://$host$request_uri";
-    proxy_set_header X-Original-Host  $host;
 }
