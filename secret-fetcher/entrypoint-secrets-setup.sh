@@ -1,5 +1,5 @@
 #!/bin/sh
-echo "Starting secrets setup script"
+echo "Secret Fetcher: Setting up secrets"
 
 ENV_VARS=""
 
@@ -12,13 +12,13 @@ while [ "$#" -gt 0 ]; do
       COPYTO="${arg##*:}"
       mkdir -p "$(dirname "$COPYTO")"
       cp "$COPYFROM" "$COPYTO"
-      echo "Copied $COPYFROM to $COPYTO"
+      echo "Secret Fetcher: copied $COPYFROM to $COPYTO"
       shift 2
       ;;
     --env)
       # Add environment variables from the specified file to ENV_VARS
       ENV_VARS="$ENV_VARS $(grep -v '^#' "$2" | xargs)"
-      echo "Added environment variables from $2"
+      echo "Secret Fetcher: added environment variables from $2"
       shift 2
       ;;
     *)
