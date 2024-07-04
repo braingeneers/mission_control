@@ -28,5 +28,5 @@ while [ "$#" -gt 0 ]; do
 done
 
 # Execute the remaining arguments as the command, with environment variables
-echo "Executing command: $@"
+echo "Secret Fetcher: executing command: $@"
 exec env $ENV_VARS "$@"
