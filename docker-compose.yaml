@@ -103,6 +103,7 @@ services:
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     volumes:
       - ./oauth2-proxy/oauth2-proxy.cfg:/etc/oauth2-proxy/oauth2-proxy.cfg
+      - ./oauth2-proxy/error.html:/etc/oauth2_custom_templates/error.html
       - secrets:/secrets
     depends_on:
       secret-fetcher:

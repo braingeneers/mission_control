@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Authentication Error</title>
+</head>
+<body>
+    <h1>Authentication Error</h1>
+    <p>{{ .Error }}</p>
+    {{- if .Error }}
+    <p>Access denied. User does not have any assigned roles in Braingeneers auth0 user management. Post a request on #helpdesk to be authorized.</p>
+    {{- end }}
+    {{- if .RequestID }}
+    <p>Request ID: {{ .RequestID }}</p>
+    {{- end }}
+</body>
+</html>
