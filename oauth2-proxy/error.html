@@ -7,7 +7,9 @@
 <body>
     <h1>Authentication Error</h1>
     <p>{{ .Message }}</p>
-    <p>Access denied. User does not have any assigned roles in Braingeneers auth0 user management. Post a request on #helpdesk to be authorized.</p>
+    <p>Access denied.</p>
+    <p>User does not have any assigned roles in Braingeneers auth0 user management. Post a request on #helpdesk to be authorized.</p>
+    <p>Common issues: Ensure you logged in with your university credentials and not Google, Github, or ORCID unless they were explicitly authorized, this is a common error. Try again in a private browser window if unsure and clear cookies if this happened.</p>
     {{- if .RequestID }}
     <p>Request ID: {{ .RequestID }}</p>
     {{- end }}
