@@ -87,8 +87,6 @@ services:
       VIRTUAL_PORT: "80"
       LETSENCRYPT_HOST: "service-accounts.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
-      FLASK_APP: "main.py"
-      FLASK_ENV: "development"
     networks:
       - braingeneers-net
 
