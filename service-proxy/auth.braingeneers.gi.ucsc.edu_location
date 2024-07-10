@@ -1,0 +1,8 @@
+# Configuration for auth.braingeneers.gi.ucsc.edu_location
+# Note that this is an inelegant workaround for a bug with oauth2-proxy
+# which won't pass the connection parameter to the auth0 login page
+#   https://github.com/oauth2-proxy/oauth2-proxy/issues/2702
+
+location /auth0redirect {
+    return 302 'https://dev-jkxyxuthob0qc1nw.us.auth0.com/authorize?connection=CiLogon-Braingeneers&$args';
+}
