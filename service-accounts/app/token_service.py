@@ -28,7 +28,7 @@ def get_management_token():
     return response.json()['access_token']
 
 
-@app.route('/generate_token', methods=['POST'])
+@app.route('/generate_token', methods=['GET'])
 def generate_token():
     # 120 days = 4 months, braingeneerspy auto refreshes tokens every 1 month,
     # so the application must be activated at least once per 3 months
