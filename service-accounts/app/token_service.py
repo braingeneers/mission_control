@@ -16,6 +16,9 @@ if not client_id or not client_secret:
 # Auth0 domain
 domain = 'dev-jkxyxuthob0qc1nw.us.auth0.com'
 
+# Default expiration days
+DEFAULT_EXPIRATION_DAYS = 120
+
 
 def get_management_token():
     payload = {
@@ -28,11 +31,15 @@ def get_management_token():
     return response.json()['access_token']
 
 
-@app.route('/generate_token', methods=['GET'])
+@app.route('/generate_token', methods=['GET', 'POST'])
 def generate_token():
-    # 120 days = 4 months, braingeneerspy auto refreshes tokens every 1 month,
+    # Use DEFAULT_EXPIRATION_DAYS (120 days = 4 months)
+    # braingeneerspy auto refreshes tokens every 1 month,
     # so the application must be activated at least once per 3 months
-    days = request.json.get('days', 120)
+    if request.method == 'POST':
+        days = request.json.get('days', DEFAULT_EXPIRATION_DAYS) if request.json else DEFAULT_EXPIRATION_DAYS
+    else:  # GET
+        days = request.args.get('days', DEFAULT_EXPIRATION_DAYS, type=int)
 
     # Get management API token
     mgmt_token = get_management_token()
