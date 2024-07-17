@@ -16,6 +16,7 @@ auth_request_set $given_name         $upstream_http_x_auth_request_given_name;
 auth_request_set $family_name        $upstream_http_x_auth_request_family_name;
 auth_request_set $preferred_username $upstream_http_x_auth_request_preferred_username;
 auth_request_set $sub                $upstream_http_x_auth_request_sub;
+auth_request_set $auth_header        $upstream_http_authorization;
 
 # Set the headers to pass to the backend
 proxy_set_header X-User                $user;
@@ -26,6 +27,7 @@ proxy_set_header X-Given-Name          $given_name;
 proxy_set_header X-Family-Name         $family_name;
 proxy_set_header X-Preferred-Username  $preferred_username;
 proxy_set_header X-Subject             $sub;
+proxy_set_header Authorization         $auth_header;
 
 # This location block will perform the authentication check. Note that this overrides the applications
 # use of /_oauth2_proxy_auth path, but it's highly unlikely that this will conflict with any application in practice.
@@ -37,6 +39,9 @@ location = /_oauth2_proxy_auth {
     proxy_set_header X-Scheme         $scheme;
     proxy_set_header X-Auth-Request-Redirect $request_uri;
     proxy_set_header X-Original-Host  $host;
+
+    # Pass the Authorization header to OAuth2 Proxy
+    proxy_set_header Authorization $http_authorization;
 }
 
 # Redirect to OAuth2 Proxy start endpoint
