@@ -16,10 +16,11 @@ if not client_id or not client_secret:
 domain = 'dev-jkxyxuthob0qc1nw.us.auth0.com'
 
 # Your API identifier (audience)
-api_identifier = 'https://api.yourdomain.com'  # Replace with your actual API identifier
+api_identifier = 'https://auth.braingeneers.gi.ucsc.edu/'  # Replace with your actual API identifier
 
 # Default expiration days
 DEFAULT_EXPIRATION_DAYS = 120
+
 
 @app.route('/generate_token', methods=['GET', 'POST'])
 def generate_token():
