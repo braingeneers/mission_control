@@ -263,4 +263,4 @@ flowchart TD
 ```
 
 [1] Examples: https://whoami.briangeneers.gi.ucsc.edu, https://your-service.braingeneers.gi.ucsc.edu  
-[2] https://service-accounts.braingeneers.gi.ucsc.edu/generate-token  
+[2] https://service-accounts.braingeneers.gi.ucsc.edu/generate_token  
