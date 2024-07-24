@@ -194,7 +194,7 @@ Nothing needs to be updated or changed when a new service is brought online. SSL
 %%{init: {'flowchart': {'curve': 'basis'} } }%%
 flowchart TD
     A["User (Browser) Request"] --> B{Service Proxy\nnginx}
-    B -->|auth_request| C{OAuth2 Proxy}
+    B -->|auth_request| C{OAuth2}
     C -->|Return 2XX or 40X\nbased on auth session\nor jwt token| B
     B -->|If OAuth2 = 40X| E[Auth0]
     E -->|University and\nother auth providers\nsupported| F[CILogon]
