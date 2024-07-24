@@ -231,7 +231,7 @@ flowchart TD
     B -->|auth_request| C{OAuth2 Proxy}
     C -->|Return 2XX or 40X\nbased on auth session\nor jwt token| B
     B -->|If OAuth2 = 40X| E[Auth0]
-    E -->|Univeristy and\nother auth providers\nsupported| F[CILogon]
+    E -->|University and\nother auth providers\nsupported| F[CILogon]
     F --> E
     E -->|Verify User Roles &\nCreate auth session| B
     B -->|If OAuth2 = 2XX| D["All Web Services [1]"]
@@ -240,14 +240,18 @@ flowchart TD
     B -->|If OAuth2 = 2XX| H["Service Accounts App [2]"]
     H --> I[Generate JWT via Auth0]
 
+    B <--->|Create and refresh\nSSL certificates| J[Let's Encrypt]
+
     classDef default fill:#ffffff,stroke:#333,stroke-width:2px,color:#000000;
     classDef proxy fill:#4a90e2,stroke:#333,stroke-width:2px,color:#000000;
     classDef auth fill:#ffd700,stroke:#333,stroke-width:2px,color:#000000;
     classDef service fill:#87cefa,stroke:#333,stroke-width:2px,color:#000000;
+    classDef helper fill:#90EE90,stroke:#333,stroke-width:2px,color:#000000;
 
     class B,C proxy;
     class E,F,I auth;
     class D,H service;
+    class J helper;
 ```
 
 [1] Example: https://your-service.braingeneers.gi.ucsc.edu, working example app: https://whoami.briangeneers.gi.ucsc.edu  
