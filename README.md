@@ -257,10 +257,9 @@ flowchart TD
     classDef service fill:#87cefa,stroke:#333,stroke-width:2px,color:#000000;
     classDef helper fill:#90EE90,stroke:#333,stroke-width:2px,color:#000000;
 
-    class B,C proxy;
+    class B,C,J proxy;
     class E,F,I auth;
     class D,H service;
-    class J helper;
 ```
 
 [1] Example: https://your-service.braingeneers.gi.ucsc.edu, working example app: https://whoami.briangeneers.gi.ucsc.edu  
