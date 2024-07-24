@@ -257,5 +257,5 @@ flowchart TD
     class D,H service;
 ```
 
-[1] Example: https://your-service.braingeneers.gi.ucsc.edu, working example app: https://whoami.briangeneers.gi.ucsc.edu
-[2] Example: https://service-accounts.braingeneers.gi.ucsc.edu/generate-token
+[1] Example: https://your-service.braingeneers.gi.ucsc.edu, working example app: https://whoami.briangeneers.gi.ucsc.edu  
+[2] Example: https://service-accounts.braingeneers.gi.ucsc.edu/generate-token  
