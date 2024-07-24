@@ -214,6 +214,15 @@ direct the user to the `/generate_token` page to get their first token (this req
 the normal flow). Once the first token is obtained manually it will have a 4 month expiration, and will be automatically
 renewed by `braingeneerspy` every 1 month. If the token is revoked or expires, the user must manually authenticate again.
 
+## Security considerations
+All services exist on an internal docker network named `braingeneers-net`, this is inaccessible to the outside
+world and access to it is restricted by the Service Proxy, which checks authentication on every request. Internally
+services can communicate over http safely because the Service Proxy is the only entry point to the network.
+
+Service account JWT tokens provide full access to all web services, they expire after 4 months and auto refresh themselves
+in `braingeneerspy`, this is an accepted security risk, trading off some security for convenience. 
+If a token is compromised all tokens can be revoked in Auth0, however individual tokens cannot be revoked. 
+
 ## Best Practices
 
 To ensure security and maintainability:
