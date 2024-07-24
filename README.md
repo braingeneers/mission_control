@@ -185,8 +185,10 @@ After verifying your service works correctly, commit the changes to the `docker-
 
 This section describes the automatic service discovery, automatic SSL certificate management, and automatic authentication provided.
 
-We use a reverse proxy (service-proxy) which terminates SSL, maintains certificates automatically, and checks user and service-account authentication.
-This service-proxy auto discovers docker based web-services in our environment based on a few simple environment variables set by the service.
+We use a reverse proxy (service-proxy) which terminates SSL, maintains certificates automatically, checks user and service-account authentication, 
+and provides a secure front end to all our web-services.
+The service-proxy auto discovers docker based web-services in our environment based on a few simple environment variables set by the service.
+Nothing needs to be updated or changed when a new service is brought online. SSL, authentication, and network security are all provided and managed automatically.
 
 ```mermaid
 %%{init: {'flowchart': {'curve': 'basis'} } }%%
