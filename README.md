@@ -187,13 +187,6 @@ This section describes the automatic service discovery, automatic SSL certificat
 
 A reverse proxy is a type of server that retrieves resources on behalf of a client from one or more servers. These resources are then returned to the client as though they originated from the reverse proxy itself. In our infrastructure, we use a multi-service Docker Compose setup, which includes two reverse proxy's (for authentication and for routing to different containers) and a shared secrets fetcher.
 
-## OAuth2 Proxy for CILogon
-The oauth2-proxy is an integral part of our Docker Compose setup, providing a unified interface for OAuth2 authentication via the CILogon service. It intercepts all incoming requests, gating access to our web services by redirecting unauthenticated users to CILogon for login.
-
-Upon successful login, the user is redirected back to the oauth2-proxy, which in turn forwards the original request to the appropriate service, appending HTTP headers with authenticated user's information. This OAuth2 flow is completely handled by the oauth2-proxy, relieving individual services from managing this process.
-
-This setup ensures that all requests to our services are authenticated, providing a secure and efficient method of managing user access in our infrastructure.
-
 ## Nginx Reverse Proxy
 The `nginx-proxy` is a Docker container running Nginx and `docker-gen`. `docker-gen` generates reverse proxy configurations for Nginx and reloads Nginx when containers are started and stopped. This setup allows us to route incoming requests to different Docker containers (our services), each possibly running a different application, all on the same host machine.
 
