@@ -185,7 +185,8 @@ After verifying your service works correctly, commit the changes to the `docker-
 
 This section describes the automatic service discovery, automatic SSL certificate management, and automatic authentication provided.
 
-A reverse proxy is a type of server that retrieves resources on behalf of a client from one or more servers. These resources are then returned to the client as though they originated from the reverse proxy itself. In our infrastructure, we use a multi-service Docker Compose setup, which includes two reverse proxy's (for authentication and for routing to different containers) and a shared secrets fetcher.
+We use a reverse proxy (service-proxy) which terminates SSL, maintains certificates automatically, and checks user and service-account authentication.
+This service-proxy auto discovers docker based web-services in our environment based on a few simple environment variables set by the service.
 
 ```mermaid
 %%{init: {'flowchart': {'curve': 'basis'} } }%%
