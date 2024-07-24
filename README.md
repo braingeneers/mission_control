@@ -249,7 +249,7 @@ flowchart TD
     B -->|If OAuth2 = 2XX| H["Service Accounts App [2]"]
     H --> I[Generate JWT via Auth0]
 
-    B <--->|Create and refresh\nSSL certificates| J[Let's Encrypt]
+    B <--->|Create and refresh\nSSL certificates| J[Let's Encrypt\nService]
 
     classDef default fill:#ffffff,stroke:#333,stroke-width:2px,color:#000000;
     classDef proxy fill:#4a90e2,stroke:#333,stroke-width:2px,color:#000000;
