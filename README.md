@@ -187,6 +187,38 @@ This section describes the automatic service discovery, automatic SSL certificat
 
 A reverse proxy is a type of server that retrieves resources on behalf of a client from one or more servers. These resources are then returned to the client as though they originated from the reverse proxy itself. In our infrastructure, we use a multi-service Docker Compose setup, which includes two reverse proxy's (for authentication and for routing to different containers) and a shared secrets fetcher.
 
+```mermaid
+%%{init: {'flowchart': {'curve': 'basis'} } }%%
+flowchart TD
+    A["User (Browser) Request"] --> B{Service Proxy\nnginx}
+    B -->|auth_request| C{OAuth2 Proxy}
+    C -->|Return 2XX or 40X\nbased on auth session\nor jwt token| B
+    B -->|If OAuth2 = 40X| E[Auth0]
+    E -->|University and\nother auth providers\nsupported| F[CILogon]
+    F --> E
+    E -->|Verify User Roles &\nCreate auth session| B
+    B -->|If OAuth2 = 2XX| D["All Web Services [1]"]
+    
+    G[Service Account Request\n`Authorization: Bearer jwt_token`] --> B
+    B -->|If OAuth2 = 2XX| H["Service Accounts App [2]"]
+    H --> I[Generate JWT via Auth0]
+
+    B <--->|Create and refresh\nSSL certificates| J[Let's Encrypt\nService]
+
+    classDef default fill:#ffffff,stroke:#333,stroke-width:2px,color:#000000;
+    classDef proxy fill:#4a90e2,stroke:#333,stroke-width:2px,color:#000000;
+    classDef auth fill:#ffd700,stroke:#333,stroke-width:2px,color:#000000;
+    classDef service fill:#87cefa,stroke:#333,stroke-width:2px,color:#000000;
+    classDef helper fill:#90EE90,stroke:#333,stroke-width:2px,color:#000000;
+
+    class B,C,J proxy;
+    class E,F,I auth;
+    class D,H service;
+```
+
+[1] Examples: https://whoami.briangeneers.gi.ucsc.edu, https://your-service.braingeneers.gi.ucsc.edu  
+[2] https://service-accounts.braingeneers.gi.ucsc.edu/generate_token  
+
 ## Nginx Reverse Proxy
 The `nginx-proxy` is a Docker container running Nginx and `docker-gen`. `docker-gen` generates reverse proxy configurations for Nginx and reloads Nginx when containers are started and stopped. This setup allows us to route incoming requests to different Docker containers (our services), each possibly running a different application, all on the same host machine.
 
@@ -230,37 +262,3 @@ To ensure security and maintainability:
 1. The services are designed to be stateless except for the `~/.kube/config` requirement to retrieve the secrets.
 2. Services can rely on the Kubernetes secrets and can access any state files via our standard S3 service at `s3://braingeneers/` or other buckets.
 3. Services can cache files on the host OS, such as the generated certificates, but should be able to start cleanly if those files are lost. This could happen occasionally, but not regularly.
-
-The following diagram shows the for accessing and authenticating web services:
-
-```mermaid
-%%{init: {'flowchart': {'curve': 'basis'} } }%%
-flowchart TD
-    A["User (Browser) Request"] --> B{Service Proxy\nnginx}
-    B -->|auth_request| C{OAuth2 Proxy}
-    C -->|Return 2XX or 40X\nbased on auth session\nor jwt token| B
-    B -->|If OAuth2 = 40X| E[Auth0]
-    E -->|University and\nother auth providers\nsupported| F[CILogon]
-    F --> E
-    E -->|Verify User Roles &\nCreate auth session| B
-    B -->|If OAuth2 = 2XX| D["All Web Services [1]"]
-    
-    G[Service Account Request\n`Authorization: Bearer jwt_token`] --> B
-    B -->|If OAuth2 = 2XX| H["Service Accounts App [2]"]
-    H --> I[Generate JWT via Auth0]
-
-    B <--->|Create and refresh\nSSL certificates| J[Let's Encrypt\nService]
-
-    classDef default fill:#ffffff,stroke:#333,stroke-width:2px,color:#000000;
-    classDef proxy fill:#4a90e2,stroke:#333,stroke-width:2px,color:#000000;
-    classDef auth fill:#ffd700,stroke:#333,stroke-width:2px,color:#000000;
-    classDef service fill:#87cefa,stroke:#333,stroke-width:2px,color:#000000;
-    classDef helper fill:#90EE90,stroke:#333,stroke-width:2px,color:#000000;
-
-    class B,C,J proxy;
-    class E,F,I auth;
-    class D,H service;
-```
-
-[1] Examples: https://whoami.briangeneers.gi.ucsc.edu, https://your-service.braingeneers.gi.ucsc.edu  
-[2] https://service-accounts.braingeneers.gi.ucsc.edu/generate_token  
