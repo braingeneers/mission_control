@@ -27,7 +27,9 @@ proxy_set_header X-Given-Name          $given_name;
 proxy_set_header X-Family-Name         $family_name;
 proxy_set_header X-Preferred-Username  $preferred_username;
 proxy_set_header X-Subject             $sub;
-proxy_set_header Authorization         $auth_header;
+
+# Remove the Authorization header before proxying to downstream services
+proxy_set_header Authorization "";
 
 # This location block will perform the authentication check. Note that this overrides the applications
 # use of /_oauth2_proxy_auth path, but it's highly unlikely that this will conflict with any application in practice.
