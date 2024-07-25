@@ -37,5 +37,10 @@ module.exports = ({ env }) => ({
     },
   },
 
-  // ...
+  // Minimal users-permissions plugin configuration
+  'users-permissions': {
+    config: {
+      disableLocalAuthentication: true, // Disable JWT-based authentication
+    },
+  },
 });
