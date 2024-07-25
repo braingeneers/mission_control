@@ -6,4 +6,16 @@ module.exports = ({ env }) => ({
   app: {
     keys: env.array('APP_KEYS'),
   },
+
+   // Middleware to ignore Authorization header for public routes (if needed)
+  middleware: {
+    settings: {
+      public: {
+        enabled: true,
+        config: {
+          ignoreAuthorization: true,
+        },
+      },
+    },
+  },
 });
