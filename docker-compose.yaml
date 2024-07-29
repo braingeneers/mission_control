@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ===========================================================================================
 # PRE-REQUISITE:
 #   This docker-compose script depends on one file on the host machine: ~/.kube/config
