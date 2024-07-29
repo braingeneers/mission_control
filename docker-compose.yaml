@@ -177,8 +177,7 @@ services:
 
   # Ella's website (maxwell related)
   mxvisuals:
-    image: mirellameelo/visualsmaxwell-frontend:v1.3
-    container_name: mxvisuals
+    image: mirellameelo/visualsmaxwell-frontend:v1.5
     expose:
       - "3000"
     restart: unless-stopped
@@ -192,8 +191,7 @@ services:
 
   # Ella's website (maxwell related)
   mxvisuals-backend:
-    image: mirellameelo/visualsmaxwell-backend:v1.3
-    container_name: mxvisuals-backend
+    image: mirellameelo/visualsmaxwell-backend:v1.6
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     restart: unless-stopped
     command:
