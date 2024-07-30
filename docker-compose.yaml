@@ -437,7 +437,7 @@ services:
     restart: unless-stopped
 
   rustdesk-hbbs:
-    container_name: hbbs
+    container_name: rustdesk-hbbs
     ports:
       - 21115:21115
       - 21116:21116
@@ -471,7 +471,7 @@ services:
     restart: unless-stopped
 
   rustdesk-hbbr:
-    container_name: hbbr
+    container_name: rustdesk-hbbr
     ports:
       - 21117:21117
       - 21119:21119
