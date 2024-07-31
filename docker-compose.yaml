@@ -98,6 +98,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "8080:80"
+      - "8443:443"
     volumes:
       - vol-certs:/etc/nginx/certs
       - vol-vhost:/etc/nginx/vhost.d
@@ -197,6 +199,8 @@ services:
     command:
       - "--copy"
       - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
+      - "--copy"
+      - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/config.json"
       - "python3"
       - "-u"
       - "app.py"
