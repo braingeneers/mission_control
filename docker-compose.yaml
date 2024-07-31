@@ -237,7 +237,7 @@ services:
       - vol-html:/usr/share/nginx/html
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Unix socket mount to access docker API read-only
     depends_on:
-      - nginx-proxy
+      - service-proxy
     networks:
       - braingeneers-net
 
