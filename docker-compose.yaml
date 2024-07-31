@@ -569,27 +569,27 @@ services:
       - secrets:/secrets
     restart: unless-stopped
 
-  # Auto help desk service
-  auto-helpdesk:
-    image: sakachan/mqttconnection:latest
-    container_name: mqttconnection
-    entrypoint: /secrets/entrypoint-secrets-setup.sh
-    restart: unless-stopped
-    networks:
-      - braingeneers-net
-    command:
-      - "--copy"
-      - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
-      - "python"
-      - "-u"
-      - "mqttGeminiConnection.py"
-    volumes:
-      - secrets:/secrets
-    depends_on:
-      slack-bridge:
-        condition: service_started
-      secret-fetcher:
-        condition: service_healthy
+#  # Auto help desk service
+#  auto-helpdesk:
+#    image: sakachan/mqttconnection:latest
+#    container_name: mqttconnection
+#    entrypoint: /secrets/entrypoint-secrets-setup.sh
+#    restart: unless-stopped
+#    networks:
+#      - braingeneers-net
+#    command:
+#      - "--copy"
+#      - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
+#      - "python"
+#      - "-u"
+#      - "mqttGeminiConnection.py"
+#    volumes:
+#      - secrets:/secrets
+#    depends_on:
+#      slack-bridge:
+#        condition: service_started
+#      secret-fetcher:
+#        condition: service_healthy
 
   # Live Stream Server for Picroscope (maintainer: Max, Pierre)
   picroscope-videostream:
