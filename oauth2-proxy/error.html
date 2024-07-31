@@ -5,10 +5,11 @@
     <title>Authentication Error</title>
 </head>
 <body>
-    <h1>Authentication Error</h1>
+    <h1>Braingeneers Authentication Failed</h1>
     <p>{{ .Message }}</p>
     <p>Access denied.</p>
-    <p>User does not have any assigned roles in Braingeneers auth0 user management. Post a request on #helpdesk to be authorized.</p>
+    <p>You do not have any assigned roles in Braingeneers Auth0 user management. Post a request on Slack #helpdesk channel to be authorized.
+        <br>An admin needs to add the [user] role to your user in Auth0. Administrator details can be found on the wiki: <a href="https://github.com/braingeneers/wiki/blob/main/shared/administrators.md">https://github.com/braingeneers/wiki/blob/main/shared/administrators.md</a></p>
     <p>Common issues: Ensure you logged in with your university credentials and not Google, Github, or ORCID unless they were explicitly authorized, this is a common error. Try again in a private browser window if unsure and clear cookies if this happened.</p>
     {{- if .RequestID }}
     <p>Request ID: {{ .RequestID }}</p>
