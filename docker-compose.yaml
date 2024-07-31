@@ -96,8 +96,8 @@ services:
     container_name: service-proxy
     restart: unless-stopped
     ports:
-      - "8080:80"
-      - "8443:443"
+      - "80:80"
+      - "443:443"
     volumes:
       - vol-certs:/etc/nginx/certs
       - vol-vhost:/etc/nginx/vhost.d
@@ -135,30 +135,30 @@ services:
       secret-fetcher:
         condition: service_healthy
 
-  # The nginx-proxy container is used to route traffic to the appropriate service based on the domain name.
-  nginx-proxy:
-    image: jwilder/nginx-proxy:latest  # braingeneers/nginx-proxy:latest  # derived from jwilder/nginx-proxy:latest
-    container_name: nginx-proxy
-    restart: unless-stopped
-    volumes:
-      - vol-certs:/etc/nginx/certs  # Cache SSL certificates on the host
-      - vol-vhost:/etc/nginx/vhost.d
-      - vol-html:/usr/share/nginx/html
-      - /var/run/docker.sock:/tmp/docker.sock:ro  # Unix socket mount to access docker API read-only
-    networks:
-      - braingeneers-net
-#    environment:
-#      DEBUG: "true"
-#      VERBOSE: "true"
-#      FORCE_INTERVAL: 15s
-#      LETSENCRYPT_HOST: braingeneers.gi.ucsc.edu
-#      LETSENCRYPT_EMAIL: braingeners-admins-group@ucsc.edu
-#      LETSENCRYPT_TEST: "false"
-#      DEFAULT_HOST: braingeneers.gi.ucsc.edu
-#      DEFAULT_PORT: "8080"
-    ports:
-      - "80:80"
-      - "443:443"
+#  # The nginx-proxy container is used to route traffic to the appropriate service based on the domain name.
+#  nginx-proxy:
+#    image: jwilder/nginx-proxy:latest  # braingeneers/nginx-proxy:latest  # derived from jwilder/nginx-proxy:latest
+#    container_name: nginx-proxy
+#    restart: unless-stopped
+#    volumes:
+#      - vol-certs:/etc/nginx/certs  # Cache SSL certificates on the host
+#      - vol-vhost:/etc/nginx/vhost.d
+#      - vol-html:/usr/share/nginx/html
+#      - /var/run/docker.sock:/tmp/docker.sock:ro  # Unix socket mount to access docker API read-only
+#    networks:
+#      - braingeneers-net
+##    environment:
+##      DEBUG: "true"
+##      VERBOSE: "true"
+##      FORCE_INTERVAL: 15s
+##      LETSENCRYPT_HOST: braingeneers.gi.ucsc.edu
+##      LETSENCRYPT_EMAIL: braingeners-admins-group@ucsc.edu
+##      LETSENCRYPT_TEST: "false"
+##      DEFAULT_HOST: braingeneers.gi.ucsc.edu
+##      DEFAULT_PORT: "8080"
+#    ports:
+#      - "80:80"
+#      - "443:443"
 
   # Debugging container to test nginx-proxy
   whoami:

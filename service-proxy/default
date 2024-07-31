@@ -48,5 +48,5 @@ location = /_oauth2_proxy_auth {
 
 # Redirect to OAuth2 Proxy start endpoint
 location @error401 {
-    return 302 "https://auth.braingeneers.gi.ucsc.edu:8443/oauth2/start?rd=https://$host$request_uri";
+    return 302 "https://auth.braingeneers.gi.ucsc.edu/oauth2/start?rd=https://$host$request_uri";
 }
