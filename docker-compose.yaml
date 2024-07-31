@@ -200,7 +200,7 @@ services:
       - "--copy"
       - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
       - "--copy"
-      - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/config.json"
+      - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
       - "python3"
       - "-u"
       - "app.py"
