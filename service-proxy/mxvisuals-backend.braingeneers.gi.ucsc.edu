@@ -1,0 +1,4 @@
+# Custom configuration for auth domain, this bypasses authentication for access to the auth domain.
+
+# Disable auth_request for this vhost
+auth_request off;
