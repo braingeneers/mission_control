@@ -107,6 +107,8 @@ services:
       - /var/run/docker.sock:/tmp/docker.sock:ro
       - ./service-proxy/default:/etc/nginx/vhost.d/default:ro
       - ./service-proxy/auth.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu:ro
+      - ./service-proxy/mxvisuals.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/mxvisuals.braingeneers.gi.ucsc.edu:ro
+      - ./service-proxy/mxvisuals-backend.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/mxvisuals-backend.braingeneers.gi.ucsc.edu:ro
     networks:
       - braingeneers-net
 
