@@ -561,6 +561,8 @@ services:
       - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
       - '--copy'
       - '/secrets/kube-config/config:/root/.kube/config'
+      - "--copy"
+      - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
       - 'python'
       - 'app.py'
     environment:
