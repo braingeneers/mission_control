@@ -196,7 +196,7 @@ services:
   # Ella's website (maxwell related)
   mxvisuals-backend:
 #    image: davidparks21/mxvisuals-backend:3.0
-    image: mirellameelo/visualsmaxwell-backend:v2.0
+    image: mirellameelo/visualsmaxwell-backend:v1.6
     container_name: mxvisuals-backend
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     restart: unless-stopped
