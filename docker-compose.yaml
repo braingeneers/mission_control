@@ -601,6 +601,27 @@ services:
 #      secret-fetcher:
 #        condition: service_healthy
 
+ # Braingeneers AI Research Assistant (BAIRA) service
+ baira:
+   image: kamranhussain05/baira:latest
+   container_name: baira
+   entrypoint: /secrets/entrypoint-secrets-setup.sh
+   restart: unless-stopped
+   networks:
+     - braingeneers-net
+   command:
+     - "--copy"
+     - "/secrets/baira/baira_credentials:/console/credentials"
+     - "python"
+     - "main_agent/main.py"
+   volumes:
+     - secrets:/secrets
+   depends_on:
+     slack-bridge:
+       condition: service_started
+     secret-fetcher:
+       condition: service_healthy
+
   # Live Stream Server for Picroscope (maintainer: Max, Pierre)
   picroscope-videostream:
     build: picroscope-videostream/
