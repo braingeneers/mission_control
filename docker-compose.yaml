@@ -615,7 +615,8 @@ services:
       - "/secrets/baira/baira_credentials:/console/credentials"
       - "--copy"
       - "/secrets/baira/baira_credentials:/root/.aws/credentials"
-      - "whoami; python main_agent/main.py"
+      - "python"
+      - "main_agent/main.py"
     volumes:
       - secrets:/secrets
     depends_on:
