@@ -611,7 +611,6 @@ services:
     networks:
       - braingeneers-net
     command:
-      - "whoami"
       - "--copy"
       - "/secrets/baira/baira_credentials:/console/credentials"
       - "--copy"
