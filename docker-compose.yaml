@@ -615,6 +615,8 @@ services:
       - "/secrets/baira/baira_credentials:/console/credentials"
       - "--copy"
       - "/secrets/baira/baira_credentials:/root/.aws/credentials"
+      - "--copy"
+      - "/secrets/baira/baira_credentials:/home/jovyan/.aws/credentials"
       - "python"
       - "main_agent/main.py"
     volumes:
