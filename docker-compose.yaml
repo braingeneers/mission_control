@@ -604,6 +604,7 @@ services:
   # Braingeneers AI Research Assistant (BAIRA) service (maintainer: Kamran, Jasmin)
   baira:
     image: kamranhussain05/baira:latest
+    user: root
     container_name: baira
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     restart: unless-stopped
