@@ -249,10 +249,9 @@ services:
     networks:
       - braingeneers-net
 
-
   # The dashboard container is used to host the braingeneers dashboard.
   dashboard:
-    image: braingeneers/dashboard:v1.5
+    image: quay.io/ucsc_cgl/brain_dashboard:1.5
     container_name: dashboard
     expose:
       - "8050"
@@ -262,12 +261,13 @@ services:
       VIRTUAL_PORT: "8050"
       LETSENCRYPT_HOST: "dashboard.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeners-admins-group@ucsc.edu"
-    volumes:
-      - ~/.aws/credentials:/root/.aws/credentials:ro  # AWS credentials for your application
     networks:
       - braingeneers-net
     depends_on:
-      - secret-fetcher
+      secret-fetcher:
+        condition: service_healthy
+    volumes:
+      - secrets:/secrets
 
   # Slack bridge service, replicates messages between Slack and MQTT
   # Documentation: https://github.com/braingeneers/wiki/blob/main/api_data/slack-bridge.md
@@ -301,9 +301,6 @@ services:
       VUE_APP_API_ENDPOINT: "https://braingeneers.gi.ucsc.edu/shadows"
       VUE_APP_API_AUTH_ENDPOINT: "https://braingeneers.gi.ucsc.edu/shadows"
       VUE_APP_S3_ENDPOINT: "https://s3-west.nrp-nautilus.io"
-#      VUE_APP_S3_ACCESS_KEY_ID =
-#      VUE_APP_S3_SECRET_KEY =
-
 
   # picroscope experiment control console
   # plotly dash
