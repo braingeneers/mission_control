@@ -5,6 +5,7 @@ import flask
 import hmac
 import hashlib
 import logging
+import time
 
 from typing import Optional
 from slack_sdk import WebClient
@@ -40,10 +41,26 @@ def get_channel_name(channel_id: str) -> Optional[str]:
 
 
 def mqtt_to_slack_callback(_topic: str, message: dict):
-    """ Callback function for MQTT messages. Posts the message to a Slack channel. """
+    """ Callback function for MQTT messages. Posts the message to a Slack channel.
+        If a thread timestamp is provided in the message, the message is posted as a reply in that thread.
+        If the 'simulate_typing' flag is set in the message, a typing indicator is sent before posting.
+    """
     channel = _topic.split('/')[-1]  # Get the channel name from the topic
     text = message.get("message")
     file_data = message.get("image")
+    thread_ts = message.get("thread_ts")  # Get thread timestamp if available
+    simulate_typing = message.get("simulate_typing", False)
+
+    # If requested, send a typing indicator before sending the message.
+    if simulate_typing:
+        try:
+            # Note: This uses an undocumented API method.
+            slack_client.api_call("typing", channel=channel)
+            app.logger.debug('DEBUG: Sent typing indicator for channel: %s', channel)
+            # Optionally, wait a moment to simulate typing delay
+            time.sleep(1)
+        except SlackApiError as e:
+            app.logger.error('ERROR: Typing indicator error: %s', str(e))
 
     # If there's a file, decode it from base64 and upload it to Slack
     if file_data:
@@ -53,19 +70,24 @@ def mqtt_to_slack_callback(_topic: str, message: dict):
                 channels=channel,
                 file=file_data,
                 filename=message.get("filename", "uploaded_file"),
-                initial_comment=text
+                initial_comment=text,
+                thread_ts=thread_ts  # Post in thread if thread_ts is provided
             )
-            app.logger.debug('DEBUG: Uploaded file: %s to: %s', str(message.get("filename", "uploaded_file")), str(channel))
+            app.logger.debug('DEBUG: Uploaded file: %s to: %s in thread: %s',
+                             str(message.get("filename", "uploaded_file")), str(channel), thread_ts)
         except SlackApiError as e:
-            # Post the error to the 'telemetry/slack/ERROR' MQTT topic
             app.logger.error('ERROR: File upload error: %s', str(e))
             mb.publish_message("telemetry/slack/ERROR", {"error": str(e)})
     else:
         try:
-            slack_client.chat_postMessage(channel=channel, text=text)
-            app.logger.debug('DEBUG: Message posted: %s to: %s', str(text), str(channel))
+            slack_client.chat_postMessage(
+                channel=channel,
+                text=text,
+                thread_ts=thread_ts  # Post as a thread reply if thread_ts is provided
+            )
+            app.logger.debug('DEBUG: Message posted: %s to: %s in thread: %s',
+                             str(text), str(channel), thread_ts)
         except SlackApiError as e:
-            # Post the error to the 'telemetry/slack/ERROR' MQTT topic
             mb.publish_message("telemetry/slack/ERROR", {"error": str(e)})
             app.logger.error('ERROR: Message posting error: %s', str(e))
 
@@ -76,7 +98,9 @@ mb.subscribe_message("telemetry/slack/TOSLACK/#", mqtt_to_slack_callback)
 
 @app.route("/slack/events", methods=["POST"])
 def handle_slack_event():
-    """ Handles a Slack event by publishing it to MQTT. """
+    """ Handles a Slack event by publishing it to MQTT.
+        This now includes checking for a thread timestamp and the sender's ID so that thread replies can be maintained.
+    """
     try:
         data = flask.request.json
         app.logger.debug('DEBUG: Data: %s', str(data))
@@ -104,6 +128,7 @@ def handle_slack_event():
                 file_data = None
                 filename = None
 
+                # Check for file attachment
                 if "files" in data["event"]:
                     file_info = data["event"]["files"][0]
                     response = slack_client.files_info(file=file_info["id"])
@@ -111,19 +136,31 @@ def handle_slack_event():
                         file_data = response["file"]["url_private"]
                         filename = response["file"]["name"]
 
+                # Determine if message was edited
                 if "message" in data["event"] and 'edited' in data["event"]["message"]:
                     text = data["event"]["message"].get('text', '[Message deleted]')
                     edited = True
                 else:
                     text = data["event"].get("text", '[Message deleted]')
 
+                # Get the thread timestamp if this message is part of a thread
+                thread_ts = data["event"].get("thread_ts")
+
+                # Get the sender's user id
+                user = data["event"].get("user")
+
                 mb.publish_message(f"telemetry/slack/FROMSLACK/{channel_name}", {
-                    "channel": channel_name, "message": text, "edited": edited, "filename": filename,
-                    "image": file_data})
+                    "channel": channel_name,
+                    "message": text,
+                    "edited": edited,
+                    "filename": filename,
+                    "image": file_data,
+                    "thread_ts": thread_ts,  # Include thread_ts to keep thread context
+                    "user": user         # Include sender's user id
+                })
 
         return "", 200
     except Exception as e:
-        # Post the error to the 'telemetry/slack/ERROR' MQTT topic
         mb.publish_message("telemetry/slack/ERROR", {"error": str(e)})
         app.logger.error('ERROR: Flask: %s', str(e))
         return flask.jsonify({"error": str(e)}), 500
