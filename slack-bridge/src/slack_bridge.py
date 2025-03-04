@@ -5,11 +5,15 @@ import flask
 import hmac
 import hashlib
 import logging
+
+from typing import Optional
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+
 from braingeneers.iot import MessageBroker
 
 app = flask.Flask(__name__)
+app.logger.setLevel(logging.DEBUG)
 
 # Read Slack credentials
 config = configparser.ConfigParser()
@@ -18,26 +22,21 @@ config.read("/home/jovyan/.aws/credentials")
 slack_token = config["braingeneers-slack"]["token"]
 slack_signing_secret = config["braingeneers-slack"]["signing_secret"]
 
-# Initialize the Slack WebClient
 slack_client = WebClient(token=slack_token)
-
-# Initialize Message Broker
 mb = MessageBroker()
 
 
-def get_channel_name(channel_id):
-    app.logger.debug('DEBUG> %s', channel_id)
+def get_channel_name(channel_id: str) -> Optional[str]:
+    app.logger.debug('DEBUG: channel_id> %s', channel_id)
     try:
         response = slack_client.conversations_info(channel=channel_id)
-        app.logger.debug('DEBUG> %s', response)
+        app.logger.debug('DEBUG: slack_client.conversations_info.response> %s', str(response))
         if response["ok"]:
             return response["channel"]["name"]
         else:
-            app.logger.error("Failed to get channel name for ID %s: %s", channel_id, response['error'])
-            return None
+            app.logger.error("Failed to get channel name for ID %s: %s", channel_id, str(response['error']))
     except SlackApiError as e:
-        app.logger.error("Error getting channel name: %s", e)
-        return None
+        app.logger.error("Error getting channel name: %s", str(e))
 
 
 def mqtt_to_slack_callback(_topic: str, message: dict):
@@ -47,7 +46,7 @@ def mqtt_to_slack_callback(_topic: str, message: dict):
     file_data = message.get("image")
 
     # If there's a file, decode it from base64 and upload it to Slack
-    if file_data is not None:
+    if file_data:
         file_data = base64.b64decode(file_data)
         try:
             slack_client.files_upload(
@@ -56,15 +55,19 @@ def mqtt_to_slack_callback(_topic: str, message: dict):
                 filename=message.get("filename", "uploaded_file"),
                 initial_comment=text
             )
+            app.logger.debug('DEBUG: Uploaded file: %s to: %s', str(message.get("filename", "uploaded_file")), str(channel))
         except SlackApiError as e:
             # Post the error to the 'telemetry/slack/ERROR' MQTT topic
+            app.logger.error('ERROR: File upload error: %s', str(e))
             mb.publish_message("telemetry/slack/ERROR", {"error": str(e)})
     else:
         try:
             slack_client.chat_postMessage(channel=channel, text=text)
+            app.logger.debug('DEBUG: Message posted: %s to: %s', str(text), str(channel))
         except SlackApiError as e:
             # Post the error to the 'telemetry/slack/ERROR' MQTT topic
             mb.publish_message("telemetry/slack/ERROR", {"error": str(e)})
+            app.logger.error('ERROR: Message posting error: %s', str(e))
 
 
 # Subscribe to the MQTT topic
@@ -76,6 +79,7 @@ def handle_slack_event():
     """ Handles a Slack event by publishing it to MQTT. """
     try:
         data = flask.request.json
+        app.logger.debug('DEBUG: Data: %s', str(data))
 
         # Handle URL verification
         if data.get("type") == "url_verification":
@@ -121,9 +125,9 @@ def handle_slack_event():
     except Exception as e:
         # Post the error to the 'telemetry/slack/ERROR' MQTT topic
         mb.publish_message("telemetry/slack/ERROR", {"error": str(e)})
+        app.logger.error('ERROR: Flask: %s', str(e))
         return flask.jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)
-    app.logger.setLevel(logging.DEBUG)
