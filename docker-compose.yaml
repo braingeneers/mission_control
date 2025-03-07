@@ -272,8 +272,9 @@ services:
   # Slack bridge service, replicates messages between Slack and MQTT
   # Documentation: https://github.com/braingeneers/wiki/blob/main/api_data/slack-bridge.md
   slack-bridge:
-    image: braingeneers/service-slack-bridge:latest
+    # image: braingeneers/service-slack-bridge:latest
     container_name: slack-bridge
+    build: slack-bridge/docker
     ports:
       - "3000:3000"
     networks:
