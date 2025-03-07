@@ -274,7 +274,7 @@ services:
   slack-bridge:
     # image: braingeneers/service-slack-bridge:latest
     container_name: slack-bridge
-    build: slack-bridge/docker
+    build: slack-bridge
     ports:
       - "3000:3000"
     networks:
