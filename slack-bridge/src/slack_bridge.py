@@ -6,6 +6,7 @@ import hmac
 import hashlib
 import logging
 import time
+import json
 
 from typing import Optional
 from slack_sdk import WebClient
@@ -40,12 +41,18 @@ def get_channel_name(channel_id: str) -> Optional[str]:
         app.logger.error("Error getting channel name: %s", str(e))
 
 
-def mqtt_to_slack_callback(_topic: str, message: dict):
+def mqtt_to_slack_callback(_topic: str, message: dict) -> None:
     """ Callback function for MQTT messages. Posts the message to a Slack channel.
         If a thread timestamp is provided in the message, the message is posted as a reply in that thread.
         If the 'simulate_typing' flag is set in the message, a typing indicator is sent before posting.
     """
     channel = _topic.split('/')[-1]  # Get the channel name from the topic
+    if isinstance(message, str):
+        try:
+            message = json.loads(message)
+        except Exception as e:
+            app.logger.error("Ignoring poorly formed Slack Callback: %s", str(e))
+            return
     text = message.get("message")
     file_data = message.get("image")
     thread_ts = message.get("thread_ts")  # Get thread timestamp if available
@@ -85,8 +92,7 @@ def mqtt_to_slack_callback(_topic: str, message: dict):
                 text=text,
                 thread_ts=thread_ts  # Post as a thread reply if thread_ts is provided
             )
-            app.logger.debug('DEBUG: Message posted: %s to: %s in thread: %s',
-                             str(text), str(channel), thread_ts)
+            app.logger.debug('DEBUG: Message posted: %s to: %s in thread: %s', str(text), str(channel), thread_ts)
         except SlackApiError as e:
             mb.publish_message("telemetry/slack/ERROR", {"error": str(e)})
             app.logger.error('ERROR: Message posting error: %s', str(e))
@@ -167,4 +173,4 @@ def handle_slack_event():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=3000)
+    app.run(host='0.0.0.0', port=3000, ssl_context='adhoc')
