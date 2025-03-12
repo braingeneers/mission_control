@@ -290,6 +290,7 @@ services:
         condition: service_healthy
     volumes:
       - secrets:/secrets
+      - vol-certs:/etc/nginx/certs
 
   # Shadows frontend web service maintained by Pierre
   shadows-vue:
