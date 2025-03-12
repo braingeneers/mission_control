@@ -173,4 +173,11 @@ def handle_slack_event():
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=3000, ssl_context='/etc/nginx/certs/slack-bridge.braingeneers.gi.ucsc.edu/cert.pem')
+    app.run(
+        host='0.0.0.0',
+        port=3000,
+        ssl_context=(
+            '/etc/nginx/certs/slack-bridge.braingeneers.gi.ucsc.edu/cert.pem',
+            '/etc/nginx/certs/slack-bridge.braingeneers.gi.ucsc.edu/key.pem'
+        )
+    )
