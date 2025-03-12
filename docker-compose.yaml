@@ -277,6 +277,11 @@ services:
     build: slack-bridge
     ports:
       - "3000:3000"
+    environment:
+      VIRTUAL_HOST: "slack-bridge.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "3000"
+      LETSENCRYPT_HOST: "slack-bridge.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     networks:
       - braingeneers-net
     restart: unless-stopped
