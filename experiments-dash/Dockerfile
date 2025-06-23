@@ -1,6 +1,6 @@
 FROM braingeneers/braingeneers:latest
 
-RUN python -m pip install --no-cache-dir --upgrade pip flask slack_sdk
+RUN python -m pip install --no-cache-dir --upgrade pip flask dash
 
 COPY experiment-plotly-app.py /app/experiment-plotly-app.py
 COPY dashboard_helpers.py /app/dashboard_helpers.py
