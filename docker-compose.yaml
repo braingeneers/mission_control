@@ -228,6 +228,12 @@ services:
   experiments-dash:
     container_name: experiments-dash
     build: experiments-dash
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - '--copy'
+      - '/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json'
+      - 'python'
+      - '/app/experiment-plotly-app.py'
     expose:
       - "8050"
     restart: unless-stopped

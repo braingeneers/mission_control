@@ -361,11 +361,16 @@ def toggle_collapse(n):
     [Input('device-dropdown', 'value')]
 )
 def populate_device_checklist(value):
-    online_devices_other = mb.list_devices_by_type("Other")
-    online_devices_autoculture = mb.list_devices_by_type("Autoculture")
-    online_devices = online_devices_other + online_devices_autoculture
-    options = [{'label': d['label'], 'value': d['label']}for d in online_devices]
-    return options
+    try:
+        online_devices_other = mb.list_devices_by_type("Other")
+        online_devices_autoculture = mb.list_devices_by_type("Autoculture")
+        online_devices = online_devices_other + online_devices_autoculture
+        options = [{'label': d['label'], 'value': d['label']} for d in online_devices]
+        return options
+    except Exception as e:
+        print("Failed to populate device checklist:", e)
+        return []
+
 
 
 @app.callback(
