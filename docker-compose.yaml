@@ -229,9 +229,16 @@ services:
     container_name: experiments-dash
     build: experiments-dash
     entrypoint: /secrets/entrypoint-secrets-setup.sh
+    # command:
+    #   - '--copy'
+    #   - '/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json'
+    #   - 'python'
+    #   - '/app/experiment-plotly-app.py'
     command:
-      - '--copy'
-      - '/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json'
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
+      - "--copy"
+      - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
       - 'python'
       - '/app/experiment-plotly-app.py'
     expose:
