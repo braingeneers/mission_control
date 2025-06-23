@@ -402,7 +402,7 @@ def update_device_states(selected_devices, n_intervals):
     device_states = []
     for device in selected_devices:
         #state = get_device_state(device_name=device, jwt_token) #mb.get_device_state(device_name=device)
-        url = f"https://shadows-db.braingeneers.gi.ucsc.edu/api/interaction-things?filters[name][$eq]={device_name}&populate=*"
+        url = f"https://shadows-db.braingeneers.gi.ucsc.edu/api/interaction-things?filters[name][$eq]={device}&populate=*"
         headers = {"Authorization": f"Bearer {jwt_token['access_token']}"}
         resp = requests.get(url, headers=headers)
 
