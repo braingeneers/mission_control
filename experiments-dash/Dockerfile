@@ -1,6 +1,12 @@
 FROM braingeneers/braingeneers:latest
 
-RUN python -m pip install --no-cache-dir --upgrade pip dash
+# Install dash and related packages
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m pip install --no-cache-dir --upgrade pip \
+    && python -m pip install --no-cache-dir dash
 
 COPY experiment-plotly-app.py /app/experiment-plotly-app.py
 COPY dashboard_helpers.py /app/dashboard_helpers.py
