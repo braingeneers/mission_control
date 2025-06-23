@@ -585,12 +585,7 @@ def update_value(selected_value):
 
 if __name__ == '__main__':
     #app.run(debug=True, port=8051)
-    print("Running the app with SSL context")
+    print("Running the app")
     app.run(
         host='0.0.0.0',
-        port=8050,
-        ssl_context=(
-            '/etc/nginx/certs/slack-bridge.braingeneers.gi.ucsc.edu/cert.pem',
-            '/etc/nginx/certs/slack-bridge.braingeneers.gi.ucsc.edu/key.pem'
-        )
-    )
+        port=8050)
