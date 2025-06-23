@@ -18,6 +18,7 @@ import json
 with open("/secrets/service-accounts/config.json") as f:
     jwt_token = json.load(f)
 
+
 # ROOT_TOPIC = "telemetry"
 # from braingeneers.iot import messaging 
 # import uuid
@@ -370,19 +371,23 @@ def populate_device_checklist(value):
     try:
         #online_devices_other = mb.list_devices_by_type("Other")
         #online_devices_autoculture = mb.list_devices_by_type("Autoculture")
-        device_type = "Other"
-        url = f"https://shadows-db.braingeneers.gi.ucsc.edu/api/interaction-things?filters[type][$eq]={device_type}&filters[marked_for_deletion][$eq]=false&populate=*"
+        device_types = ["Other", "Autoculture"]
+        online_devices = []
         headers = {"Authorization": f"Bearer {jwt_token['access_token']}"}
-        resp = requests.get(url, headers=headers)
-        online_devices = [{"label": x["attributes"]["name"], "value": x["id"]} for x in resp.json()["data"]]
+        
+        for device_type in device_types:
+            url = f"https://shadows-db.braingeneers.gi.ucsc.edu/api/interaction-things?filters[type][$eq]={device_type}&filters[marked_for_deletion][$eq]=false&populate=*"
+            resp = requests.get(url, headers=headers)
+            resp.raise_for_status()  # Will throw if response isn't 200 OK
+            data = resp.json()["data"]
+            online_devices += [{"label": x["attributes"]["name"], "value": x["id"]} for x in data]
+
         #online_devices = online_devices_other + online_devices_autoculture
         options = [{'label': d['label'], 'value': d['label']} for d in online_devices]
         return options
     except Exception as e:
         print("Failed to populate device checklist:", e)
         return []
-
-
 
 @app.callback(
     Output('device-states', 'children'),
@@ -396,7 +401,20 @@ def update_device_states(selected_devices, n_intervals):
     # Fetch and display the device states
     device_states = []
     for device in selected_devices:
-        state = mb.get_device_state(device_name=device)
+        #state = get_device_state(device_name=device, jwt_token) #mb.get_device_state(device_name=device)
+        url = f"https://shadows-db.braingeneers.gi.ucsc.edu/api/interaction-things?filters[name][$eq]={device_name}&populate=*"
+        headers = {"Authorization": f"Bearer {jwt_token['access_token']}"}
+        resp = requests.get(url, headers=headers)
+
+        if resp.status_code != 200:
+            raise RuntimeError(f"Failed to fetch device state: {resp.status_code} {resp.text}")
+
+        data = resp.json()["data"]
+        if not data:
+            return None  # or raise an error
+
+        state = data[0]["attributes"]["shadow"]
+
         state_str = json.dumps(state, indent=4)  # Convert the dict to a JSON-like string
 
         device_states.append(html.Pre(f'{device} State:\n{state_str}'))  # Using html.Pre for preformatted text
