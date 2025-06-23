@@ -588,7 +588,7 @@ if __name__ == '__main__':
     print("Running the app with SSL context")
     app.run(
         host='0.0.0.0',
-        port=8055,
+        port=8050,
         ssl_context=(
             '/etc/nginx/certs/slack-bridge.braingeneers.gi.ucsc.edu/cert.pem',
             '/etc/nginx/certs/slack-bridge.braingeneers.gi.ucsc.edu/key.pem'
