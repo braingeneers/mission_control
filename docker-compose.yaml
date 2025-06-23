@@ -232,9 +232,9 @@ services:
       - "8050"
     restart: unless-stopped
     environment:
-      VIRTUAL_HOST: "experiments-dash.braingeneers.gi.ucsc.edu"
+      VIRTUAL_HOST: "experiment.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "8050"
-      LETSENCRYPT_HOST: "experiments-dash.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_HOST: "experiment.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     networks:
       - braingeneers-net

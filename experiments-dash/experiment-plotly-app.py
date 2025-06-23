@@ -31,7 +31,7 @@ allow_duplicate=True
 #-------------------READ METADATA---------------------------------------------
 
 def load_json():
-    path = './metadata.json'
+    path = os.path.join(os.path.dirname(__file__), 'metadata.json')
     try:
         with open(path, 'r') as file:
             metadata = json.load(file)
