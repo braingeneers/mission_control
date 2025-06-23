@@ -228,12 +228,12 @@ services:
   experiments-dash:
     container_name: experiments-dash
     build: experiments-dash
-    ports:
-      - "8055:8055"
+    expose:
+      - "8050"
     restart: unless-stopped
     environment:
       VIRTUAL_HOST: "experiments-dash.braingeneers.gi.ucsc.edu"
-      VIRTUAL_PORT: "8055"
+      VIRTUAL_PORT: "8050"
       LETSENCRYPT_HOST: "experiments-dash.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     networks:
