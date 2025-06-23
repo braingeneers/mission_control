@@ -10,7 +10,13 @@
 # import boto3
 from datetime import datetime
 from dash.dependencies import ALL
+import requests
 
+import json
+
+# Load JWT token from the correct file
+with open("/secrets/service-accounts/config.json") as f:
+    jwt_token = json.load(f)
 
 # ROOT_TOPIC = "telemetry"
 # from braingeneers.iot import messaging 
@@ -362,9 +368,14 @@ def toggle_collapse(n):
 )
 def populate_device_checklist(value):
     try:
-        online_devices_other = mb.list_devices_by_type("Other")
-        online_devices_autoculture = mb.list_devices_by_type("Autoculture")
-        online_devices = online_devices_other + online_devices_autoculture
+        #online_devices_other = mb.list_devices_by_type("Other")
+        #online_devices_autoculture = mb.list_devices_by_type("Autoculture")
+        device_type = "Other"
+        url = f"https://shadows-db.braingeneers.gi.ucsc.edu/api/interaction-things?filters[type][$eq]={device_type}&filters[marked_for_deletion][$eq]=false&populate=*"
+        headers = {"Authorization": f"Bearer {jwt_token['access_token']}"}
+        resp = requests.get(url, headers=headers)
+        online_devices = [{"label": x["attributes"]["name"], "value": x["id"]} for x in resp.json()["data"]]
+        #online_devices = online_devices_other + online_devices_autoculture
         options = [{'label': d['label'], 'value': d['label']} for d in online_devices]
         return options
     except Exception as e:
