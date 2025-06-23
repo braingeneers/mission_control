@@ -1,0 +1,68 @@
+{
+    "uuid": "YYYY-MM-DD-[eficp]-[descriptor]",
+    "timestamp": "yyyy-mm-ddThh:mm:ss",
+    "maxwell_chip_id": "N/A",
+    "notes": 
+        {
+        "purpose": "Compare automated feeding to manual feeding, track longitudinal electrophysiology activity of an organoid",
+        "biology":
+            {
+                "sample_type": "organoid",
+                "aggregation_date":"2023-08-10T00:00:00",
+                "plating_date": "2023-09-11T00:00:00",
+                "species": "mouse", 
+                "cell_line": "H9C57BL/6 Mouse Embryonic Fibroblasts",
+                "genotype": "wildtype",
+                "culture_media": "Ms BrainPhys",
+                "organoid_tracker_sr_no": "N/A",
+                "organoid modification": "N/A",
+                "organoid modification date": "N/A"
+            },
+        "stimulation":    
+            {
+                "optogenetic": "False",
+                "electrical": "False",
+                "pharmacological": "False"
+            },
+        "automated_feeding": "True",
+        "automated_imaging": "True",
+        "comments": {"19894" : "Experimental 1 (efi)", 
+                    "19944" : "Experimental 2 (-fi)", 
+                    "19943" : "Control 1 (--i)", 
+                    "20402" : "Control 2 (--i)",
+                    "19945" : "Control 3 (---)"}
+    },
+    "ephys_experiments":
+        {
+            "test_experiment":{
+                "name": "test_experiment",
+                "hardware": "Maxwell",
+                "maxwell_chip_number": "N/A",
+                "maxwell_tracker_sr_no": "xxxxxx",
+                "channels": [],
+                "notes": "",
+                "num_channels": 0,
+                "num_current_input_channels": 0,
+                "num_voltage_channels": 32,
+                "offset": 0,
+                "sample_rate": 20000,
+                "voltage_scaling_factor": 1,
+                "timestamp": "2020-10-06T18:20:18",
+                "units": "\u00b5V",
+                "version": "0.0.1",
+                "blocks": [
+                    {
+                        "num_frames": 0,
+                        "path": "original/data/filehere",
+                        "timestamp": "yyyy-mm-ddThh:mm:ss"
+                    }
+                ]
+            }
+        }
+
+
+
+
+
+        
+}

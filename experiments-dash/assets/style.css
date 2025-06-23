@@ -1,0 +1,67 @@
+.dash-debug-menu__outer {
+    visibility: hidden !important;
+}
+
+    .dash-debug-menu {
+    visibility: hidden !important;
+}
+
+body {
+    font-family: Arial, sans-serif;
+}
+
+
+body > div.container {
+    padding: 100px !important;
+}
+
+
+#submit-button, #refresh-button, #start-button, #end-button, #ping-button, #status-button, #pause-button, #resume-button, #stop-button, #command-button, #sched-add-button, #sched-clear-button, #save-upload-button, #submit-metadata-button
+{
+    background-color: #6adaff;
+    color: rgb(0, 0, 0);
+    border: none;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 8px;
+}
+
+
+
+ #toggle-button
+{
+    background-color: #d4d4d4;
+    color: rgb(0, 0, 0);
+    border: none;
+    padding: 5px 10px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 8px;
+}
+
+
+h1 {
+    font-family: Arial, sans-serif;
+    color: #000000;
+    text-align: center;
+}
+
+
+.custom-tabs {
+    background-color: #1E2130;
+    text-transform: uppercase;
+    font-weight: 600;
+    font-size: 14px;
+    height: fit-content;
+    cursor: pointer;
+  }
+  

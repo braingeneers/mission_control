@@ -224,6 +224,29 @@ services:
       secret-fetcher:
         condition: service_healthy
 
+ # Experiments dashboard
+  experiments-dash:
+    container_name: experiments-dash
+    build: experiments-dash
+    ports:
+      - "8055:8055"
+    restart: unless-stopped
+    environment:
+      VIRTUAL_HOST: "experiments-dash.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8055"
+      LETSENCRYPT_HOST: "experiments-dash.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+    networks:
+      - braingeneers-net
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+    volumes:
+      - secrets:/secrets
+      - vol-certs:/etc/nginx/certs
+
+
+
   # The letsencrypt container is used to automatically generate SSL certificates for the domain names.
   # https://github.com/jwilder/docker-letsencrypt-nginx-proxy-companion
   letsencrypt:
