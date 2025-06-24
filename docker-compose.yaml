@@ -281,6 +281,8 @@ services:
       - "8050"
       - "--server.headless"
       - "true"
+      - "--server.address"
+      - "0.0.0.0"
 
 
     expose:
