@@ -263,7 +263,7 @@ services:
 
 
  # Experiments dashboard
-  smartplugs-dash:
+  smartplug-dash:
     container_name: smartplug-dash
     build: smartplug-dash
     entrypoint: /secrets/entrypoint-secrets-setup.sh
