@@ -247,9 +247,9 @@ services:
       - "8050"
     restart: unless-stopped
     environment:
-      VIRTUAL_HOST: "experiment.braingeneers.gi.ucsc.edu"
+      VIRTUAL_HOST: "experiments.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "8050"
-      LETSENCRYPT_HOST: "experiment.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_HOST: "experiments.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     networks:
       - braingeneers-net
@@ -274,8 +274,7 @@ services:
       - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
       - "--copy"
       - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
-      # - 'streamlit run'
-      # - '/app/smartplugs-dash.py'
+      - "streamlit run /app/smartplugs-dash.py --server.port 8050 --server.headless true"
     expose:
       - "8050"
     restart: unless-stopped

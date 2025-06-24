@@ -9,4 +9,4 @@ done
 
 mkdir -p /home/jovyan/.aws
 cp /secrets/prp-s3-credentials/credentials /home/jovyan/.aws/credentials
-streamlit run /app/smartplug-dashboard.py
+streamlit run /app/smartplug-dashboard.py --server.port 8050 --server.headless true
