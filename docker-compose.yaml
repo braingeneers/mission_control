@@ -283,8 +283,8 @@ services:
       - "true"
       - "--server.address"
       - "0.0.0.0"
-
-
+      - "--server.enableCORS"
+      - "false"
     expose:
       - "8050"
     restart: unless-stopped
