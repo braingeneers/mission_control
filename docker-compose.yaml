@@ -225,9 +225,9 @@ services:
         condition: service_healthy
 
  # Experiments dashboard
-  experiments-dash:
-    container_name: experiments-dash
-    build: experiments-dash
+  experiment-dash:
+    container_name: experiment-dash
+    build: experiment-dash
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     # command:
     #   - '--copy'
@@ -247,9 +247,9 @@ services:
       - "8050"
     restart: unless-stopped
     environment:
-      VIRTUAL_HOST: "experiments.braingeneers.gi.ucsc.edu"
+      VIRTUAL_HOST: "experiment.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "8050"
-      LETSENCRYPT_HOST: "experiments.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_HOST: "experiment.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     networks:
       - braingeneers-net
@@ -264,8 +264,8 @@ services:
 
  # Experiments dashboard
   smartplugs-dash:
-    container_name: smartplugs-dash
-    build: smartplugs-dash
+    container_name: smartplug-dash
+    build: smartplug-dash
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
       - "--copy"
@@ -279,9 +279,9 @@ services:
       - "8050"
     restart: unless-stopped
     environment:
-      VIRTUAL_HOST: "smartplugs.braingeneers.gi.ucsc.edu"
+      VIRTUAL_HOST: "smartplug.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "8050"
-      LETSENCRYPT_HOST: "smartplugs.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_HOST: "smartplug.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     networks:
       - braingeneers-net
