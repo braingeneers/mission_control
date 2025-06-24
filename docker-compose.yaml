@@ -283,7 +283,7 @@ services:
       - "true"
       - "--server.address"
       - "0.0.0.0"
-      - "--server.enableCORS"
+      - "--server.enableXsrfProtection"
       - "false"
     expose:
       - "8050"
