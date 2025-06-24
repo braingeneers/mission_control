@@ -274,7 +274,7 @@ services:
       - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
       - "--copy"
       - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
-      - "streamlit run /app/smartplugs-dash.py --server.port 8050 --server.headless true"
+      - "streamlit run /app/smartplug-dashboard.py --server.port 8050 --server.headless true"
     expose:
       - "8050"
     restart: unless-stopped
