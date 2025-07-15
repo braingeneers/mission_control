@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  data-lifecycle:
+    image: braingeneers/data-lifecycle:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: bash run_data_lifecycle.sh
+    working_dir: /data_lifecycle/src
+    volumes:
+      - ${HOME}/.aws/credentials:/home/jovyan/.aws/credentials:ro
