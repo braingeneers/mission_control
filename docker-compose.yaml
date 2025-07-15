@@ -262,50 +262,50 @@ services:
 
 
 
- # Experiments dashboard
-  smartplug-dash:
-    hostname: smartplug-dash
-    container_name: smartplug-dash
-    build: smartplug-dash
-    entrypoint: /secrets/entrypoint-secrets-setup.sh
-    command:
-      - "--copy"
-      - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
-      - "--copy"
-      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
-      - "--copy"
-      - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
-      - "streamlit"
-      - "run"
-      - "/app/smartplug-dashboard.py"
-      - "--server.port"
-      - "8050"
-      - "--server.headless"
-      - "true"
-      - "--server.address"
-      - "0.0.0.0"
-      - "--server.enableXsrfProtection"
-      - "false"
-    expose:
-      - "8050"
-    # ports:
-    #   - "8050:8050"
-    restart: unless-stopped
-    environment:
-      VIRTUAL_HOST: "smartplug.braingeneers.gi.ucsc.edu"
-      VIRTUAL_PORT: "8050"
-      LETSENCRYPT_HOST: "smartplug.braingeneers.gi.ucsc.edu"
-      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
-    networks:
-      - braingeneers-net
-    depends_on:
-      secret-fetcher:
-        condition: service_healthy
-    volumes:
-      - secrets:/secrets
-      - vol-certs:/etc/nginx/certs
-    extra_hosts:
-          - "smartplug.braingeneers.gi.ucsc.edu:host-gateway"
+#  # Experiments dashboard
+#   smartplug-dash:
+#     hostname: smartplug-dash
+#     container_name: smartplug-dash
+#     build: smartplug-dash
+#     entrypoint: /secrets/entrypoint-secrets-setup.sh
+#     command:
+#       - "--copy"
+#       - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
+#       - "--copy"
+#       - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
+#       - "--copy"
+#       - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
+#       - "streamlit"
+#       - "run"
+#       - "/app/smartplug-dashboard.py"
+#       - "--server.port"
+#       - "8050"
+#       - "--server.headless"
+#       - "true"
+#       - "--server.address"
+#       - "0.0.0.0"
+#       - "--server.enableXsrfProtection"
+#       - "false"
+#     expose:
+#       - "8050"
+#     # ports:
+#     #   - "8050:8050"
+#     restart: unless-stopped
+#     environment:
+#       VIRTUAL_HOST: "smartplug.braingeneers.gi.ucsc.edu"
+#       VIRTUAL_PORT: "8050"
+#       LETSENCRYPT_HOST: "smartplug.braingeneers.gi.ucsc.edu"
+#       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+#     networks:
+#       - braingeneers-net
+#     depends_on:
+#       secret-fetcher:
+#         condition: service_healthy
+#     volumes:
+#       - secrets:/secrets
+#       - vol-certs:/etc/nginx/certs
+#     extra_hosts:
+#           - "smartplug.braingeneers.gi.ucsc.edu:host-gateway"
 
 
   # The letsencrypt container is used to automatically generate SSL certificates for the domain names.
