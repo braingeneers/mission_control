@@ -21,7 +21,7 @@ function generate_inventory_csv {
         prefix=$(echo "$s3_path" | sed -E 's|s3://[^/]+/?(.*)|\1|')
 
         # Format rclone remote name (e.g., "s3:bucket")
-        rclone_remote="s3:${bucket}"
+        rclone_remote="s3west:${bucket}"
 
         # Run rclone lsjson with optional prefix
         rclone lsjson --recursive --fast-list "${rclone_remote}/${prefix}" | \
