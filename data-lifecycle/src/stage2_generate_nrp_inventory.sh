@@ -15,10 +15,20 @@ echo "#"
 
 # Function to fetch S3 paths and generate CSV
 function generate_inventory_csv {
-    yq eval '.backup.include_paths[]' data-lifecycle.yaml | \
-    xargs -I {} sh -c "aws --endpoint ${NRP_ENDPOINT} s3 ls --recursive '{}' | \
-    awk -v path='{}' '{start = index(\$0, \$4); filename = substr(\$0, start); sub(/s3:\/\//, \"\", path); print \$1\"T\"\$2\"+00:00,\\\"\"path filename\"\\\"\"}'" | \
-    tee "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
+    yq eval '.backup.include_paths[]' data-lifecycle.yaml | while read -r s3_path; do
+        # Extract bucket and (optional) prefix from the s3 path
+        bucket=$(echo "$s3_path" | sed -E 's|s3://([^/]+)/?.*|\1|')
+        prefix=$(echo "$s3_path" | sed -E 's|s3://[^/]+/?(.*)|\1|')
+
+        # Format rclone remote name (e.g., "s3:bucket")
+        rclone_remote="s3:${bucket}"
+
+        # Run rclone lsjson with optional prefix
+        rclone lsjson --recursive --fast-list "${rclone_remote}/${prefix}" | \
+        jq -r --arg bucket "$bucket" --arg prefix "$prefix" '
+            .[] | "\(.ModTime),\"s3://" + $bucket + "/" + ($prefix | select(. != "") + "/") + .Path + "\""
+        '
+    done | tee "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
 }
 
 # Function to display processing progress
