@@ -2,6 +2,7 @@
 
 import os
 import sys
+import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import braingeneers.utils.smart_open_braingeneers as smart_open_bgr
 import smart_open as smart_open_aws
@@ -15,6 +16,7 @@ AWS_PROFILE = 'aws-braingeneers-backups'
 # Create a boto3 session using the specified AWS profile
 session = boto3.Session(profile_name=AWS_PROFILE)
 s3_client = session.client('s3')
+
 
 def copy_file(source_key, glacier_bucket):
     try:
@@ -33,7 +35,8 @@ def copy_file(source_key, glacier_bucket):
     except Exception as e:
         return source_key, False, e
 
-def process_files(file_list, glacier_bucket, max_workers=1):
+
+def process_files(file_list, glacier_bucket, max_workers):
     total_files = len(file_list)
     success_count = 0
     failure_count = 0
@@ -68,15 +71,21 @@ def process_files(file_list, glacier_bucket, max_workers=1):
 
     return failure_count == 0
 
+
 def main():
+    parser = argparse.ArgumentParser(description="Copy S3 files to Glacier bucket with parallel processing.")
+    parser.add_argument('-w', '--workers', type=int, default=1, help='Number of worker threads (default: 1)')
+    args = parser.parse_args()
+
     puts_file = os.path.join(LOCAL_SCRATCH_DIR, 'puts.txt')
 
     with open(puts_file, 'r') as f:
         file_list = f.readlines()
 
-    success = process_files(file_list, GLACIER_BUCKET)
+    success = process_files(file_list, GLACIER_BUCKET, max_workers=args.workers)
 
     sys.exit(0 if success else 1)
+
 
 if __name__ == '__main__':
     main()
