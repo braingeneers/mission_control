@@ -2,7 +2,7 @@
 
 import os
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_EXCEPTION
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import braingeneers.utils.smart_open_braingeneers as smart_open_bgr
 import smart_open as smart_open_aws
 import boto3
@@ -29,39 +29,44 @@ def copy_file(source_key, glacier_bucket):
                     fout.write(data)
                 else:
                     break
-        return source_key, True
+        return source_key, True, None
     except Exception as e:
         return source_key, False, e
 
 def process_files(file_list, glacier_bucket, max_workers=1):
     total_files = len(file_list)
-    success = True
+    success_count = 0
+    failure_count = 0
+    failures = []
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(copy_file, file.strip(), glacier_bucket): file for file in file_list}
 
-        # Use wait with FIRST_EXCEPTION to stop processing on first failure
-        done, not_done = wait(futures, return_when=FIRST_EXCEPTION)
-
-        for future in done:
+        for idx, future in enumerate(as_completed(futures), 1):
             try:
-                source_key, file_success, *error = future.result()
+                source_key, file_success, error = future.result()
                 if file_success:
-                    print(f'Processed: {list(futures).index(future) + 1}/{total_files} s3://{source_key}')
+                    success_count += 1
+                    print(f'Processed: {idx}/{total_files} s3://{source_key}')
                 else:
-                    success = False
-                    print(f'Upload failed: s3://{source_key} - {error[0]}', file=sys.stderr)
-                    break
+                    failure_count += 1
+                    failures.append((source_key, error))
+                    print(f'Upload failed: s3://{source_key} - {error}', file=sys.stderr)
             except Exception as e:
-                success = False
+                failure_count += 1
+                failures.append(('unknown', e))
                 print(f'Exception occurred: {e}', file=sys.stderr)
-                break
 
-        # Cancel remaining futures if a failure occurred
-        if not success:
-            for future in not_done:
-                future.cancel()
+    print(f'\nSummary:')
+    print(f'  Successes: {success_count}')
+    print(f'  Failures: {failure_count}')
 
-    return success
+    if failure_count > 0:
+        print('\nFailed Files:')
+        for source_key, error in failures:
+            print(f'  s3://{source_key} - {error}', file=sys.stderr)
+
+    return failure_count == 0
 
 def main():
     puts_file = os.path.join(LOCAL_SCRATCH_DIR, 'puts.txt')
@@ -71,8 +76,7 @@ def main():
 
     success = process_files(file_list, GLACIER_BUCKET)
 
-    if not success:
-        sys.exit(1)
+    sys.exit(0 if success else 1)
 
 if __name__ == '__main__':
     main()
