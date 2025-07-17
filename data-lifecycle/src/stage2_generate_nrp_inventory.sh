@@ -15,20 +15,36 @@ echo "#"
 
 # Function to fetch S3 paths and generate CSV
 function generate_inventory_csv {
-    yq eval '.backup.include_paths[]' data-lifecycle.yaml | while read -r s3_path; do
-        # Extract bucket and (optional) prefix from the s3 path
-        bucket=$(echo "$s3_path" | sed -E 's|s3://([^/]+)/?.*|\1|')
+    echo "Parsing data-lifecycle.yaml for S3 paths..."
+
+    # Extract S3 paths from YAML
+    s3_paths=$(yq eval '.backup.include_paths[]' data-lifecycle.yaml)
+
+    # Extract unique buckets
+    buckets=$(echo "$s3_paths" | sed -E 's|s3://([^/]+).*|\1|' | sort -u)
+
+    echo "Found the following buckets:"
+    echo "$buckets" | sed 's/^/ - /'
+
+    # Prepare inventory output
+    : > "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
+
+    # Loop through each path
+    echo "$s3_paths" | while read -r s3_path; do
+        bucket=$(echo "$s3_path" | sed -E 's|s3://([^/]+).*|\1|')
         prefix=$(echo "$s3_path" | sed -E 's|s3://[^/]+/?(.*)|\1|')
 
-        # Format rclone remote name (e.g., "s3:bucket")
-        rclone_remote="s3west:${bucket}"
+        rclone_remote="s3:${bucket}"
 
-        # Run rclone lsjson with optional prefix
-        rclone lsjson --recursive --fast-list "${rclone_remote}/${prefix}" | \
-        jq -r --arg bucket "$bucket" --arg prefix "$prefix" '
-            .[] | "\(.ModTime),\"s3://" + $bucket + "/" + ($prefix | select(. != "") + "/") + .Path + "\""
-        '
-    done | tee "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
+        echo "Processing bucket: $bucket"
+        [ -n "$prefix" ] && echo " → Prefix: $prefix"
+
+        # Run rclone with progress and write paths
+        rclone lsf --recursive --fast-list --progress "${rclone_remote}/${prefix}" 2> >(tee -a "${LOCAL_SCRATCH_DIR}/rclone_errors.log" >&2) | \
+        while read -r path; do
+            echo "UNKNOWN_DATE,\"s3://${bucket}/${prefix:+${prefix}/}${path}\""
+        done >> "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
+    done
 }
 
 # Function to display processing progress
