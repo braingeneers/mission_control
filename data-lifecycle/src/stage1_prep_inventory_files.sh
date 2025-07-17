@@ -29,4 +29,3 @@ echo "Copied s3://braingeneers-backups-inventory/braingeneers-backups-glacier/da
 # Upload the glacier manifest to PRP/S3
 aws --endpoint ${NRP_ENDPOINT} s3 cp ${LOCAL_SCRATCH_DIR}/glacier_inventory.csv.gz ${PRIMARY_INVENTORY_PATH}glacier_inventory.csv.gz
 gunzip -f ${LOCAL_SCRATCH_DIR}/glacier_inventory.csv.gz
-

@@ -15,10 +15,40 @@ echo "#"
 
 # Function to fetch S3 paths and generate CSV
 function generate_inventory_csv {
-    yq eval '.backup.include_paths[]' data-lifecycle.yaml | \
-    xargs -I {} sh -c "aws --endpoint ${NRP_ENDPOINT} s3 ls --recursive '{}' | \
-    awk -v path='{}' '{start = index(\$0, \$4); filename = substr(\$0, start); sub(/s3:\/\//, \"\", path); print \$1\"T\"\$2\"+00:00,\\\"\"path filename\"\\\"\"}'" | \
-    tee "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
+    yq eval '.backup.include_paths[]' data-lifecycle.yaml | while read -r s3_path; do
+        # Extract bucket and prefix
+        bucket=$(echo "$s3_path" | sed -E 's|s3://([^/]+)/?.*|\1|')
+        prefix=$(echo "$s3_path" | sed -E 's|s3://[^/]+/?||')
+
+        # Pagination loop using continuation-token
+        continuation_token=""
+        is_truncated=true
+
+        while [ "$is_truncated" = true ]; do
+            # Build base command
+            cmd=(aws --endpoint "${NRP_ENDPOINT}" s3api list-objects-v2
+                --bucket "$bucket"
+                --output json
+                --query 'Contents[].{Key: Key, LastModified: LastModified}'
+                --prefix "$prefix"
+                --max-items 1000)
+
+            # Add token if present
+            [ -n "$continuation_token" ] && cmd+=(--starting-token "$continuation_token")
+
+            # Run command and capture JSON output and new token
+            output_json=$( "${cmd[@]}" )
+            continuation_token=$(echo "$output_json" | jq -r 'nextToken // empty')
+
+            # Output CSV-formatted lines
+            echo "$output_json" | jq -r --arg path "$s3_path" '
+                .[] | "\(.LastModified),\"\($path)\(.Key)\""
+            '
+
+            # If no continuation token, we’re done
+            [ -z "$continuation_token" ] && is_truncated=false
+        done
+    done | tee "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
 }
 
 # Function to display processing progress
