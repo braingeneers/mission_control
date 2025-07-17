@@ -10,3 +10,13 @@ services:
     working_dir: /data_lifecycle/src
     volumes:
       - ${HOME}/.aws/credentials:/home/jovyan/.aws/credentials:ro
+
+  # log into image at bash command line with all mounts configured as usual, used for debugging
+  shell-debug-data-lifecycle:
+    image: braingeneers/data-lifecycle:latest
+    command: bash
+    working_dir: /data_lifecycle/src
+    volumes:
+      - ${HOME}/.aws/credentials:/home/jovyan/.aws/credentials:ro
+    stdin_open: true
+    tty: true
