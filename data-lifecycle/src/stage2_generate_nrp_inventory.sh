@@ -29,18 +29,18 @@ function generate_inventory_csv {
     # Prepare inventory output
     : > "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
 
-    # Loop through each path
+    # Loop through each S3 path
     echo "$s3_paths" | while read -r s3_path; do
         bucket=$(echo "$s3_path" | sed -E 's|s3://([^/]+).*|\1|')
         prefix=$(echo "$s3_path" | sed -E 's|s3://[^/]+/?(.*)|\1|')
 
-        rclone_remote="s3:${bucket}"
+        # Use s3west:bucket/prefix syntax
+        remote_path="s3west:${bucket}/${prefix}"
 
         echo "Processing bucket: $bucket"
         [ -n "$prefix" ] && echo " → Prefix: $prefix"
 
-        # Run rclone with progress and write paths
-        rclone lsf --recursive --fast-list --progress "${rclone_remote}/${prefix}" 2> >(tee -a "${LOCAL_SCRATCH_DIR}/rclone_errors.log" >&2) | \
+        rclone lsf --recursive --fast-list --progress "$remote_path" 2> >(tee -a "${LOCAL_SCRATCH_DIR}/rclone_errors.log" >&2) | \
         while read -r path; do
             echo "UNKNOWN_DATE,\"s3://${bucket}/${prefix:+${prefix}/}${path}\""
         done >> "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
