@@ -12,7 +12,7 @@ services:
       - ${HOME}/.aws/credentials:/home/jovyan/.aws/credentials:ro
       - ${HOME}/.config/rclone/rclone.conf:/home/jovyan/.config/rclone/rclone.conf:ro
 
-  data-lifecycle-shell:
+  shell-data-lifecycle:
     image: braingeneers/data-lifecycle:latest
     command: bash
     working_dir: /data_lifecycle/src
