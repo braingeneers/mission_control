@@ -20,7 +20,6 @@ s3_client = session.client('s3')
 
 def copy_file(source_key, glacier_bucket):
     try:
-        print(f'Copying: {source_key}')
         source_url = f's3://{source_key}'
         destination_url = f's3://{glacier_bucket}/{source_key}'
 
