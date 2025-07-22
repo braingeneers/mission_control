@@ -4,7 +4,7 @@ set -euo pipefail
 
 #####################################################################################
 ## Stage 2:
-## Crawl PRP/S3 and generate an inventory of files using rclone, with progress shown
+## Crawl PRP/S3 and generate an inventory of files using rclone, with real-time progress
 #####################################################################################
 
 echo ""
@@ -12,18 +12,10 @@ echo "#"
 echo "# Stage 2: Scan PRP/S3 and generate inventory."
 echo "#"
 
-# Optional defaults, override via Docker env
+# Optional defaults, override via Docker ENV
 : "${LOCAL_SCRATCH_DIR:=/tmp}"
 : "${NRP_ENDPOINT:=https://your-nrp-endpoint}"
 : "${PRIMARY_INVENTORY_PATH:=s3://braingeneers/services/data-lifecycle/}"
-
-#-----------------------------
-# Fetch S3 paths from YAML
-#-----------------------------
-function fetch_s3_paths {
-  echo "Parsing data-lifecycle.yaml for S3 paths..."
-  yq eval '.backup.include_paths[]' data-lifecycle.yaml
-}
 
 #-----------------------------
 # Extract bucket and prefix
@@ -37,7 +29,7 @@ function extract_prefix {
 }
 
 #-----------------------------
-# Process S3 path into inventory via FIFO
+# Process one S3 path into inventory via FIFO
 #-----------------------------
 function scan_s3_inventory {
   local s3_path="$1"
@@ -78,15 +70,23 @@ function generate_csv_from_fifo {
   local bucket="$2"
   local prefix="$3"
   local count=0
+  local printed=0
 
   echo -n "Processed: 1"
+
   while read -r path; do
     ((count++))
-    if (( count % 500 == 0 && count > 1 )); then
+    if (( count == 1 )); then
+      printed=1
+    elif (( count % 500 == 0 )); then
       echo -n "...$count"
     fi
     echo "UNKNOWN_DATE,\"s3://${bucket}/${prefix:+${prefix}/}${path}\"" >> "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
   done < "$fifo"
+
+  if (( printed == 1 && count < 500 )); then
+    echo ""
+  fi
 }
 
 #-----------------------------
@@ -120,10 +120,21 @@ function main {
   : > "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
   : > "${LOCAL_SCRATCH_DIR}/rclone_errors.log"
 
-  fetch_s3_paths | while read -r s3_path; do
+  echo "Parsing data-lifecycle.yaml for S3 paths..."
+  s3_paths=$(yq eval '.backup.include_paths[]' data-lifecycle.yaml)
+
+  echo "Found the following S3 paths:"
+  echo "$s3_paths" | sed 's/^/ - /'
+
+  echo ""
+  echo "# Starting inventory scan..."
+  echo ""
+
+  echo "$s3_paths" | while read -r s3_path; do
     scan_s3_inventory "$s3_path"
   done
 
+  echo ""
   echo "🧾 Inventory scan complete. CSV saved to: ${LOCAL_SCRATCH_DIR}/local_inventory.csv"
   echo "📄 Any rclone errors logged to: ${LOCAL_SCRATCH_DIR}/rclone_errors.log"
 
