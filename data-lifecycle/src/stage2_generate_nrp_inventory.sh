@@ -1,93 +1,109 @@
 #!/usr/bin/env bash
 
-#####################################################################################
-## Stage 2:
-## Crawl the PRP/S3 and generate an inventory of the files using aws CLI
-#####################################################################################
+set -euo pipefail
 
-# Copy the result to PRP/S3 at s3://braingeneers/services/data-lifecycle/local-inventory.csv
-# Note that rclone wasn't used here because it has a bug in which filenames with // in them aren't processed properly.
-# CSV output format example: 2022-01-30T11:21:50+00:00,"braingeneersdev/tmp/test"
 echo ""
 echo "#"
 echo "# Stage 2: Scan PRP/S3 and generate inventory."
 echo "#"
 
-# Function to fetch S3 paths and generate CSV
-function generate_inventory_csv {
-    echo "Parsing data-lifecycle.yaml for S3 paths..."
+# Optional defaults, override via environment or Docker
+: "${LOCAL_SCRATCH_DIR:=/tmp}"
+: "${NRP_ENDPOINT:=https://s3.braingeneers.gi.ucsc.edu}"
+: "${PRIMARY_INVENTORY_PATH:=s3://braingeneers/services/data-lifecycle/}"
 
-    # Extract S3 paths from YAML
-    s3_paths=$(yq eval '.backup.include_paths[]' data-lifecycle.yaml)
-
-    # Extract unique buckets
-    buckets=$(echo "$s3_paths" | sed -E 's|s3://([^/]+).*|\1|' | sort -u)
-
-    echo "Found the following buckets:"
-    echo "$buckets" | sed 's/^/ - /'
-
-    : > "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
-    error_log="${LOCAL_SCRATCH_DIR}/rclone_errors.log"
-    : > "$error_log"
-
-    echo "Starting inventory scan..."
-
-    echo "$s3_paths" | while read -r s3_path; do
-        bucket=$(echo "$s3_path" | sed -E 's|s3://([^/]+).*|\1|')
-        prefix=$(echo "$s3_path" | sed -E 's|s3://[^/]+/?(.*)|\1|')
-        remote_path="s3west:${bucket}/${prefix}"
-
-        echo "🟢 Scanning: $remote_path"
-        count=0
-
-        rclone lsf --recursive --fast-list --progress "$remote_path" 2> >(tee -a "$error_log" >&2) | \
-        while read -r path; do
-            ((count++))
-            echo "Processed: $count"
-            echo "UNKNOWN_DATE,\"s3://${bucket}/${prefix:+${prefix}/}${path}\""
-        done >> "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
-
-        echo "✅ Completed: $remote_path — $count objects"
-    done
-
-    echo "Inventory scan complete. CSV saved to: ${LOCAL_SCRATCH_DIR}/local_inventory.csv"
-    echo "Any rclone errors logged to: $error_log"
+function fetch_s3_paths {
+  echo "Parsing data-lifecycle.yaml for S3 paths..."
+  yq eval '.backup.include_paths[]' data-lifecycle.yaml
 }
 
-# Function to display processing progress
-function track_progress {
-    local I=0
-    while read; do
-        printf "Processed: $((++I))\r";
-    done
-    echo ""
+function extract_bucket {
+  sed -E 's|s3://([^/]+).*|\1|'
 }
 
-# Function to upload file to S3 with retries
-function upload_with_retry {
-    local attempts=0
-    local max_attempts=10
-    while [[ $attempts -lt $max_attempts ]]; do
-        # Attempt to gzip and upload the file
-        gzip -c "${LOCAL_SCRATCH_DIR}/local_inventory.csv" | \
-        aws --endpoint ${NRP_ENDPOINT} s3 cp - "${PRIMARY_INVENTORY_PATH}local_inventory.csv.gz" && {
-            echo "Saved: ${PRIMARY_INVENTORY_PATH}local_inventory.csv.gz"
-            return
-        }
-        # Increment attempt counter and log retry attempt
-        ((attempts++))
-        echo "Attempt $attempts of $max_attempts failed, retrying in 5 seconds..."
-        sleep 5
-    done
-    echo "Failed to upload after $max_attempts attempts."
+function extract_prefix {
+  sed -E 's|s3://[^/]+/?(.*)|\1|'
 }
 
-# Main function to orchestrate the workflow
+function scan_s3_inventory {
+  local s3_path="$1"
+  local bucket
+  local prefix
+  local remote_path
+  local listing_file
+  local error_log
+  local full_log
+
+  bucket=$(echo "$s3_path" | extract_bucket)
+  prefix=$(echo "$s3_path" | extract_prefix)
+  remote_path="s3west:${bucket}/${prefix}"
+  listing_file="${LOCAL_SCRATCH_DIR}/tmp_listing.txt"
+  error_log="${LOCAL_SCRATCH_DIR}/rclone_errors.log"
+  full_log="${LOCAL_SCRATCH_DIR}/rclone_full.log"
+
+  echo "🟢 Scanning: $remote_path"
+
+  # Run rclone and save file list to a temp file
+  rclone lsf --recursive --fast-list "$remote_path" \
+    --log-file="$full_log" --log-level INFO > "$listing_file" 2>> "$error_log"
+
+  echo "✅ Listing complete. Processing paths..."
+  generate_csv_from_listing "$listing_file" "$bucket" "$prefix"
+}
+
+function generate_csv_from_listing {
+  local listing_file="$1"
+  local bucket="$2"
+  local prefix="$3"
+  local count=0
+
+  while read -r path; do
+    ((count++))
+    if (( count == 1 )); then
+      echo -n "Processed: 1"
+    elif (( count % 500 == 0 )); then
+      echo -n "...$count"
+    fi
+    echo "UNKNOWN_DATE,\"s3://${bucket}/${prefix:+${prefix}/}${path}\""
+  done < "$listing_file" >> "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
+
+  echo ""
+  echo "✅ Completed: s3://${bucket}/${prefix} — $count objects"
+}
+
+function upload_inventory {
+  local attempts=0
+  local max_attempts=10
+  local output_path="${PRIMARY_INVENTORY_PATH}local_inventory.csv.gz"
+
+  echo "Uploading inventory CSV to: $output_path"
+
+  while [[ $attempts -lt $max_attempts ]]; do
+    gzip -c "${LOCAL_SCRATCH_DIR}/local_inventory.csv" | \
+      aws --endpoint "${NRP_ENDPOINT}" s3 cp - "$output_path" && {
+        echo "✅ Saved: $output_path"
+        return
+      }
+    ((attempts++))
+    echo "❌ Upload attempt $attempts failed, retrying in 5 seconds..."
+    sleep 5
+  done
+
+  echo "🔥 Failed to upload inventory after $max_attempts attempts."
+}
+
 function main {
-    generate_inventory_csv | track_progress
-    upload_with_retry
+  : > "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
+  : > "${LOCAL_SCRATCH_DIR}/rclone_errors.log"
+
+  fetch_s3_paths | while read -r s3_path; do
+    scan_s3_inventory "$s3_path"
+  done
+
+  echo "🧾 Inventory scan complete. CSV: ${LOCAL_SCRATCH_DIR}/local_inventory.csv"
+  echo "📄 Errors logged to: ${LOCAL_SCRATCH_DIR}/rclone_errors.log"
+
+  upload_inventory
 }
 
-# Execute the main function
 main
-
