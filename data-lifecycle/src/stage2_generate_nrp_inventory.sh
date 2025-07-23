@@ -36,9 +36,9 @@ function scan_s3_inventory {
   local bucket
   local prefix
   local remote_path
-  local listing_file="${LOCAL_SCRATCH_DIR}/tmp/rclone_list.txt"
-  local error_log="${LOCAL_SCRATCH_DIR}/tmp/rclone_errors.log"
-  local full_log="${LOCAL_SCRATCH_DIR}/tmp/rclone_full.log"
+  local listing_file="${LOCAL_SCRATCH_DIR}/rclone_list.txt"
+  local error_log="${LOCAL_SCRATCH_DIR}/rclone_errors.log"
+  local full_log="${LOCAL_SCRATCH_DIR}/rclone_full.log"
 
   bucket=$(echo "$s3_path" | extract_bucket)
   prefix=$(echo "$s3_path" | extract_prefix)
