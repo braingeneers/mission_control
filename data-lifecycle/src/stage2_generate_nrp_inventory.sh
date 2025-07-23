@@ -4,7 +4,7 @@ set -euo pipefail
 
 #####################################################################################
 ## Stage 2:
-## Crawl PRP/S3 and generate an inventory of files using rclone, with real-time progress
+## Crawl PRP/S3 and generate an inventory of files using rclone, with debug-friendly progress
 #####################################################################################
 
 echo ""
@@ -29,16 +29,16 @@ function extract_prefix {
 }
 
 #-----------------------------
-# Process one S3 path into inventory via FIFO
+# Scan one S3 path using rclone and store in temp file
 #-----------------------------
 function scan_s3_inventory {
   local s3_path="$1"
   local bucket
   local prefix
   local remote_path
-  local fifo="${LOCAL_SCRATCH_DIR}/rclone_fifo"
-  local error_log="${LOCAL_SCRATCH_DIR}/rclone_errors.log"
-  local full_log="${LOCAL_SCRATCH_DIR}/rclone_full.log"
+  local listing_file="${LOCAL_SCRATCH_DIR}/tmp/rclone_list.txt"
+  local error_log="${LOCAL_SCRATCH_DIR}/tmp/rclone_errors.log"
+  local full_log="${LOCAL_SCRATCH_DIR}/tmp/rclone_full.log"
 
   bucket=$(echo "$s3_path" | extract_bucket)
   prefix=$(echo "$s3_path" | extract_prefix)
@@ -46,45 +46,43 @@ function scan_s3_inventory {
 
   echo "🟢 Scanning: $remote_path"
 
-  rm -f "$fifo"
-  mkfifo "$fifo"
-
-  # Background: rclone writes to FIFO
+  # Run rclone and output to file (debuggable)
+  rm -f "$listing_file"
   rclone lsf --recursive --fast-list "$remote_path" \
-    --log-file="$full_log" --log-level INFO > "$fifo" 2>> "$error_log" &
+    --log-file="$full_log" --log-level INFO > "$listing_file" 2>> "$error_log"
 
-  # Foreground: read from FIFO and build CSV
-  generate_csv_from_fifo "$fifo" "$bucket" "$prefix"
+  # Process the file and generate CSV
+  generate_csv_from_file "$listing_file" "$bucket" "$prefix"
 
   echo ""
   echo "✅ Completed: s3://${bucket}/${prefix}"
-
-  rm -f "$fifo"
 }
 
 #-----------------------------
-# Read paths from FIFO and generate CSV with inline progress
+# Convert listing file to CSV with compact progress updates
 #-----------------------------
-function generate_csv_from_fifo {
-  local fifo="$1"
+function generate_csv_from_file {
+  local listing_file="$1"
   local bucket="$2"
   local prefix="$3"
   local count=0
-  local printed=0
 
-  echo -n "Processed: 1"
+  echo -n "Found: 1"
 
   while read -r path; do
     ((count++))
     if (( count == 1 )); then
-      printed=1
+      # Already printed
+      :
     elif (( count % 500 == 0 )); then
       echo -n "...$count"
     fi
-    echo "UNKNOWN_DATE,\"s3://${bucket}/${prefix:+${prefix}/}${path}\"" >> "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
-  done < "$fifo"
 
-  if (( printed == 1 && count < 500 )); then
+    echo "UNKNOWN_DATE,\"s3://${bucket}/${prefix:+${prefix}/}${path}\"" >> "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
+  done < "$listing_file"
+
+  # Ensure newline after final count
+  if (( count < 500 )); then
     echo ""
   fi
 }
