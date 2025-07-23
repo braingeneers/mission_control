@@ -46,10 +46,35 @@ function scan_s3_inventory {
 
   echo "🟢 Scanning: $remote_path"
 
-  # Run rclone and output to file (debuggable)
+  # Clear any previous file
   rm -f "$listing_file"
+
+  #-----------------------------------------
+  # Background progress monitor (prints every 500 lines as file grows)
+  #-----------------------------------------
+  (
+    count=0
+    while sleep 1; do
+      [[ -f "$listing_file" ]] || continue
+      lines=$(wc -l < "$listing_file")
+      if (( lines >= count + 500 )); then
+        count=$(( ((lines / 500)) * 500 ))
+        echo -n "...$count"
+      fi
+    done
+  ) &
+  monitor_pid=$!
+
+  # Run rclone and output to file (debuggable)
   rclone lsf --recursive --fast-list "$remote_path" \
     --log-file="$full_log" --log-level INFO > "$listing_file" 2>> "$error_log"
+
+  # Clean up progress monitor
+  kill "$monitor_pid" 2>/dev/null || true
+  wait "$monitor_pid" 2>/dev/null || true
+
+  # Ensure newline after final progress batch
+  echo ""
 
   # Process the file and generate CSV
   generate_csv_from_file "$listing_file" "$bucket" "$prefix"
@@ -59,32 +84,16 @@ function scan_s3_inventory {
 }
 
 #-----------------------------
-# Convert listing file to CSV with compact progress updates
+# Convert listing file to CSV (progress now handled in scan)
 #-----------------------------
 function generate_csv_from_file {
   local listing_file="$1"
   local bucket="$2"
   local prefix="$3"
-  local count=0
-
-  echo -n "Found: 1"
 
   while read -r path; do
-    ((count++))
-    if (( count == 1 )); then
-      # Already printed
-      :
-    elif (( count % 500 == 0 )); then
-      echo -n "...$count"
-    fi
-
     echo "UNKNOWN_DATE,\"s3://${bucket}/${prefix:+${prefix}/}${path}\"" >> "${LOCAL_SCRATCH_DIR}/local_inventory.csv"
   done < "$listing_file"
-
-  # Ensure newline after final count
-  if (( count < 500 )); then
-    echo ""
-  fi
 }
 
 #-----------------------------
