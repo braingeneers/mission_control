@@ -50,8 +50,11 @@ function scan_s3_inventory {
   rm -f "$listing_file"
 
   #-----------------------------------------
-  # Background progress monitor (prints every 500 lines as file grows)
+  # Background progress monitor
+  # Prints: 1...500...1000... as file grows
   #-----------------------------------------
+  echo -n "1..."  # Initial output for first entry
+
   (
     count=0
     while sleep 1; do
@@ -59,7 +62,7 @@ function scan_s3_inventory {
       lines=$(wc -l < "$listing_file")
       if (( lines >= count + 500 )); then
         count=$(( ((lines / 500)) * 500 ))
-        echo -n "...$count"
+        echo -n "${count}..."
       fi
     done
   ) &
