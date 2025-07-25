@@ -45,8 +45,8 @@ function scan_s3_inventory {
     while sleep 1; do
       [[ -f "$listing_file" ]] || continue
       lines=$(grep -c '^{.*}$' "$listing_file" || true)
-      if (( lines >= count + 500 )); then
-        count=$(( ((lines / 500)) * 500 ))
+      if (( lines >= count + 5000 )); then
+        count=$(( ((lines / 5000)) * 5000 ))
         echo -n "${count}..."
       fi
     done
