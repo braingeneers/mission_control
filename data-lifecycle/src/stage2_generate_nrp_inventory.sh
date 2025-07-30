@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo ""
-echo "#"
-echo "# Stage 2: Scan PRP/S3 and generate inventory."
-echo "#"
-
 : "${LOCAL_SCRATCH_DIR:=/tmp}"
 : "${NRP_ENDPOINT:=https://your-nrp-endpoint}"
 : "${PRIMARY_INVENTORY_PATH:=s3://braingeneers/services/data-lifecycle/}"
@@ -14,6 +9,21 @@ LOCAL_INVENTORY="${LOCAL_SCRATCH_DIR}/local_inventory.csv"
 ERROR_LOG="${LOCAL_SCRATCH_DIR}/rclone_errors.log"
 FULL_LOG="${LOCAL_SCRATCH_DIR}/rclone_full.log"
 LISTING_FILE="${LOCAL_SCRATCH_DIR}/rclone_list.json"
+OUTPUT_PATH="${PRIMARY_INVENTORY_PATH}local_inventory.csv.gz"
+
+echo ""
+echo "#"
+echo "# Stage 2: Scan PRP/S3 and generate inventory."
+echo "#"
+
+echo ""
+echo "📂 Output files will be written to:"
+echo " - Inventory CSV (local):     $LOCAL_INVENTORY"
+echo " - Compressed upload target:  $OUTPUT_PATH"
+echo " - Error log:                 $ERROR_LOG"
+echo " - Full rclone log:           $FULL_LOG"
+echo " - Raw rclone listing:        $LISTING_FILE"
+echo ""
 
 echo "🔧 Initializing output files..."
 : > "$LOCAL_INVENTORY"
@@ -82,13 +92,12 @@ echo "🧾 Inventory scan complete."
 # Upload CSV to S3 (gzipped)
 attempts=0
 max_attempts=10
-output_path="${PRIMARY_INVENTORY_PATH}local_inventory.csv.gz"
 
 echo ""
-echo "📤 Uploading compressed CSV to: $output_path"
+echo "📤 Uploading compressed CSV to: $OUTPUT_PATH"
 while [[ $attempts -lt $max_attempts ]]; do
-  if gzip -c "$LOCAL_INVENTORY" | aws --endpoint "$NRP_ENDPOINT" s3 cp - "$output_path"; then
-    echo "✅ Successfully uploaded inventory to $output_path"
+  if gzip -c "$LOCAL_INVENTORY" | aws --endpoint "$NRP_ENDPOINT" s3 cp - "$OUTPUT_PATH"; then
+    echo "✅ Successfully uploaded inventory to $OUTPUT_PATH"
     break
   fi
   ((attempts++))
@@ -101,11 +110,4 @@ if [[ $attempts -eq $max_attempts ]]; then
 fi
 
 echo ""
-echo "📍 Summary:"
-echo " - Inventory CSV:           $LOCAL_INVENTORY"
-echo " - Compressed (gz) upload:  $output_path"
-echo " - rclone errors:           $ERROR_LOG"
-echo " - rclone full log:         $FULL_LOG"
-echo " - Last raw listing (JSON): $LISTING_FILE"
-echo ""
-echo "✅ Done."
+echo "✅ Done. See output files in: $LOCAL_SCRATCH_DIR"
