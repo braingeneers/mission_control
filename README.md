@@ -247,7 +247,7 @@ include the Authorization header with the Bearer token. `braingeneerspy` will ha
 the first time, which requires manual authentication: 
 
 ```python
-python -m braingeneers.iot.messaging authenticate
+python -m braingeneers.iot.authenticate
 ``` 
 
 That `braingeneerspy` command will
