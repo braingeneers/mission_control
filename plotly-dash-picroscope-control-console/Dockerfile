@@ -19,7 +19,9 @@ RUN pip install --upgrade pip && \
     # Force reinstall packages that braingeneers expects metadata for
     #pip install --no-cache-dir --force-reinstall --ignore-installed \
     #    paho-mqtt==2.1.0 redis==6.4.0 schedule && \
-    python -m pip install --force-reinstall git+https://github.com/braingeneers/braingeneerspy.git
+    #python -m pip install --force-reinstall git+https://github.com/braingeneers/braingeneerspy.git
+    pip install braingeneers    
+#python -m pip install --force-reinstall git+https://github.com/braingeneers/braingeneerspy.git@self-hosted-mqtt#egg=braingeneerspy[iot]
 # Ensure required optional packages for braingeneers.iot are correctly installed
 #RUN pip install --no-cache-dir --upgrade --force-reinstall --no-binary :all: redis paho-mqtt schedule
 

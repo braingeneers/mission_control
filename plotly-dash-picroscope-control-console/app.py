@@ -38,10 +38,10 @@ app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP], url_base_pathname=b
 app.title = 'Braingeneers Control Panel'
 get_callbacks(app)
 experiment_panel.get_callbacks(app)
-auth = dash_auth.BasicAuth(
-    app,
-    USERNAME_PASSWORD_PAIRS
-)
+#auth = dash_auth.BasicAuth(
+#    app,
+#    USERNAME_PASSWORD_PAIRS
+#)
 
 app.layout = html.Div(id='main-div', className='row flex-display', children=[
     

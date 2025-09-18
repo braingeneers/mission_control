@@ -31,7 +31,8 @@ export default {
     async mounted(){
         var token = window.localStorage.getItem('jwt');
         console.log("token", token)
-        if (token){
+        // eslint-disable-next-line no-constant-condition
+        if (true){
             this.$router.push("/experiments");
         } else{
             // beforeEnter() { location.href = `${process.env.VUE_APP_API_ENDPOINT}/api/connect/auth0` }
