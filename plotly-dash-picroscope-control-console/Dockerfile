@@ -1,35 +1,38 @@
-FROM continuumio/anaconda3:latest
+# Use official Python 3.10 slim image
+FROM python:3.10-slim
 
-# Apt packages
+# Install apt packages
 RUN apt-get update --allow-releaseinfo-change && \
     apt-get install -y --no-install-recommends \
-        wget \
-        curl \
-        nano \
-        zip \
-        git \
-        awscli \
-#        glances \
-        screen \
-        fonts-freefont-ttf \
-        sqlite3
+        wget curl nano zip git awscli screen fonts-freefont-ttf sqlite3 && \
+    rm -rf /var/lib/apt/lists/*
 
+# Set work directory
+WORKDIR /console
 
-# Pip installs
-COPY requirements.txt ./requirements.txt
+# Copy requirements.txt
+COPY requirements.txt /tmp/requirements.txt
+
+# Upgrade pip and install Python packages
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r ./requirements.txt && \
-    python -m pip install --force-reinstall git+https://github.com/braingeneers/braingeneerspy.git@self-hosted-mqtt#egg=braingeneerspy[iot]
+    pip install --no-cache-dir -r /tmp/requirements.txt && \
+    # Force reinstall packages that braingeneers expects metadata for
+    #pip install --no-cache-dir --force-reinstall --ignore-installed \
+    #    paho-mqtt==2.1.0 redis==6.4.0 schedule && \
+    python -m pip install --force-reinstall git+https://github.com/braingeneers/braingeneerspy.git
+# Ensure required optional packages for braingeneers.iot are correctly installed
+#RUN pip install --no-cache-dir --upgrade --force-reinstall --no-binary :all: redis paho-mqtt schedule
 
-# PRP environment variables
+# Copy application code
+COPY . /console
+
+# Environment variables
 ENV ENDPOINT_URL="https://s3.nautilus.optiputer.net"
-# Tensorflow environment variables
 ENV S3_ENDPOINT="s3.nautilus.optiputer.net"
 ENV AWS_LOG_LEVEL=3
 ENV TF_CPP_MIN_LOG_LEVEL=3
-# Environment setup
-#ENV PYTHONPATH="/console:/console/apps/dash-extensions"
-#ENV PATH=".:${PATH}"
+
+# Shell aliases and setup
 RUN echo 'alias aws3="aws --endpoint https://s3.nautilus.optiputer.net s3"' >> ~/.bashrc && \
     echo 'alias awsn="aws --endpoint https://s3.nautilus.optiputer.net"' >> ~/.bashrc && \
     echo 'alias ll="ls -alh --color"' >> ~/.bashrc && \
@@ -37,11 +40,9 @@ RUN echo 'alias aws3="aws --endpoint https://s3.nautilus.optiputer.net s3"' >> ~
     printf 'shell "/bin/bash"\ntermcapinfo xterm* ti@:te@\nterm xterm-color;' >> ~/.screenrc && \
     mkdir -p /console
 
+# Expose Dash default port
+EXPOSE 8050
 
-#this pip install breaks the build when done earlier
-RUN pip install PyGithub
-
-COPY . /console
-WORKDIR /console
+# Run the app
 ENTRYPOINT ["python", "app.py"]
-EXPOSE 8050:8050
+#ENTRYPOINT ["tail", "-f", "/dev/null"]
