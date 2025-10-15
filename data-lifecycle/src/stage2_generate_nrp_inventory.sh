@@ -1,21 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${LOCAL_SCRATCH_DIR:=/tmp}"
-: "${NRP_ENDPOINT:=https://your-nrp-endpoint}"
-: "${PRIMARY_INVENTORY_PATH:=s3://braingeneers/services/data-lifecycle/}"
-
 LOCAL_INVENTORY="${LOCAL_SCRATCH_DIR}/local_inventory.csv"
 ERROR_LOG="${LOCAL_SCRATCH_DIR}/rclone_errors.log"
 FULL_LOG="${LOCAL_SCRATCH_DIR}/rclone_full.log"
 LISTING_FILE="${LOCAL_SCRATCH_DIR}/rclone_list.json"
 OUTPUT_PATH="${PRIMARY_INVENTORY_PATH}local_inventory.csv.gz"
 
-echo ""
-echo "#"
-echo "# Stage 2: Scan PRP/S3 and generate inventory."
-echo "#"
-
+echo -e "\n#"
+echo   "# Stage 2: Scan PRP/S3 and generate inventory."
+echo   "#"
 echo ""
 echo "📂 Output files will be written to:"
 echo " - Inventory CSV (local):     $LOCAL_INVENTORY"
@@ -35,17 +29,12 @@ s3_paths=$(yq eval '.backup.include_paths[]' data-lifecycle.yaml)
 
 echo "🔍 Found S3 paths to scan:"
 echo "$s3_paths" | sed 's/^/ - /'
-
-echo ""
-echo "# Starting inventory scan..."
-echo ""
+echo "\n# Starting inventory scan..."
 
 while read -r s3_path; do
   [[ -z "$s3_path" ]] && continue
-  echo ""
-  echo "🔄 Processing: $s3_path"
+  echo -e "\n🔄 Processing: $s3_path"
 
-  # Extract bucket and prefix
   bucket=$(echo "$s3_path" | sed -E 's|s3://([^/]+).*|\1|')
   prefix=$(echo "$s3_path" | sed -E 's|s3://[^/]+/?(.*)|\1|')
   remote_path="s3west:${bucket}/${prefix}"
@@ -53,48 +42,43 @@ while read -r s3_path; do
   echo "🟢 Scanning remote path: $remote_path"
   rm -f "$LISTING_FILE"
 
-  # Start progress monitor
-  echo -n "Progress: 1..."
-  (
-    count=0
-    while sleep 1; do
-      [[ -f "$LISTING_FILE" ]] || continue
-      lines=$(grep -c '^{.*}$' "$LISTING_FILE" || true)
-      if (( lines >= count + 5000 )); then
-        count=$(( ((lines / 5000)) * 5000 ))
-        echo -n "${count}..."
-      fi
-    done
-  ) &
-  monitor_pid=$!
+  echo "⏳ Listing in progress. This may take some time."
+  echo "👀 Monitor progress in: $LISTING_FILE"
 
-  # Perform scan
-  rclone lsjson --recursive "$remote_path" \
-    --log-file="$FULL_LOG" --log-level INFO > "$LISTING_FILE" 2>> "$ERROR_LOG"
+  # Step 1: Run rclone, output JSON array directly
+  rclone lsjson \
+    --log-file="$FULL_LOG" \
+    --log-level INFO \
+    --checkers=32 \
+    --transfers=32 \
+    --fast-list \
+    --recursive \
+    --s3-list-version 2 \
+    --s3-list-chunk 1000 \
+    "$remote_path" \
+    > "$LISTING_FILE" 2>> "$ERROR_LOG"
 
-  kill "$monitor_pid" 2>/dev/null || true
-  wait "$monitor_pid" 2>/dev/null || true
+  # Step 2: Convert JSON array to NDJSON, overwrite listing file
+  jq -c '.[]' "$LISTING_FILE" > "${LISTING_FILE}.ndjson"
+  mv "${LISTING_FILE}.ndjson" "$LISTING_FILE"
+
   echo ""
 
-  echo "📦 Parsing listing JSON to CSV..."
+  echo "📦 Parsing listing NDJSON to CSV..."
   jq -r --arg bucket "$bucket" --arg prefix "$prefix" '
-    .[] | select(.IsDir == false) |
-    "\(.ModTime | sub("\\.[0-9]+Z$"; "Z") | sub("Z$"; "+00:00") | sub(" "; "T")),\"s3://\($bucket)/\($prefix)\(.Path | @uri)\""
+    select(.IsDir == false) |
+    "\(.ModTime | sub(\"\\.[0-9]+Z$\"; \"Z\") | sub(\"Z$\"; \"+00:00\") | sub(\" \"; \"T\")),\"s3://\($bucket)/\($prefix)\(.Path | @uri)\""
   ' "$LISTING_FILE" >> "$LOCAL_INVENTORY"
 
   echo "✅ Completed: s3://${bucket}/${prefix}"
-
 done <<< "$s3_paths"
 
-echo ""
-echo "🧾 Inventory scan complete."
+echo -e "\n🧾 Inventory scan complete."
 
-# Upload CSV to S3 (gzipped)
 attempts=0
 max_attempts=10
 
-echo ""
-echo "📤 Uploading compressed CSV to: $OUTPUT_PATH"
+echo -e "\n📤 Uploading compressed CSV to: $OUTPUT_PATH"
 while [[ $attempts -lt $max_attempts ]]; do
   if gzip -c "$LOCAL_INVENTORY" | aws --endpoint "$NRP_ENDPOINT" s3 cp - "$OUTPUT_PATH"; then
     echo "✅ Successfully uploaded inventory to $OUTPUT_PATH"
@@ -109,5 +93,4 @@ if [[ $attempts -eq $max_attempts ]]; then
   echo "🔥 Failed to upload inventory after $max_attempts attempts."
 fi
 
-echo ""
-echo "✅ Done. See output files in: $LOCAL_SCRATCH_DIR"
+echo -e "\n✅ Done. See output files in: $LOCAL_SCRATCH_DIR"

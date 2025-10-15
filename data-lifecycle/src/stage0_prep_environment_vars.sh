@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
-export PRIMARY_INVENTORY_PATH='s3://braingeneers/services/data-lifecycle/inventory/'
-export LOCAL_SCRATCH_DIR='/tmp'
-export NRP_ENDPOINT='https://s3.braingeneers.gi.ucsc.edu'
-export GLACIER_BUCKET='braingeneers-backups-glacier'
-export GLACIER_ENDPOINT='https://s3.us-west-2.amazonaws.com'
-export GLACIER_PROFILE='aws-braingeneers-backups'
+export PRIMARY_INVENTORY_PATH="s3://braingeneers/services/data-lifecycle/inventory/"
+export LOCAL_SCRATCH_DIR="/tmp"
+export NRP_ENDPOINT="https://s3.braingeneers.gi.ucsc.edu"
+export GLACIER_BUCKET="braingeneers-backups-glacier"
+export GLACIER_ENDPOINT="https://s3.us-west-2.amazonaws.com"
+export GLACIER_PROFILE="aws-braingeneers-backups"
+export DEBUG_RCLONE_LIMIT="0"
 
 # Get the date of the latest inventory file available on AWS
 # Pipe command explained:
@@ -15,7 +16,7 @@ export GLACIER_PROFILE='aws-braingeneers-backups'
 #   grep) Filter out any filenames that aren't a date (e.g. data and hive)
 #   sort) Sort the dates with newest last
 #   tail) Select the last (newest) date
-LATEST_INVENTORY_MANIFEST_DATE=$( \
+export LATEST_INVENTORY_MANIFEST_DATE=$( \
   aws --endpoint ${GLACIER_ENDPOINT} --profile ${GLACIER_PROFILE} s3 ls 's3://braingeneers-backups-inventory/braingeneers-backups-glacier/daily-inventory/' | \
   awk '{print $2}' |
   sed 's/\/$//' | \
@@ -29,15 +30,15 @@ assert_one_line_non_empty() {
   local var_to_check="$1"
   if [ -z "$var_to_check" ]; then
     echo "Error: Variable is empty"
-    exit 1
+    return 1
   fi
 
   local line_count=$(echo -n "$var_to_check" | grep -c '^')
   if [ "$line_count" -ne 1 ]; then
     echo "Error: Variable contains more than one line"
-    exit 1
+    return 1
   fi
 }
 
-assert_one_line_non_empty "${LATEST_INVENTORY_MANIFEST_DATE}"
+assert_one_line_non_empty "${LATEST_INVENTORY_MANIFEST_DATE}" || return 1
 
