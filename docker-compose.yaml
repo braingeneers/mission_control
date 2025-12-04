@@ -89,7 +89,9 @@ services:
       - braingeneers-net
 
   service-account-jwt-token-refresh:
-    image: braingeneers/service-account-jwt-token-refresh:latest
+    build:
+      context: ./cron-braingeneers-jwt-token-refresh
+      dockerfile: Dockerfile
     container_name: service-account-jwt-token-refresh
     user: root
     restart: unless-stopped

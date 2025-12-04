@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-while true:
+while true; do
   # Get a new JWT service account token (this will only work without authentication from within the braingeneers network)
   curl -fsS https://service-accounts.braingeneers.gi.ucsc.edu/generate_token > /config.json
 
@@ -14,3 +14,4 @@ while true:
 
   # Sleep for 1 day
   sleep 86400
+done

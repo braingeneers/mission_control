@@ -6,6 +6,34 @@
 # This cron task updates the service account token in the NRP/kubernetes/secrets daily.
 
 FROM bitnami/kubectl:latest
+USER root
+
+# Install dependencies
+RUN mkdir -p /var/lib/apt/lists/partial && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+        unzip && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get clean
+
+# Install kubectl oidc-login plugin (kubelogin) from GitHub releases
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+      x86_64)  kubelogin_arch=amd64 ;; \
+      aarch64) kubelogin_arch=arm64 ;; \
+      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSLo /tmp/kubelogin.zip \
+      "https://github.com/int128/kubelogin/releases/latest/download/kubelogin_linux_${kubelogin_arch}.zip"; \
+    cd /usr/local/bin; \
+    unzip /tmp/kubelogin.zip; \
+    # kubectl discovers plugins by the kubectl-* naming convention
+    mv kubelogin kubectl-oidc_login; \
+    chmod +x kubectl-oidc_login; \
+    rm /tmp/kubelogin.zip
 
 COPY refresh-braingeneers-jwt-service-account-token.sh /
 ENTRYPOINT ["/refresh-braingeneers-jwt-service-account-token.sh"]

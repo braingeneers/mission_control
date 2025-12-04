@@ -1,18 +1,18 @@
 # Adding and maintaining web (and other) services in `braingeneers` infrastructure
 
 ## Basic usage:
-Prerequisite: Download your personal (or service account) 
-kubeconfig file from the cluster, place it in `~/.kube/config`. 
-Run `kubectl get nodes` to verify that you can connect to the cluster, you
-should see a list of cluster nodes.
-
-Log into `braingeneers.gi.ucsc.edu`, see the [permissions page](https://github.com/braingeneers/wiki/blob/main/shared/permissions.md)
+Prerequisite: 
+ 1. Log into our server: `braingeneers.gi.ucsc.edu`, see the [permissions page](https://github.com/braingeneers/wiki/blob/main/shared/permissions.md)
 for access, then clone the repo into your home directory on `braingeneers` server as shown below.
+ 2. Configure kubectl for the cluster [see NRP documentation](https://nrp.ai/documentation/userdocs/start/getting-started/#cluster-access-via-kubectl).
+ 3. Run `authenticate.sh` - This script will check that you have kubectl working and if so will pull a service account kubernetes configuration from our namespace secrets so that services that rely on secrets in our namespace have access to them (via the secret-fetcher service, which starts automatically and is defined in docker-compose.yaml with all the other services).
 
 ```bash
 # clone the repo
-git clone git@github.com:braingeneers/mission_control.git
-cd mission_control
+> git clone git@github.com:braingeneers/mission_control.git
+> cd mission_control
+# authenticate checks permissions for you and pulls a service account kubernetes config required to start services
+> authenticate.sh
 ```
 
 ## Manage individual services
