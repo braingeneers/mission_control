@@ -1,7 +1,7 @@
 # ===========================================================================================
 # PRE-REQUISITE:
 #   This docker-compose script depends on one file on the host machine: ~/.kube/config
-#   This is obtained by logging into https://portal.nrp-nautlius.io and clicking "Get Config".
+#   This is obtained by logging into https://nrp.ai and following the documentation there.
 #   You must have access to the braingeneers namespace. If you don't have access see the
 #   wiki Permissions page or Onboarding page for instructions.
 #
@@ -88,6 +88,16 @@ services:
     networks:
       - braingeneers-net
 
+  service-account-jwt-token-refresh:
+    image: braingeneers/service-account-jwt-token-refresh:latest
+    container_name: service-account-jwt-token-refresh
+    user: root
+    restart: unless-stopped
+    volumes:
+      - ~/.kube/config:/.kube/config
+    networks:
+      - braingeneers-net
+
   # This is a proxy service that auto discovers other services that have env variables:
   # VIRTUAL_HOST, VIRTUAL_PORT, LETSENCRYPT_HOST, LETSENCRYPT_EMAIL set. It also forces authentication through
   # oauth2_proxy. The service-proxy container is used to route traffic to the appropriate service based on the domain name.
@@ -138,31 +148,6 @@ services:
     depends_on:
       secret-fetcher:
         condition: service_healthy
-
-#  # The nginx-proxy container is used to route traffic to the appropriate service based on the domain name.
-#  nginx-proxy:
-#    image: jwilder/nginx-proxy:latest  # braingeneers/nginx-proxy:latest  # derived from jwilder/nginx-proxy:latest
-#    container_name: nginx-proxy
-#    restart: unless-stopped
-#    volumes:
-#      - vol-certs:/etc/nginx/certs  # Cache SSL certificates on the host
-#      - vol-vhost:/etc/nginx/vhost.d
-#      - vol-html:/usr/share/nginx/html
-#      - /var/run/docker.sock:/tmp/docker.sock:ro  # Unix socket mount to access docker API read-only
-#    networks:
-#      - braingeneers-net
-##    environment:
-##      DEBUG: "true"
-##      VERBOSE: "true"
-##      FORCE_INTERVAL: 15s
-##      LETSENCRYPT_HOST: braingeneers.gi.ucsc.edu
-##      LETSENCRYPT_EMAIL: braingeners-admins-group@ucsc.edu
-##      LETSENCRYPT_TEST: "false"
-##      DEFAULT_HOST: braingeneers.gi.ucsc.edu
-##      DEFAULT_PORT: "8080"
-#    ports:
-#      - "80:80"
-#      - "443:443"
 
   # Debugging container to test nginx-proxy
   whoami:
@@ -259,54 +244,6 @@ services:
     volumes:
       - secrets:/secrets
       - vol-certs:/etc/nginx/certs
-
-
-
-#  # Experiments dashboard
-#   smartplug-dash:
-#     hostname: smartplug-dash
-#     container_name: smartplug-dash
-#     build: smartplug-dash
-#     entrypoint: /secrets/entrypoint-secrets-setup.sh
-#     command:
-#       - "--copy"
-#       - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
-#       - "--copy"
-#       - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
-#       - "--copy"
-#       - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
-#       - "streamlit"
-#       - "run"
-#       - "/app/smartplug-dashboard.py"
-#       - "--server.port"
-#       - "8050"
-#       - "--server.headless"
-#       - "true"
-#       - "--server.address"
-#       - "0.0.0.0"
-#       - "--server.enableXsrfProtection"
-#       - "false"
-#     expose:
-#       - "8050"
-#     # ports:
-#     #   - "8050:8050"
-#     restart: unless-stopped
-#     environment:
-#       VIRTUAL_HOST: "smartplug.braingeneers.gi.ucsc.edu"
-#       VIRTUAL_PORT: "8050"
-#       LETSENCRYPT_HOST: "smartplug.braingeneers.gi.ucsc.edu"
-#       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
-#     networks:
-#       - braingeneers-net
-#     depends_on:
-#       secret-fetcher:
-#         condition: service_healthy
-#     volumes:
-#       - secrets:/secrets
-#       - vol-certs:/etc/nginx/certs
-#     extra_hosts:
-#           - "smartplug.braingeneers.gi.ucsc.edu:host-gateway"
-
 
   # The letsencrypt container is used to automatically generate SSL certificates for the domain names.
   # https://github.com/jwilder/docker-letsencrypt-nginx-proxy-companion
