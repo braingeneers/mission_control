@@ -71,6 +71,8 @@ services:
     command:
       - '--env'
       - '/secrets/service-accounts/service-accounts.env'
+      - "--copy"
+      - "/secrets/kube-config/config:/app/static/config"
       - '/bin/bash'
       - '-c'
       - 'python /app/token_service.py'
