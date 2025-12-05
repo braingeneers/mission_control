@@ -2,17 +2,14 @@
 
 ## Basic usage:
 Prerequisite: 
- 1. Log into our server: `braingeneers.gi.ucsc.edu`, see the [permissions page](https://github.com/braingeneers/wiki/blob/main/shared/permissions.md)
+1. Log into our server: `braingeneers.gi.ucsc.edu`, see the [permissions page](https://github.com/braingeneers/wiki/blob/main/shared/permissions.md)
 for access, then clone the repo into your home directory on `braingeneers` server as shown below.
- 2. Configure kubectl for the cluster [see NRP documentation](https://nrp.ai/documentation/userdocs/start/getting-started/#cluster-access-via-kubectl).
- 3. Run `authenticate.sh` - This script will check that you have kubectl working and if so will pull a service account kubernetes configuration from our namespace secrets so that services that rely on secrets in our namespace have access to them (via the secret-fetcher service, which starts automatically and is defined in docker-compose.yaml with all the other services).
+2. Copy the NRP Kubernetes config file for service accounts to your home directory under `~/.kube/config`. [Download config file here](https://service-accounts.braingeneers.gi.ucsc.edu/static/config). This file allows the services to access our namespace secrets, which is where we store all our credentials files.
 
 ```bash
 # clone the repo
 > git clone git@github.com:braingeneers/mission_control.git
 > cd mission_control
-# authenticate checks permissions for you and pulls a service account kubernetes config required to start services
-> authenticate.sh
 ```
 
 ## Manage individual services
