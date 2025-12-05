@@ -6,7 +6,7 @@ USER root
 WORKDIR /app
 
 # Copy the app directory contents into the container at /app
-COPY ./app /app
+COPY --chown=root:root ./app /app
 
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
