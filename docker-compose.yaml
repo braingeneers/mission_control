@@ -97,7 +97,7 @@ services:
     user: root
     restart: unless-stopped
     volumes:
-      - ~/.kube/config:/.kube/config
+      - ~/.kube/config:/root/.kube/config
     networks:
       - braingeneers-net
 
