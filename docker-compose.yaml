@@ -77,7 +77,6 @@ services:
       - '-c'
       - 'python /app/token_service.py'
     volumes:
-      - ./service-accounts/app:/app
       - secrets:/secrets
     depends_on:
       secret-fetcher:
