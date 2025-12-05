@@ -4,19 +4,18 @@
 # A service account token is also stored in the NRP kubernetes secrets, this is needed for jobs run on the NRP.
 # Jobs being run on the NRP require user authentication, so keeping the token in kubernetes secrets is secured.
 # This cron task updates the service account token in the NRP/kubernetes/secrets daily.
+FROM debian:12-slim
 
-FROM bitnami/kubectl:latest
-USER root
-
-# Install dependencies
-RUN mkdir -p /var/lib/apt/lists/partial && \
-    apt-get update && \
+# Install dependencies + kubectl
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
         unzip && \
-    rm -rf /var/lib/apt/lists/* && \
-    apt-get clean
+    curl -fsSLo /usr/local/bin/kubectl \
+      "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+    chmod +x /usr/local/bin/kubectl && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install kubectl oidc-login plugin (kubelogin) from GitHub releases
 RUN set -eux; \
