@@ -13,5 +13,6 @@ while true; do
   kubectl -n braingeneers create secret generic braingeneers-jwt-service-account-token --from-file=config.json
 
   # Sleep for 1 day
+  echo "Sleeping for 1 day."
   sleep 86400
 done
