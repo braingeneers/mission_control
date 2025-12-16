@@ -396,19 +396,6 @@ services:
       - ./strapi-shadows-db/package.json:/opt/package.json
       - ./strapi-shadows-db/package-lock.json:/opt/package-lock.json
 
-  # job-launcher launches NRP jobs based on MQTT messages see repo mqtt_job_listener
-  job-launcher:
-    image: braingeneers/job-launcher:latest
-    container_name: job-launcher
-    networks:
-      - braingeneers-net
-    restart: unless-stopped
-    depends_on:
-      secret-fetcher:
-        condition: service_healthy
-    volumes:
-      - secrets:/secrets
-
   # Redis service
   redis:
     image: braingeneers/redis:latest
