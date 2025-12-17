@@ -534,7 +534,7 @@ services:
       - '--copy'
       - '/secrets/kube-config/config:/root/.kube/config'
       - '--copy'
-      - '/secrets/braingeneers-jwt-service-account-token/config.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json'
+      - '/secrets/braingeneers-jwt-service-account-token/braingeneners_jwt_token.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json'
       - 'python'
       - 'mqtt_listener.py'
     networks:
