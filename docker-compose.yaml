@@ -525,7 +525,7 @@ services:
 
   mqtt-job-listener:
     # image: surygeng/spike_sorting_listener:v0.1
-    image: braingeneers/spike_sorting_listener:v0.2
+    image: braingeneers/spike_sorting_listener:v0.31
     container_name: mqtt-job-listener
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
