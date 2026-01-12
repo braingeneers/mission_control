@@ -524,12 +524,7 @@ services:
     restart: unless-stopped
 
   mqtt-job-listener:
-<<<<<<< HEAD
-    # image: surygeng/spike_sorting_listener:v0.1
-    image: braingeneers/spike_sorting_listener:v0.40
-=======
     image: braingeneers/spike_sorting_listener:v0.41
->>>>>>> db8c6f4 (update mqtt-job-listener to v0.41)
     container_name: mqtt-job-listener
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
