@@ -36,14 +36,14 @@ services:
     networks:
       - braingeneers-net
     healthcheck:
-      test: ["CMD", "/healthcheck.sh"]
+      test: [ "CMD", "/healthcheck.sh" ]
       interval: 5s
       timeout: 5s
-      retries: 120  # Retries allows for max of 10 minutes for secrets to be fetched before service is permanently marked as unhealthy
+      retries: 120 # Retries allows for max of 10 minutes for secrets to be fetched before service is permanently marked as unhealthy
 
   # MQTT broker
   mqtt:
-    image: braingeneers/mqtt:latest   # derived from emqx/emqx:5.0.4
+    image: braingeneers/mqtt:latest # derived from emqx/emqx:5.0.4
     container_name: mqtt
     restart: unless-stopped
     ports:
@@ -167,7 +167,7 @@ services:
 
   # Ella's website (maxwell related)
   mxvisuals:
-#    image: davidparks21/mxvisuals-frontend:3.0
+    #    image: davidparks21/mxvisuals-frontend:3.0
     image: mirellameelo/visualsmaxwell-frontend:v2.0
     container_name: mxvisuals
     expose:
@@ -183,7 +183,7 @@ services:
 
   # Ella's website (maxwell related)
   mxvisuals-backend:
-#    image: davidparks21/mxvisuals-backend:3.0
+    #    image: davidparks21/mxvisuals-backend:3.0
     image: mirellameelo/visualsmaxwell-backend:v1.6
     container_name: mxvisuals-backend
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -212,7 +212,7 @@ services:
       secret-fetcher:
         condition: service_healthy
 
- # Experiments dashboard
+  # Experiments dashboard
   experiment-dash:
     container_name: experiment-dash
     build: experiment-dash
@@ -259,15 +259,15 @@ services:
       LETSENCRYPT_HOST: "ssl.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
       NGINX_PROXY_CONTAINER: "service-proxy"
-      LETSENCRYPT_TEST: "false"   # true | false for debugging | production (remember to set corresponding value in NGINX)
-      DEBUG: "0"   # 1 | 0 for debugging | production (remember to set corresponding value in nginx-proxy)
+      LETSENCRYPT_TEST: "false" # true | false for debugging | production (remember to set corresponding value in NGINX)
+      DEBUG: "0" # 1 | 0 for debugging | production (remember to set corresponding value in nginx-proxy)
       # ACME_CA_URI: "https://acme-staging-v02.api.letsencrypt.org/directory"    # comment out for production use
     restart: unless-stopped
     volumes:
-      - vol-certs:/etc/nginx/certs:rw  # Shared with nginx-proxy
+      - vol-certs:/etc/nginx/certs:rw # Shared with nginx-proxy
       - vol-vhost:/etc/nginx/vhost.d
       - vol-html:/usr/share/nginx/html
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # Unix socket mount to access docker API read-only
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Unix socket mount to access docker API read-only
     depends_on:
       - service-proxy
     networks:
@@ -336,7 +336,7 @@ services:
   # picroscope experiment control console
   # plotly dash
   picroscope-console:
-    build:  plotly-dash-picroscope-control-console/ 
+    build: plotly-dash-picroscope-control-console/
     container_name: plotly-picroscope-console
     networks:
       - braingeneers-net
@@ -368,7 +368,7 @@ services:
     image: mystrapi:latest
     restart: unless-stopped
     networks:
-     - braingeneers-net
+      - braingeneers-net
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
       - '--copy'
@@ -411,7 +411,7 @@ services:
       secret-fetcher:
         condition: service_healthy
     ports:
-     - "6379:6379"
+      - "6379:6379"
 
   # Centralizes MQTT messages of the "telemetry" topic to s3; maintainer: lblauvel@ucsc.edu
   mqtt-logging-s3:
@@ -479,9 +479,9 @@ services:
       - '-c'
       - 'hbbs -r rustdesk.example.com:21117'
     volumes:
-#      - rustdesk-data:/root/db_v2.sqlite3
-#      - rustdesk-data:/root/db_v2.sqlite3-shm
-#      - rustdesk-data:/root/db_v2.sqlite3-wal
+      #      - rustdesk-data:/root/db_v2.sqlite3
+      #      - rustdesk-data:/root/db_v2.sqlite3-shm
+      #      - rustdesk-data:/root/db_v2.sqlite3-wal
       - rustdesk-data:/root/rustdesk-data
       - secrets:/secrets
     networks:
@@ -511,9 +511,9 @@ services:
       - '-c'
       - './hbbr_entrypoint.sh'
     volumes:
-#      - rustdesk-data:/root/db_v2.sqlite3
-#      - rustdesk-data:/root/db_v2.sqlite3-shm
-#      - rustdesk-data:/root/db_v2.sqlite3-wal
+      #      - rustdesk-data:/root/db_v2.sqlite3
+      #      - rustdesk-data:/root/db_v2.sqlite3-shm
+      #      - rustdesk-data:/root/db_v2.sqlite3-wal
       - rustdesk-data:/root/rustdesk-data
       - secrets:/secrets
     networks:
@@ -524,8 +524,12 @@ services:
     restart: unless-stopped
 
   mqtt-job-listener:
+<<<<<<< HEAD
     # image: surygeng/spike_sorting_listener:v0.1
     image: braingeneers/spike_sorting_listener:v0.40
+=======
+    image: braingeneers/spike_sorting_listener:v0.41
+>>>>>>> db8c6f4 (update mqtt-job-listener to v0.41)
     container_name: mqtt-job-listener
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
@@ -572,7 +576,7 @@ services:
     image: surygeng/maxwell_dashboard:v0.1
     container_name: maxwell-dashboard
     entrypoint: /secrets/entrypoint-secrets-setup.sh
-    expose: 
+    expose:
       - "8050"
     command:
       - '--copy'
@@ -597,27 +601,27 @@ services:
       - secrets:/secrets
     restart: unless-stopped
 
-#  # Auto help desk service
-#  auto-helpdesk:
-#    image: sakachan/mqttconnection:latest
-#    container_name: mqttconnection
-#    entrypoint: /secrets/entrypoint-secrets-setup.sh
-#    restart: unless-stopped
-#    networks:
-#      - braingeneers-net
-#    command:
-#      - "--copy"
-#      - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
-#      - "python"
-#      - "-u"
-#      - "mqttGeminiConnection.py"
-#    volumes:
-#      - secrets:/secrets
-#    depends_on:
-#      slack-bridge:
-#        condition: service_started
-#      secret-fetcher:
-#        condition: service_healthy
+  #  # Auto help desk service
+  #  auto-helpdesk:
+  #    image: sakachan/mqttconnection:latest
+  #    container_name: mqttconnection
+  #    entrypoint: /secrets/entrypoint-secrets-setup.sh
+  #    restart: unless-stopped
+  #    networks:
+  #      - braingeneers-net
+  #    command:
+  #      - "--copy"
+  #      - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
+  #      - "python"
+  #      - "-u"
+  #      - "mqttGeminiConnection.py"
+  #    volumes:
+  #      - secrets:/secrets
+  #    depends_on:
+  #      slack-bridge:
+  #        condition: service_started
+  #      secret-fetcher:
+  #        condition: service_healthy
 
   # Braingeneers AI Research Assistant (BAIRA) service (maintainer: Kamran, Jasmin)
   baira:
@@ -676,22 +680,21 @@ services:
       secret-fetcher:
         condition: service_healthy
     environment:
-        IP_ADDR: "128.114.198.51"
-        ADDRESS: "10.20.30.1"
-        NETMASK: "255.255.255.0"
-        NETWORK: "10.20.30.0/24"
-        RUNMODE: "server"
-        VIRTUAL_HOST: "livestream.braingeneers.gi.ucsc.edu"
-        VIRTUAL_PORT: "8888"
-        LETSENCRYPT_HOST: "livestream.braingeneers.gi.ucsc.edu"
-        LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+      IP_ADDR: "128.114.198.51"
+      ADDRESS: "10.20.30.1"
+      NETMASK: "255.255.255.0"
+      NETWORK: "10.20.30.0/24"
+      RUNMODE: "server"
+      VIRTUAL_HOST: "livestream.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8888"
+      LETSENCRYPT_HOST: "livestream.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     networks:
       - braingeneers-net
     cap_add:
       - NET_ADMIN
     dns: 8.8.8.8
     restart: unless-stopped
-
 
   # Search engine and browser for experiments in NRP S3
   search:
@@ -728,7 +731,6 @@ services:
 networks:
   braingeneers-net:
     driver: bridge
-
 
 # Volumes are persisted on the host machine.
 # All services should be able to cold start when volumes are cleared, these are not a place for
