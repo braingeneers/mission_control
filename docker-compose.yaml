@@ -524,7 +524,7 @@ services:
     restart: unless-stopped
 
   mqtt-job-listener:
-    image: braingeneers/spike_sorting_listener:v0.51
+    image: braingeneers/spike_sorting_listener:v0.52
     container_name: mqtt-job-listener
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
