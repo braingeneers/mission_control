@@ -547,8 +547,7 @@ services:
 
   # Job scanner service managed by Sury
   job-scanner:
-    #image: surygeng/job_scanner:v0.1
-    image: braingeneers/job_scanner:latest
+    image: surygeng/job_scanner:v0.1
     container_name: job-scanner
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
