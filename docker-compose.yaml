@@ -569,7 +569,7 @@ services:
   # maxwell recording dashboard managed by Sury
   maxwell-dashboard:
     #image: surygeng/maxwell_dashboard:v0.1
-    image: braingeneers/maxwell_dashboard:v0.54
+    image: braingeneers/maxwell_dashboard:latest
     container_name: maxwell-dashboard
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     expose:
