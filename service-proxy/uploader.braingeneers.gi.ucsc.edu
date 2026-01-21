@@ -1,12 +1,23 @@
 # Allow websocket upgrades for the metadata range socket.
-proxy_http_version 1.1;
-proxy_set_header Upgrade $http_upgrade;
-proxy_set_header Connection "upgrade";
-proxy_request_buffering off;
-proxy_buffering off;
-proxy_max_temp_file_size 0;
+location /ws/metadata/ {
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+  proxy_read_timeout 3600;
+  proxy_send_timeout 3600;
+}
+
+# Stream large uploads without buffering or size limits.
+location /api/upload-file {
+  proxy_request_buffering off;
+  proxy_buffering off;
+  proxy_max_temp_file_size 0;
+  client_max_body_size 0;
+  client_body_buffer_size 0;
+  client_body_timeout 3600;
+  proxy_read_timeout 3600;
+  proxy_send_timeout 3600;
+}
+
+# Default limits for other endpoints.
 client_max_body_size 0;
-client_body_buffer_size 0;
-client_body_timeout 3600;
-proxy_read_timeout 3600;
-proxy_send_timeout 3600;
