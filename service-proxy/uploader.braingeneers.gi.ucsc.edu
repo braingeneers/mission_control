@@ -6,5 +6,7 @@ proxy_request_buffering off;
 proxy_buffering off;
 proxy_max_temp_file_size 0;
 client_max_body_size 0;
+client_body_buffer_size 0;
+client_body_timeout 3600;
 proxy_read_timeout 3600;
 proxy_send_timeout 3600;

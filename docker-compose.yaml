@@ -108,6 +108,8 @@ services:
     image: nginxproxy/nginx-proxy:latest
     container_name: service-proxy
     restart: unless-stopped
+    environment:
+      CLIENT_MAX_BODY_SIZE: "0"
     ports:
       - "80:80"
       - "443:443"
