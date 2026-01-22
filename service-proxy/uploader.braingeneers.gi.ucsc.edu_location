@@ -1,4 +1,4 @@
-# Enable websocket upgrades and streaming for this service.
+# Streaming-friendly settings for large uploads and websocket metadata reads.
 proxy_http_version 1.1;
 proxy_set_header Upgrade $http_upgrade;
 proxy_set_header Connection $http_connection;

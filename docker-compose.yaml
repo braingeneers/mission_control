@@ -123,6 +123,7 @@ services:
       - ./service-proxy/default:/etc/nginx/vhost.d/default:ro
       - ./service-proxy/auth.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/uploader.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/uploader.braingeneers.gi.ucsc.edu:ro
+      - ./service-proxy/uploader.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/uploader.braingeneers.gi.ucsc.edu_location:ro
       - ./service-proxy/mxvisuals.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/mxvisuals.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/mxvisuals-backend.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/mxvisuals-backend.braingeneers.gi.ucsc.edu:ro
     networks:
