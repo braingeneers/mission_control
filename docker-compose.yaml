@@ -110,6 +110,7 @@ services:
     restart: unless-stopped
     environment:
       CLIENT_MAX_BODY_SIZE: "0"
+      LOG_FORMAT: '$host $remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent request_length=$request_length request_time=$request_time upstream_status=$upstream_status upstream_response_time=$upstream_response_time upstream_connect_time=$upstream_connect_time upstream_header_time=$upstream_header_time server_protocol=$server_protocol ssl_protocol=$ssl_protocol content_length=$http_content_length content_type=$http_content_type transfer_encoding=$http_transfer_encoding expect=$http_expect "$http_referer" "$http_user_agent"'
     ports:
       - "80:80"
       - "443:443"
@@ -124,7 +125,6 @@ services:
       - ./service-proxy/auth.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/uploader.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/uploader.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/uploader.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/uploader.braingeneers.gi.ucsc.edu_location:ro
-      - ./service-proxy/uploader-logging.conf:/etc/nginx/conf.d/uploader-logging.conf:ro
       - ./service-proxy/mxvisuals.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/mxvisuals.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/mxvisuals-backend.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/mxvisuals-backend.braingeneers.gi.ucsc.edu:ro
     networks:

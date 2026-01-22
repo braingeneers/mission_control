@@ -2,7 +2,7 @@
 include /etc/nginx/vhost.d/default;
 
 # Enable websocket upgrades and streaming for this service.
-access_log /var/log/nginx/uploader.access.log uploader_timing;
+access_log /var/log/nginx/uploader.access.log vhost;
 error_log /var/log/nginx/uploader.error.log info;
 log_subrequest on;
 proxy_http_version 1.1;
