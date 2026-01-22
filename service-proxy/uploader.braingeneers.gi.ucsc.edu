@@ -1,4 +1,9 @@
+# Enable auth_request and shared proxy headers.
+include /etc/nginx/vhost.d/default;
+
 # Enable websocket upgrades and streaming for this service.
+access_log /var/log/nginx/uploader.access.log vhost;
+error_log /var/log/nginx/uploader.error.log info;
 proxy_http_version 1.1;
 proxy_set_header Upgrade $http_upgrade;
 proxy_set_header Connection $http_connection;
