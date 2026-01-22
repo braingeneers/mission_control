@@ -2,6 +2,8 @@
 include /etc/nginx/vhost.d/default;
 
 # Enable websocket upgrades and streaming for this service.
+# Disable HTTP/2 for this vhost to avoid TLS record errors on large uploads.
+http2 off;
 access_log /var/log/nginx/uploader.access.log vhost;
 error_log /var/log/nginx/uploader.error.log info;
 proxy_http_version 1.1;
