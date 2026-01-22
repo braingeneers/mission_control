@@ -2,8 +2,6 @@
 include /etc/nginx/vhost.d/default;
 
 # Enable websocket upgrades and streaming for this service.
-# Force HTTP/1.1 by advertising only HTTP/1.1 over ALPN.
-ssl_alpn http/1.1;
 access_log /var/log/nginx/uploader.access.log vhost;
 error_log /var/log/nginx/uploader.error.log info;
 proxy_http_version 1.1;
