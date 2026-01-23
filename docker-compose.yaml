@@ -751,7 +751,6 @@ services:
       LETSENCRYPT_HOST: "uploader.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
       PROD: "true"
-    labels:
     networks:
       - braingeneers-net
     volumes:
