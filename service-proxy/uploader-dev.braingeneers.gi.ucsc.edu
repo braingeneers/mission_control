@@ -1,0 +1,18 @@
+# Enable auth_request and shared proxy headers.
+include /etc/nginx/vhost.d/default;
+
+# Enable websocket upgrades and streaming for this service.
+access_log /var/log/nginx/uploader-dev.access.log vhost;
+error_log /var/log/nginx/uploader-dev.error.log info;
+log_subrequest on;
+proxy_http_version 1.1;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection $http_connection;
+proxy_request_buffering off;
+proxy_buffering off;
+proxy_max_temp_file_size 0;
+client_max_body_size 0;
+client_body_buffer_size 64m;
+client_body_timeout 3600;
+proxy_read_timeout 3600;
+proxy_send_timeout 3600;
