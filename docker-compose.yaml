@@ -531,7 +531,7 @@ services:
     restart: unless-stopped
 
   mqtt-job-listener:
-    image: braingeneers/spike_sorting_listener:v0.70
+    image: braingeneers/spike_sorting_listener:v0.71
     container_name: mqtt-job-listener
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
@@ -576,7 +576,7 @@ services:
   # maxwell recording dashboard managed by Sury
   maxwell-dashboard:
     #image: surygeng/maxwell_dashboard:v0.1
-    image: braingeneers/maxwell_dashboard:v0.70
+    image: braingeneers/maxwell_dashboard:v0.71
     container_name: maxwell-dashboard
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     expose:
@@ -783,7 +783,7 @@ services:
       VIRTUAL_PORT: "8000"
       LETSENCRYPT_HOST: "uploader-dev.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
-      PROD: "true"
+      PROD: "false"
     networks:
       - braingeneers-net
     volumes:
