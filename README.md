@@ -21,20 +21,23 @@ The name `my_service` is defined in the `docker-compose.yaml` file under `servic
 for example `mqtt`, `slack-bridge`, etc. are services in the `docker-compose.yaml` file 
 
 ```bash
+# Restart a service (cleaner than using docker compose restart)
+docker compose up -d --force-recreate --pull always my-service
+
 # Stop (remove) a specific service
-docker compose rm -sf my_service
+docker compose rm -sf my-service
 
 # Pull the latest image for a specific service
-docker compose pull my_service
+docker compose pull my-service
 
 # Start a specific service in the background (removed -d, detached, to see logs in the foreground, useful during testing)
-docker compose up -d my_service
+docker compose up -d my-service
 
 # See a list of all braingeneers service names (these are defined in the docker-compose.yaml file but can be quickly listed with a double tab)
 docker compose up -d <tab><tab>
 
 # See logs for a specific service
-docker compose logs my_service
+docker compose logs my-service
 
 # See process status for all services
 docker compose ps
