@@ -466,13 +466,43 @@ services:
       - braingeneers-net
     restart: unless-stopped
 
-  rustdesk:
-    container_name: rustdesk
+  rustdesk-hbbs:
+    container_name: rustdesk-hbbs
     ports:
       - 21115:21115
       - 21116:21116
       - 21116:21116/udp
       - 21118:21118
+    image: braingeneers/rustdesk-server:latest
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - '--copy'
+      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
+      - '--copy'
+      - '/secrets/rustdesk-credentials/id_ed25519:/root/.ssh/id_ed25519'
+      - '--copy'
+      - '/secrets/rustdesk-credentials/id_ed25519.pub:/root/.ssh/id_ed25519.pub'
+      - '/usr/bin/bash'
+      - '-c'
+      - 'hbbs -r rustdesk.example.com:21117'
+    volumes:
+      #      - rustdesk-data:/root/db_v2.sqlite3
+      #      - rustdesk-data:/root/db_v2.sqlite3-shm
+      #      - rustdesk-data:/root/db_v2.sqlite3-wal
+      - rustdesk-data:/root/rustdesk-data
+      - secrets:/secrets
+    networks:
+      - braingeneers-net
+    depends_on:
+      rustdesk-hbbr:
+        condition: service_started
+      secret-fetcher:
+        condition: service_healthy
+    restart: unless-stopped
+
+  rustdesk-hbbr:
+    container_name: rustdesk-hbbr
+    ports:
       - 21117:21117
       - 21119:21119
     image: braingeneers/rustdesk-server:latest
@@ -486,8 +516,11 @@ services:
       - '/secrets/rustdesk-credentials/id_ed25519.pub:/root/.ssh/id_ed25519.pub'
       - '/usr/bin/bash'
       - '-c'
-      - '/root/hbbr_entrypoint.sh'
+      - './hbbr_entrypoint.sh'
     volumes:
+      #      - rustdesk-data:/root/db_v2.sqlite3
+      #      - rustdesk-data:/root/db_v2.sqlite3-shm
+      #      - rustdesk-data:/root/db_v2.sqlite3-wal
       - rustdesk-data:/root/rustdesk-data
       - secrets:/secrets
     networks:
