@@ -783,7 +783,7 @@ services:
       VIRTUAL_PORT: "8000"
       LETSENCRYPT_HOST: "uploader-dev.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
-      PROD: "false"
+      PROD: "true"
     networks:
       - braingeneers-net
     volumes:
