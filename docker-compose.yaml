@@ -730,10 +730,41 @@ services:
     networks:
       - braingeneers-net
 
+  # # Braingeneers data uploader web app
+  # uploader:
+  #   image: braingeneers/braingeneers-data-uploader:latest
+  #   container_name: uploader
+  #   restart: unless-stopped
+  #   entrypoint: /secrets/entrypoint-secrets-setup.sh
+  #   command:
+  #     - "--copy"
+  #     - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
+  #     - "uvicorn"
+  #     - "data_uploader.app:app"
+  #     - "--host"
+  #     - "0.0.0.0"
+  #     - "--port"
+  #     - "8000"
+  #   expose:
+  #     - "8000"
+  #   environment:
+  #     VIRTUAL_HOST: "uploader.braingeneers.gi.ucsc.edu"
+  #     VIRTUAL_PORT: "8000"
+  #     LETSENCRYPT_HOST: "uploader.braingeneers.gi.ucsc.edu"
+  #     LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+  #     PROD: "true"
+  #   networks:
+  #     - braingeneers-net
+  #   volumes:
+  #     - secrets:/secrets
+  #   depends_on:
+  #     secret-fetcher:
+  #       condition: service_healthy
+
   # Braingeneers data uploader web app
   uploader:
     image: braingeneers/braingeneers-data-uploader:latest
-    container_name: uploader
+    container_name: uploader-dev
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
@@ -751,37 +782,6 @@ services:
       VIRTUAL_HOST: "uploader.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "8000"
       LETSENCRYPT_HOST: "uploader.braingeneers.gi.ucsc.edu"
-      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
-      PROD: "true"
-    networks:
-      - braingeneers-net
-    volumes:
-      - secrets:/secrets
-    depends_on:
-      secret-fetcher:
-        condition: service_healthy
-
-  # Braingeneers data uploader web app (dev)
-  uploader-dev:
-    image: braingeneers/braingeneers-data-uploader:latest
-    container_name: uploader-dev
-    restart: unless-stopped
-    entrypoint: /secrets/entrypoint-secrets-setup.sh
-    command:
-      - "--copy"
-      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
-      - "uvicorn"
-      - "data_uploader.app:app"
-      - "--host"
-      - "0.0.0.0"
-      - "--port"
-      - "8000"
-    expose:
-      - "8000"
-    environment:
-      VIRTUAL_HOST: "uploader-dev.braingeneers.gi.ucsc.edu"
-      VIRTUAL_PORT: "8000"
-      LETSENCRYPT_HOST: "uploader-dev.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
       PROD: "true"
     networks:
