@@ -6,8 +6,19 @@ DB_SHM="${DB_DIR}/db_v2.sqlite3-shm"
 DB_WAL="${DB_DIR}/db_v2.sqlite3-wal"
 S3_BASE="s3://braingeneers/rustdesk"
 S3_ENDPOINT="https://s3.braingeneers.gi.ucsc.edu"
+RELAY_HOST="braingeneers.gi.ucsc.edu:21117"
 
 mkdir -p "${DB_DIR}"
+
+# hbbs stores its DB under /root; keep it persistent via symlinks into the volume.
+for name in db_v2.sqlite3 db_v2.sqlite3-shm db_v2.sqlite3-wal; do
+  root_path="/root/${name}"
+  data_path="${DB_DIR}/${name}"
+  if test -f "${root_path}" && ! test -f "${data_path}"; then
+    mv "${root_path}" "${data_path}"
+  fi
+  ln -sf "${data_path}" "${root_path}"
+done
 
 # Download database files from S3 if they don't exist
 if ! test -f "${DB_FILE}"; then
@@ -26,11 +37,12 @@ fi
   done
 } &
 
-# Run hbbr and hbbs in the same container
+echo "Starting hbbr..."
 hbbr &
 hbbr_pid=$!
 
-hbbs -r rustdesk.example.com:21117 &
+echo "Starting hbbs..."
+hbbs -r "${RELAY_HOST}" &
 hbbs_pid=$!
 
 trap 'kill ${hbbr_pid} ${hbbs_pid}; wait ${hbbr_pid} ${hbbs_pid}' TERM INT
