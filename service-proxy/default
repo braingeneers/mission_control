@@ -1,7 +1,3 @@
-# Disable OCSP stapling globally to avoid warnings for certs without OCSP URLs.
-ssl_stapling off;
-ssl_stapling_verify off;
-
 # Enable auth_request for all other vhosts, this will cause an
 # authentication check to be sent to /_oauth2_proxy_auth, expecting a 20x or 401 response,
 # 20x will allow the request to continue, 401 will be handled in the next directive.
