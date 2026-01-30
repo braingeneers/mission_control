@@ -29,7 +29,7 @@ s3_paths=$(yq eval '.backup.include_paths[]' data-lifecycle.yaml)
 
 echo "🔍 Found S3 paths to scan:"
 echo "$s3_paths" | sed 's/^/ - /'
-echo "\n# Starting inventory scan..."
+echo -e "\n# Starting inventory scan..."
 
 while read -r s3_path; do
   [[ -z "$s3_path" ]] && continue
