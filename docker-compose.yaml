@@ -531,7 +531,7 @@ services:
     restart: unless-stopped
 
   mqtt-job-listener:
-    image: braingeneers/spike_sorting_listener:v0.74
+    image: braingeneers/spike_sorting_listener:v0.75
     container_name: mqtt-job-listener
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
@@ -576,7 +576,7 @@ services:
   # maxwell recording dashboard managed by Sury
   maxwell-dashboard:
     #image: surygeng/maxwell_dashboard:v0.1
-    image: braingeneers/maxwell_dashboard:v0.74
+    image: braingeneers/maxwell_dashboard:v0.75
     container_name: maxwell-dashboard
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     expose:
