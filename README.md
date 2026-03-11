@@ -177,6 +177,18 @@ services:
 
 Use the `--env` option in combination with the `--copy` option as needed to set up the environment for your containerized application.
 
+If your service uses `braingeneerspy` and needs a JWT service-account token at runtime, do not copy `/secrets/service-accounts/config.json` into `braingeneers/iot/service_account/config.json`. Long-running unattended services should instead mount the refreshed secret maintained by `service-account-jwt-token-refresh`:
+
+```yaml
+    command:
+      - "--copy"
+      - "/secrets/braingeneers-jwt-service-account-token/braingeneners_jwt_token.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
+      - "python3"
+      - "your_app.py"
+```
+
+`/secrets/service-accounts/config.json` is not the regularly refreshed runtime token source. The `service-account-jwt-token-refresh` service updates the `braingeneers-jwt-service-account-token` Kubernetes secret daily, and that is the correct secret to mount for non-interactive services that rely on `braingeneerspy`.
+
 ### Commit the Changes
 
 After verifying your service works correctly, commit the changes to the `docker-compose.yaml` file back to the `mission_control` repository.
@@ -255,6 +267,8 @@ That `braingeneerspy` command will
 the normal university credentials authentication flow). Once the first token is obtained manually 
 it will have a 4 month expiration, and will be automatically
 renewed by `braingeneerspy` every 1 month. If the token is revoked or expires, the user must manually authenticate again.
+
+For services deployed under `mission_control`, the usual pattern is different from local interactive use: do not depend on manual `braingeneerspy` token bootstrap inside the container. Instead, mount `/secrets/braingeneers-jwt-service-account-token/braingeneners_jwt_token.json` to `braingeneers/iot/service_account/config.json`. That secret is refreshed daily by the `service-account-jwt-token-refresh` service and is the expected source for unattended service-to-service access.
 
 ## Security considerations
 All services exist on an internal docker network named `braingeneers-net`, this is inaccessible to the outside

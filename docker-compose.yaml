@@ -185,7 +185,7 @@ services:
       - "--copy"
       - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
       - "--copy"
-      - "/secrets/service-accounts/config.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
+      - "/secrets/braingeneers-jwt-service-account-token/braingeneners_jwt_token.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
       - "python3"
       - "-m"
       - "mcp_server.main"
