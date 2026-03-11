@@ -177,9 +177,7 @@ services:
   # it does its own OAuth resource-server validation and must receive the
   # original Authorization header end to end.
   integrated-system-mcp:
-    build:
-      context: ../integrated-system-modules
-      dockerfile: mcp_server/Dockerfile
+    image: braingeneers/integrated-systems-mcp:latest
     container_name: integrated-system-mcp
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
