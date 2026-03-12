@@ -182,7 +182,7 @@ If your service uses `braingeneerspy` and needs a JWT service-account token at r
 ```yaml
     command:
       - "--copy"
-      - "/secrets/braingeneers-jwt-service-account-token/braingeneners_jwt_token.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
+      - "/secrets/braingeneers-jwt-service-account-token/config.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
       - "python3"
       - "your_app.py"
 ```
@@ -268,7 +268,7 @@ the normal university credentials authentication flow). Once the first token is 
 it will have a 4 month expiration, and will be automatically
 renewed by `braingeneerspy` every 1 month. If the token is revoked or expires, the user must manually authenticate again.
 
-For services deployed under `mission_control`, the usual pattern is different from local interactive use: do not depend on manual `braingeneerspy` token bootstrap inside the container. Instead, mount `/secrets/braingeneers-jwt-service-account-token/braingeneners_jwt_token.json` to `braingeneers/iot/service_account/config.json`. That secret is refreshed daily by the `service-account-jwt-token-refresh` service and is the expected source for unattended service-to-service access.
+For services deployed under `mission_control`, the usual pattern is different from local interactive use: do not depend on manual `braingeneerspy` token bootstrap inside the container. Instead, mount `/secrets/braingeneers-jwt-service-account-token/config.json` to `braingeneers/iot/service_account/config.json`. That secret is refreshed daily by the `service-account-jwt-token-refresh` service and is the expected source for unattended service-to-service access.
 
 ## Security considerations
 All services exist on an internal docker network named `braingeneers-net`, this is inaccessible to the outside
