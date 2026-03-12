@@ -204,6 +204,40 @@ services:
       secret-fetcher:
         condition: service_healthy
 
+  # Broker-backed MockOrganoid service used for safe MCP demos and UUID-scoped
+  # policy validation. This is a normal MQTT device process, not a special MCP path.
+  mock-organoid:
+    image: braingeneers/integrated_systems_mock_organoid:latest
+    container_name: mock-organoid
+    restart: unless-stopped
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
+      - "--copy"
+      - "/secrets/braingeneers-jwt-service-account-token/braingeneners_jwt_token.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
+      - "python3"
+      - "mock_organoid/mock_organoid-main.py"
+      - "--device_name"
+      - "mock-organoid-a"
+      - "--biology_resource"
+      - "organoid/mock-organoid-a"
+      - "--organoid_model"
+      - "cortical-organoid-v1"
+      - "--donor_id"
+      - "mock-donor-01"
+      - "--age_days"
+      - "42"
+      - "--culture_media"
+      - "BGN2"
+    networks:
+      - braingeneers-net
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+
   # Ella's website (maxwell related)
   mxvisuals:
     #    image: davidparks21/mxvisuals-frontend:3.0

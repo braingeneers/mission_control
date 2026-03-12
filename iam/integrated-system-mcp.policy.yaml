@@ -1,0 +1,97 @@
+schema_version: 1
+kind: braingeneers-mcp-policy
+service: integrated-system-mcp
+description: >
+  UUID-first authorization for the integrated-system MCP server. Coarse Auth0 role
+  eligibility is checked first, then this policy decides which experiment UUIDs,
+  devices, and commands are available.
+group_files:
+  - groups.yaml
+eligibility:
+  required_roles_any:
+    - mcp-admin
+    - mcp-guest
+grants:
+  - uuid: 2026-03-12-efi-sandbox
+    description: Read-only visibility for a sandbox UUID.
+    principals:
+      groups:
+        - integrated-system-readers
+    access:
+      - read
+    devices:
+      - name: "*"
+        access:
+          - read
+  - uuid: 2026-03-12-efi-sandbox
+    description: Device actuation rights for the dorothy electrophysiology rig.
+    principals:
+      groups:
+        - integrated-system-operators
+    access:
+      - operate
+    devices:
+      - name: dorothy
+        access:
+          - operate
+  - uuid: 2026-03-12-efi-sandbox
+    description: Explicit experiment-binding rights for dorothy.
+    principals:
+      groups:
+        - integrated-system-experiment-admins
+    access:
+      - bind
+    devices:
+      - name: dorothy
+        access:
+          - bind
+        command_rules:
+          - effect: allow
+            commands:
+              - START
+              - END
+  - uuid: 2026-03-12-efi-mock-organoid
+    description: Read-only visibility for the broker-backed MockOrganoid demo UUID.
+    principals:
+      groups:
+        - integrated-system-readers
+        - integrated-system-mock-organoid-guests
+    access:
+      - read
+    devices:
+      - name: mock-organoid-a
+        access:
+          - read
+  - uuid: 2026-03-12-efi-mock-organoid
+    description: Guests may use safe non-hardware commands against MockOrganoid only.
+    principals:
+      groups:
+        - integrated-system-mock-organoid-guests
+    access:
+      - operate
+    devices:
+      - name: mock-organoid-a
+        access:
+          - operate
+        command_rules:
+          - effect: allow
+            commands:
+              - PING
+              - STATUS
+              - TWIDDLE
+  - uuid: 2026-03-12-efi-mock-organoid
+    description: Guests may bind MockOrganoid into or out of its demo UUID.
+    principals:
+      groups:
+        - integrated-system-mock-organoid-guests
+    access:
+      - bind
+    devices:
+      - name: mock-organoid-a
+        access:
+          - bind
+        command_rules:
+          - effect: allow
+            commands:
+              - START
+              - END
