@@ -192,12 +192,15 @@ services:
     expose:
       - "8000"
     environment:
+      SHADOWS_DB_ENDPOINT: "http://shadows-db:1337/api"
       VIRTUAL_HOST: "integrated-system-mcp.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "8000"
       LETSENCRYPT_HOST: "integrated-system-mcp.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     networks:
       - braingeneers-net
+    environment:
+      SHADOWS_DB_ENDPOINT: "http://shadows-db:1337/api"
     volumes:
       - secrets:/secrets
     depends_on:

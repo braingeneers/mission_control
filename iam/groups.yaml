@@ -11,7 +11,7 @@ groups:
     principals:
       subjects:
         - oauth2|CILogon|http://cilogon.org/serverA/users/139196
-        - auth0|replace-with-mock-guest-subject
+        - oauth2|CILogon|http://cilogon.org/serverE/users/134140
   integrated-system-operators:
     description: Users allowed to run device actuation commands for specific devices.
     principals:
