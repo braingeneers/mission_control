@@ -192,7 +192,8 @@ services:
     expose:
       - "8000"
     environment:
-      BRAINGENEERS_SHADOWS_TRUST_ENV: "false"
+      BRAINGENEERS_HTTP_TRUST_ENV: "false"
+      BRAINGENEERS_HTTP_USE_AUTH: "false"
       SHADOWS_DB_ENDPOINT: "http://shadows-db:1337/api"
       VIRTUAL_HOST: "integrated-system-mcp.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "8000"
@@ -234,7 +235,8 @@ services:
       - "--culture_media"
       - "BGN2"
     environment:
-      BRAINGENEERS_SHADOWS_TRUST_ENV: "false"
+      BRAINGENEERS_HTTP_TRUST_ENV: "false"
+      BRAINGENEERS_HTTP_USE_AUTH: "false"
       SHADOWS_DB_ENDPOINT: "http://shadows-db:1337/api"
     networks:
       - braingeneers-net
