@@ -199,8 +199,6 @@ services:
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
     networks:
       - braingeneers-net
-    environment:
-      SHADOWS_DB_ENDPOINT: "http://shadows-db:1337/api"
     volumes:
       - secrets:/secrets
     depends_on:
@@ -234,6 +232,8 @@ services:
       - "42"
       - "--culture_media"
       - "BGN2"
+    environment:
+      SHADOWS_DB_ENDPOINT: "http://shadows-db:1337/api"
     networks:
       - braingeneers-net
     volumes:
