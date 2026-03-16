@@ -202,6 +202,19 @@ and provides a secure front end to all our web-services.
 The service-proxy auto discovers docker based web-services in our environment based on a few simple environment variables set by the service.
 Nothing needs to be updated or changed when a new service is brought online. SSL, DNS, authentication, and network security are all provided and managed automatically.
 
+## MCP Services
+
+MCP services are a special case:
+
+- they stay behind the shared `service-proxy` edge and TLS setup
+- they do not use the normal browser-oriented `oauth2-proxy` runtime auth flow on `/mcp`
+- the MCP backend validates bearer tokens itself as the OAuth protected resource
+- the proxy layer must preserve the original `Authorization` header end to end
+
+Use [`docs/mcp-onboarding.md`](/home/davidparks21/myprojects/Braingeneers/mission_control/docs/mcp-onboarding.md)
+when adding or updating an MCP service. It defines the standard compose wiring,
+proxy override, IAM mount, Auth0 environment variables, and end-to-end test steps.
+
 ```mermaid
 %%{init: {'flowchart': {'curve': 'basis'} } }%%
 flowchart TD

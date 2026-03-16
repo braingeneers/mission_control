@@ -25,6 +25,21 @@ In plain language:
 
 The system is deny-by-default. If a user is not explicitly granted access, they are denied.
 
+## Platform Pattern
+
+This folder is shared across MCP services even though each service keeps its own
+resource hierarchy.
+
+Standard Braingeneers pattern:
+
+- shared group definitions live in `groups.yaml`
+- each MCP service gets its own `<service>.policy.yaml`
+- all services reuse the same deny-by-default and coarse-role-plus-explicit-grants model
+- services may define different resource trees, but operators should not need a different IAM workflow for each service
+
+Use [`policy.template.yaml`](/home/davidparks21/myprojects/Braingeneers/mission_control/iam/policy.template.yaml)
+as the starting point for a new MCP service policy file.
+
 ## Files In This Folder
 
 - `groups.yaml`

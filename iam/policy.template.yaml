@@ -1,0 +1,26 @@
+schema_version: 1
+kind: braingeneers-mcp-policy
+service: your-mcp-service
+description: >
+  Replace this file with the resource hierarchy and grants for one MCP service.
+group_files:
+  - groups.yaml
+eligibility:
+  required_roles_any:
+    - mcp-admin
+grants:
+  - uuid: replace-with-resource-root-or-primary-scope
+    description: Replace with a human-readable grant description.
+    principals:
+      groups:
+        - replace-with-group-name
+    access:
+      - read
+    devices:
+      - name: "*"
+        access:
+          - read
+        command_rules:
+          - effect: allow
+            commands:
+              - PING

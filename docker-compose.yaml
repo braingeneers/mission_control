@@ -175,7 +175,10 @@ services:
 
   # Integrated-system MCP server. This stays behind the shared edge proxy, but
   # it does its own OAuth resource-server validation and must receive the
-  # original Authorization header end to end.
+  # original Authorization header end to end. Future MCP services should follow
+  # the same pattern plus the service-proxy template at
+  # service-proxy/mcp-resource-server.template and the runbook in
+  # docs/mcp-onboarding.md.
   integrated-system-mcp:
     image: braingeneers/integrated-systems-mcp:latest
     container_name: integrated-system-mcp
@@ -195,6 +198,12 @@ services:
       BRAINGENEERS_HTTP_TRUST_ENV: "false"
       BRAINGENEERS_HTTP_USE_AUTH: "false"
       SHADOWS_DB_ENDPOINT: "http://shadows-db:1337/api"
+      MCP_BASE_URL: "https://integrated-system-mcp.braingeneers.gi.ucsc.edu"
+      MCP_STREAMABLE_HTTP_PATH: "/mcp"
+      MCP_HEALTH_PATH: "/healthz"
+      MCP_AUTH_RESOURCE_SERVER_URL: "https://integrated-system-mcp.braingeneers.gi.ucsc.edu"
+      MCP_AUTH_AUDIENCE: "https://integrated-system-mcp.braingeneers.gi.ucsc.edu/"
+      MCP_IAM_POLICY_PATH: "/iam/integrated-system-mcp.policy.yaml"
       VIRTUAL_HOST: "integrated-system-mcp.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "8000"
       LETSENCRYPT_HOST: "integrated-system-mcp.braingeneers.gi.ucsc.edu"
@@ -203,6 +212,7 @@ services:
       - braingeneers-net
     volumes:
       - secrets:/secrets
+      - ./iam:/iam:ro
     depends_on:
       secret-fetcher:
         condition: service_healthy
