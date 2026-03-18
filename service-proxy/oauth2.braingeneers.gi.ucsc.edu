@@ -1,0 +1,18 @@
+# Custom configuration for the self-hosted OIDC broker domain.
+#
+# This host must stay reachable without browser-session auth so MCP clients can
+# use it as an OAuth authorization server and so operators can access the admin
+# console directly.
+
+auth_request off;
+
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host $host;
+proxy_set_header X-Forwarded-Port $server_port;
+
+access_log /var/log/nginx/oauth2-broker.access.log vhost;
+error_log /var/log/nginx/oauth2-broker.error.log info;
+

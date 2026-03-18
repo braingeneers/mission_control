@@ -9,8 +9,7 @@ group_files:
   - groups.yaml
 eligibility:
   required_roles_any:
-    - mcp-admin
-    - mcp-guest
+    - mcp
 grants:
   - uuid: 2026-03-12-efi-sandbox
     description: Read-only visibility for a sandbox UUID.

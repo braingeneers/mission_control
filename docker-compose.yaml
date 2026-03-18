@@ -123,6 +123,7 @@ services:
       - /var/run/docker.sock:/tmp/docker.sock:ro
       - ./service-proxy/default:/etc/nginx/vhost.d/default:ro
       - ./service-proxy/auth.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu:ro
+      - ./service-proxy/oauth2.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/oauth2.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/uploader.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/uploader.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/uploader.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/uploader.braingeneers.gi.ucsc.edu_location:ro
       - ./service-proxy/uploader-dev.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/uploader-dev.braingeneers.gi.ucsc.edu:ro
@@ -158,6 +159,68 @@ services:
       - secrets:/secrets
     depends_on:
       secret-fetcher:
+        condition: service_healthy
+
+  # Self-hosted OIDC broker for MCP-only authentication experiments and future
+  # platform reuse. This host is intentionally separate from the existing
+  # auth.braingeneers.gi.ucsc.edu oauth2-proxy flow used by web apps.
+  oauth2-broker-db:
+    image: postgres:16-alpine
+    container_name: oauth2-broker-db
+    restart: unless-stopped
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - '--env'
+      - '/secrets/oauth2-broker/oauth2-broker-db.env'
+      - '/usr/local/bin/docker-entrypoint.sh'
+      - 'postgres'
+    environment:
+      PGDATA: "/var/lib/postgresql/data/pgdata"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - braingeneers-net
+    volumes:
+      - secrets:/secrets
+      - oauth2-broker-db-data:/var/lib/postgresql/data
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+
+  # Keycloak runs as the new MCP-focused OIDC broker. It is expected to broker
+  # upstream login to CILogon and issue downstream tokens for MCP clients.
+  oauth2-broker:
+    image: quay.io/keycloak/keycloak:26.4.6
+    container_name: oauth2-broker
+    restart: unless-stopped
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - '--env'
+      - '/secrets/oauth2-broker/oauth2-broker.env'
+      - '/opt/keycloak/bin/kc.sh'
+      - 'start'
+      - '--http-enabled=true'
+      - '--proxy-headers=xforwarded'
+      - '--hostname=oauth2.braingeneers.gi.ucsc.edu'
+    expose:
+      - "8080"
+    environment:
+      VIRTUAL_HOST: "oauth2.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8080"
+      LETSENCRYPT_HOST: "oauth2.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+    networks:
+      - braingeneers-net
+    volumes:
+      - secrets:/secrets
+      - ./oauth2-broker:/opt/braingeneers/oauth2-broker:ro
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+      oauth2-broker-db:
         condition: service_healthy
 
   # Debugging container to test nginx-proxy
@@ -814,37 +877,6 @@ services:
     networks:
       - braingeneers-net
 
-  # # Braingeneers data uploader web app
-  # uploader:
-  #   image: braingeneers/braingeneers-data-uploader:latest
-  #   container_name: uploader
-  #   restart: unless-stopped
-  #   entrypoint: /secrets/entrypoint-secrets-setup.sh
-  #   command:
-  #     - "--copy"
-  #     - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
-  #     - "uvicorn"
-  #     - "data_uploader.app:app"
-  #     - "--host"
-  #     - "0.0.0.0"
-  #     - "--port"
-  #     - "8000"
-  #   expose:
-  #     - "8000"
-  #   environment:
-  #     VIRTUAL_HOST: "uploader.braingeneers.gi.ucsc.edu"
-  #     VIRTUAL_PORT: "8000"
-  #     LETSENCRYPT_HOST: "uploader.braingeneers.gi.ucsc.edu"
-  #     LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
-  #     PROD: "true"
-  #   networks:
-  #     - braingeneers-net
-  #   volumes:
-  #     - secrets:/secrets
-  #   depends_on:
-  #     secret-fetcher:
-  #       condition: service_healthy
-
   # Braingeneers data uploader web app
   uploader:
     image: braingeneers/braingeneers-data-uploader:latest
@@ -936,3 +968,7 @@ volumes:
 
   # Volume for search
   search-db:
+
+  # Volume for self-hosted OIDC broker database
+  oauth2-broker-db-data:
+

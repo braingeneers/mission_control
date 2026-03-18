@@ -8,7 +8,7 @@ The intended audience for these files is the person who manages who should be al
 
 The MCP service makes access decisions in two stages:
 
-1. The caller must already have a coarse Auth0 role that allows use of the service at all.
+1. The caller must already have a coarse issuer-side role or group that allows use of the service at all.
 2. These YAML files decide which specific resources that caller may access.
 
 For the integrated-system MCP server, the protected resource hierarchy is:
@@ -126,7 +126,8 @@ groups:
 ### Inside `principals`
 
 - `subjects`
-  Human user identities, usually Auth0 subject strings such as `auth0|...`.
+  Human user identities, usually OIDC subject strings such as `auth0|...` or
+  `oauth2|CILogon|...`.
 
 - `client_ids`
   Service accounts or machine clients.
@@ -138,7 +139,7 @@ At least one of `subjects` or `client_ids` must be present.
 Use `subjects` when:
 
 - the caller is a person
-- the identity comes from an Auth0 login
+- the identity comes from an OIDC login such as Auth0, a self-hosted broker, or direct CILogon
 
 Use `client_ids` when:
 
@@ -147,15 +148,16 @@ Use `client_ids` when:
 
 ### How To Find The Right Identity String
 
-For a human user, the safest identifier is usually their Auth0 `subject`, which looks like:
+For a human user, the safest identifier is usually their OIDC `subject`, which may look like:
 
 - `auth0|abc123...`
+- `oauth2|CILogon|http://cilogon.org/serverA/users/139196`
 
 For a service account, the safest identifier is usually its `client_id`, which is an application-style name or ID.
 
 If you do not know the right value:
 
-- ask the platform or Auth0 administrator for the caller's exact `subject` or `client_id`
+- ask the platform administrator for the caller's exact `subject` or `client_id`
 - or check MCP audit logs, which record the authenticated principal seen by the service
 
 Do not guess these identifiers. A typo will usually cause a silent deny, and a mistaken identifier could grant access to the wrong principal.
@@ -174,7 +176,7 @@ group_files:
   - groups.yaml
 eligibility:
   required_roles_any:
-    - mcp-admin
+    - mcp
 grants:
   - uuid: 2026-03-12-efi-sandbox
     description: Read-only access for the sandbox experiment.
@@ -207,7 +209,7 @@ grants:
   Which group definition files to load. Paths are relative to this folder. Most of the time this should include `groups.yaml`.
 
 - `eligibility.required_roles_any`
-  Coarse Auth0 roles that are allowed to use this MCP service at all.
+  Coarse issuer-side roles that are allowed to use this MCP service at all.
 
 Important:
 
@@ -551,7 +553,7 @@ This keeps the files understandable over time.
 The broker-backed `mock-organoid-a` device is intended for safe demos and policy testing.
 It is still governed by the same YAML model:
 
-- the caller must have a coarse Auth0 role such as `mcp-guest` or `mcp-admin`
+- the caller must have the coarse Auth0 role `mcp`
 - the caller must still have a YAML grant for the MockOrganoid UUID
 - access can still be narrowed by device name and command
 
@@ -571,8 +573,7 @@ Example `integrated-system-mcp.policy.yaml` additions:
 ```yaml
 eligibility:
   required_roles_any:
-    - mcp-admin
-    - mcp-guest
+    - mcp
 
 grants:
   - uuid: 2026-03-12-efi-mock-organoid
@@ -635,7 +636,7 @@ Important points:
 If someone says they still cannot access a resource, check these in order:
 
 1. Are they in the right `subjects` or `client_ids` list, or in a group referenced by the grant?
-2. Do they have the required coarse Auth0 role such as `mcp-admin`?
+2. Do they have the required coarse Auth0 role `mcp`?
 3. Is the UUID correct?
 4. Does the device name match the `name` pattern?
 5. Does the grant include the needed `access` level?
@@ -683,7 +684,7 @@ group_files:
   - groups.yaml
 eligibility:
   required_roles_any:
-    - mcp-admin
+    - mcp
 grants:
   - uuid: 2026-04-01-efi-organoid-a
     description: Alice can inspect this UUID.

@@ -6,7 +6,7 @@ MCP services.
 The platform model is federated:
 
 - each project keeps its own MCP service
-- all MCP services reuse the same identity path, IAM workflow, and ingress pattern
+- all MCP services reuse the same IAM workflow and ingress pattern
 
 ## What Lives Where
 
@@ -14,6 +14,7 @@ Shared operational artifacts in `mission_control`:
 
 - `docker-compose.yaml`
 - `service-proxy/mcp-resource-server.template`
+- `oauth2-broker/`
 - `iam/groups.yaml`
 - `iam/<service>.policy.yaml`
 - `iam/policy.template.yaml`
@@ -74,15 +75,30 @@ The platform rules are:
 - explicit grants are still required
 - each service may define its own resource hierarchy, but operator workflow should stay familiar
 
+## Issuer Options
+
+Current production-default MCP identity path:
+
+- Auth0-backed issuer
+- same CILogon upstream connection as the web stack
+
+Broker pilot path:
+
+- self-hosted Keycloak broker at `https://oauth2.braingeneers.gi.ucsc.edu`
+- upstream login still goes to CILogon
+- MCP clients talk to the Braingeneers broker, not directly to CILogon
+- existing browser-oriented web auth remains unchanged
+
 ## Auth0 Configuration Checklist
+
+This section remains the current production-default MCP identity path.
 
 Shared across Braingeneers MCP services:
 
 - same Auth0 tenant
 - same CILogon upstream connection
 - same coarse role vocabulary:
-  - `mcp-admin`
-  - `mcp-guest`
+  - `mcp`
   - `user` remains reserved for normal web apps and should not grant MCP access
 
 Service-specific per MCP service:
@@ -101,6 +117,51 @@ Human-user login expectations:
 - a browser is normal in the OAuth flow
 - if generic MCP clients require dynamic client registration, either enable it in Auth0 or provide a supported pre-registered public-client strategy
 - treat this as a platform concern, not a one-off service hack
+
+Direct CILogon pilot notes:
+
+- keep the existing web `Auth0 -> CILogon` path unchanged while piloting MCP-only changes
+- the MCP runtime can now disable provider-side coarse role checks by setting `MCP_ALLOWED_ROLES=""`
+- the MCP runtime can now disable provider-specific role-claim extraction by setting `MCP_AUTH_ROLE_CLAIM=""`
+- in that pilot mode, local YAML IAM remains authoritative and the upstream issuer only needs to provide a stable authenticated identity
+
+## Self-Hosted Broker Pilot
+
+The first self-hosted broker artifacts now live in:
+
+- `oauth2-broker/README.md`
+- `oauth2-broker/keycloak-bootstrap.md`
+- `oauth2-broker/cilogon-support-email.template.md`
+
+Current broker choice:
+
+- product: `Keycloak`
+- public host: `https://oauth2.braingeneers.gi.ucsc.edu`
+- realm name: `braingeneers-mcp`
+
+Current broker-to-MCP environment contract:
+
+```yaml
+    environment:
+      MCP_AUTH_ISSUER_URL: "https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp"
+      MCP_AUTH_JWKS_URL: "https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp/protocol/openid-connect/certs"
+      MCP_AUTH_RESOURCE_SERVER_URL: "https://integrated-system-mcp.braingeneers.gi.ucsc.edu"
+      MCP_AUTH_AUDIENCE: "https://integrated-system-mcp.braingeneers.gi.ucsc.edu/"
+      MCP_AUTH_ROLE_CLAIM: "realm_access.roles"
+      MCP_ALLOWED_ROLES: "mcp"
+```
+
+Identity-only fallback with YAML IAM remains available:
+
+- `MCP_ALLOWED_ROLES=""`
+- `MCP_AUTH_ROLE_CLAIM=""`
+
+Current Keycloak caveat:
+
+- Keycloak is a strong fit for DCR plus upstream OIDC brokering, but its current
+  MCP guidance still lags newer Resource Indicator requirements
+- validate real MCP clients early and keep the Auth0-backed path available until
+  the broker path is proven
 
 ## Integrated-System Reference Service
 
@@ -137,6 +198,9 @@ Run these checks after deploy:
    - confirm a principal with the right YAML grant can only reach the UUID and device scope explicitly granted
 5. Human-user login
    - if tenant settings support the target MCP client flow, complete a real login through the client and verify tool access
+6. Broker validation, when using the self-hosted path
+   - `curl -i https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp/.well-known/openid-configuration`
+   - confirm the issuer and token endpoints are reachable through the public hostname
 
 ## Fallback and Troubleshooting
 
@@ -154,6 +218,8 @@ Distinguish failures this way:
   - `Authorization` is missing at the backend or browser auth still intercepts `/mcp`
 - Auth0 registration failure:
   - the client cannot complete OAuth client registration or is rejected before token issuance
+- broker registration failure:
+  - the self-hosted broker is reachable, but Keycloak DCR or redirect policy blocks the client before token issuance
 - application token-validation failure:
   - the backend receives the token but rejects issuer, audience, signature, or expiry
 - application IAM failure:

@@ -7,7 +7,7 @@ group_files:
   - groups.yaml
 eligibility:
   required_roles_any:
-    - mcp-admin
+    - mcp
 grants:
   - uuid: replace-with-resource-root-or-primary-scope
     description: Replace with a human-readable grant description.

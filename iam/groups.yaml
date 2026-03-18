@@ -5,7 +5,7 @@ groups:
     description: Read-only users for integrated-system experiment UUIDs.
     principals:
       subjects:
-        - auth0|replace-with-reader-subject
+        - oauth2|CILogon|http://cilogon.org/serverA/users/139196
   integrated-system-mock-organoid-guests:
     description: Guest users limited to the broker-backed MockOrganoid demo device.
     principals:
@@ -16,9 +16,9 @@ groups:
     description: Users allowed to run device actuation commands for specific devices.
     principals:
       subjects:
-        - auth0|replace-with-operator-subject
+        - oauth2|CILogon|http://cilogon.org/serverA/users/139196
   integrated-system-experiment-admins:
     description: Users allowed to issue experiment-binding commands such as START and END.
     principals:
       subjects:
-        - auth0|replace-with-admin-subject
+        - oauth2|CILogon|http://cilogon.org/serverA/users/139196
