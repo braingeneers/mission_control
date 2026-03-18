@@ -177,7 +177,11 @@ services:
     environment:
       PGDATA: "/var/lib/postgresql/data/pgdata"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      test:
+        [
+          "CMD-SHELL",
+          ". /secrets/oauth2-broker/oauth2-broker-db.env && pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"",
+        ]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -971,4 +975,3 @@ volumes:
 
   # Volume for self-hosted OIDC broker database
   oauth2-broker-db-data:
-
