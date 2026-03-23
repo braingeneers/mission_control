@@ -162,11 +162,11 @@ Current broker-to-MCP environment contract:
       MCP_AUTH_JWKS_URL: "https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/protocol/openid-connect/certs"
       MCP_AUTH_RESOURCE_SERVER_URL: "https://integrated-system-mcp.braingeneers.gi.ucsc.edu"
       MCP_AUTH_AUDIENCE: "https://integrated-system-mcp.braingeneers.gi.ucsc.edu/"
-      MCP_AUTH_ROLE_CLAIM: "realm_access.roles"
-      MCP_ALLOWED_ROLES: "mcp"
+      MCP_AUTH_ROLE_CLAIM: ""
+      MCP_ALLOWED_ROLES: ""
 ```
 
-Identity-only fallback with YAML IAM remains available:
+Current rollout mode is identity-only plus YAML IAM:
 
 - `MCP_ALLOWED_ROLES=""`
 - `MCP_AUTH_ROLE_CLAIM=""`
