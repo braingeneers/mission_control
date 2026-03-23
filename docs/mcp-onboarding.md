@@ -14,7 +14,7 @@ Shared operational artifacts in `mission_control`:
 
 - `docker-compose.yaml`
 - `service-proxy/mcp-resource-server.template`
-- `oauth2-broker/`
+- `service-accounts/`
 - `iam/groups.yaml`
 - `iam/<service>.policy.yaml`
 - `iam/policy.template.yaml`
@@ -75,48 +75,63 @@ The platform rules are:
 - explicit grants are still required
 - each service may define its own resource hierarchy, but operator workflow should stay familiar
 
-## Issuer Options
+## Supported Human Path
 
-Current production-default MCP identity path:
+Current supported human-user MCP path:
 
-- Auth0-backed issuer
-- same CILogon upstream connection as the web stack
+- `python -m braingeneers.iot.authenticate`
+  - bootstraps both:
+    - the broad Auth0-backed service-account token
+    - the narrower interactive user token for local MCP bridge use from
+      Keycloak device flow
+- `python -m braingeneers.mcp.bridge`
+  - runs a local HTTP bridge that forwards to the real remote MCP service with
+    the interactive bearer token
+- Codex, Claude Code, and similar tools connect to the local bridge, not
+  directly to the public Braingeneers MCP hostname
 
-Broker pilot path:
+Current bridge-token issuer:
 
-- self-hosted Keycloak broker at `https://oauth2.braingeneers.gi.ucsc.edu`
-- upstream login still goes to CILogon
-- MCP clients talk to the Braingeneers broker, not directly to CILogon
-- existing browser-oriented web auth remains unchanged
+- issuer:
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers`
+- JWKS:
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/protocol/openid-connect/certs`
+- device authorization endpoint:
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/protocol/openid-connect/auth/device`
+- token endpoint:
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/protocol/openid-connect/token`
 
-## Auth0 Configuration Checklist
+This keeps the existing browser-oriented web `Auth0 -> CILogon` stack intact
+while removing MCP’s dependency on direct remote client OAuth interoperability
+for the first supported human flow.
 
-This section remains the current production-default MCP identity path.
+## Bridge-Issuer Configuration Checklist
 
 Shared across Braingeneers MCP services:
 
-- same Auth0 tenant
-- same CILogon upstream connection
-- same coarse role vocabulary:
+- same local bridge-token issuer host:
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers`
+- same bridge client:
+  - `braingeneerspy-bridge`
+- same public JWKS path on the Keycloak realm
+- same coarse role vocabulary in bridge tokens:
   - `mcp`
   - `user` remains reserved for normal web apps and should not grant MCP access
 
 Service-specific per MCP service:
 
-1. Create or reserve one protected resource audience for the service hostname.
-2. Configure the MCP backend with:
+1. Create or reserve one protected-resource audience for the service hostname.
+2. Add that audience to the Keycloak client-scope/audience-mapper configuration.
+3. Configure the MCP backend with:
    - issuer URL
    - JWKS URL
    - audience
    - resource server URL
-3. Grant coarse roles only to principals eligible to use MCP at all.
-4. Keep fine-grained authorization in YAML policy, not just Auth0 roles.
+4. Grant coarse roles only to principals eligible to use MCP at all.
+5. Keep fine-grained authorization in YAML policy, not just token roles.
 
-Human-user login expectations:
-
-- a browser is normal in the OAuth flow
-- if generic MCP clients require dynamic client registration, either enable it in Auth0 or provide a supported pre-registered public-client strategy
-- treat this as a platform concern, not a one-off service hack
+The self-hosted Keycloak broker under `oauth2.braingeneers.gi.ucsc.edu`
+is now the supported issuer for the human-user bridge path.
 
 Direct CILogon pilot notes:
 
@@ -125,7 +140,7 @@ Direct CILogon pilot notes:
 - the MCP runtime can now disable provider-specific role-claim extraction by setting `MCP_AUTH_ROLE_CLAIM=""`
 - in that pilot mode, local YAML IAM remains authoritative and the upstream issuer only needs to provide a stable authenticated identity
 
-## Self-Hosted Broker Pilot
+## Experimental Self-Hosted Broker Pilot
 
 The first self-hosted broker artifacts now live in:
 
@@ -137,14 +152,14 @@ Current broker choice:
 
 - product: `Keycloak`
 - public host: `https://oauth2.braingeneers.gi.ucsc.edu`
-- realm name: `braingeneers-mcp`
+- realm name: `braingeneers`
 
 Current broker-to-MCP environment contract:
 
 ```yaml
     environment:
-      MCP_AUTH_ISSUER_URL: "https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp"
-      MCP_AUTH_JWKS_URL: "https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp/protocol/openid-connect/certs"
+      MCP_AUTH_ISSUER_URL: "https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers"
+      MCP_AUTH_JWKS_URL: "https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/protocol/openid-connect/certs"
       MCP_AUTH_RESOURCE_SERVER_URL: "https://integrated-system-mcp.braingeneers.gi.ucsc.edu"
       MCP_AUTH_AUDIENCE: "https://integrated-system-mcp.braingeneers.gi.ucsc.edu/"
       MCP_AUTH_ROLE_CLAIM: "realm_access.roles"
@@ -160,8 +175,8 @@ Current Keycloak caveat:
 
 - Keycloak is a strong fit for DCR plus upstream OIDC brokering, but its current
   MCP guidance still lags newer Resource Indicator requirements
-- validate real MCP clients early and keep the Auth0-backed path available until
-  the broker path is proven
+- validate real MCP clients early and keep the legacy Auth0 service-account path
+  available for unattended non-MCP callers
 
 ## Integrated-System Reference Service
 
@@ -199,7 +214,7 @@ Run these checks after deploy:
 5. Human-user login
    - if tenant settings support the target MCP client flow, complete a real login through the client and verify tool access
 6. Broker validation, when using the self-hosted path
-   - `curl -i https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp/.well-known/openid-configuration`
+   - `curl -i https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/.well-known/openid-configuration`
    - confirm the issuer and token endpoints are reachable through the public hostname
 
 ## Fallback and Troubleshooting

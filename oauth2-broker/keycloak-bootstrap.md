@@ -14,12 +14,12 @@ MCP broker realm.
 
 Create a new realm:
 
-- realm name: `braingeneers-mcp`
-- display name: `Braingeneers MCP`
+- realm name: `braingeneers`
+- display name: `Braingeneers`
 
 This gives the first issuer:
 
-- `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp`
+- `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers`
 
 ## 3. Add The CILogon Identity Provider
 
@@ -34,7 +34,7 @@ Create an OIDC identity provider:
 
 Expected Keycloak callback URL to register with CILogon:
 
-- `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp/broker/cilogon/endpoint`
+- `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/broker/cilogon/endpoint`
 
 Do not repurpose the existing web callback:
 
@@ -43,28 +43,56 @@ Do not repurpose the existing web callback:
 The broker callback is separate because web auth remains on the existing
 `oauth2-proxy -> Auth0 -> CILogon` path for now.
 
-## 4. Enable MCP-Oriented Client Registration
+## 4. Create The `braingeneerspy-bridge` Client
 
-Enable OIDC Dynamic Client Registration for the realm so generic MCP clients can
-create public/native clients without direct CILogon registration.
+Create a Keycloak client for the supported human-user bridge flow:
 
-Target behavior:
+- client id:
+  - `braingeneerspy-bridge`
+- client type:
+  - public
+- client authentication:
+  - off
+- authorization:
+  - off
+- standard flow:
+  - off
+- direct access grants:
+  - off
+- service accounts:
+  - off
+- device authorization grant:
+  - on
+- valid redirect URIs:
+  - not required for the device flow path
 
-- public clients allowed
-- PKCE required
-- loopback redirect URIs allowed for CLI/native clients
-- client registration remains scoped to MCP use, not general-purpose anonymous
-  browser apps
+The `braingeneerspy` bridge bootstrap requests:
 
-Recommended first pass:
+- `openid`
+- `profile`
+- `email`
+- `offline_access`
+- `mcp:tools`
+- `mcp:resources`
+- `mcp:prompts`
 
-- allow anonymous dynamic registration at the realm level
-- keep PKCE mandatory for public clients
-- keep the allowed grant types narrow
-- review Keycloak trusted-host and redirect-uri registration policies before
-  exposing the broker publicly
+So the client should be allowed to request those scopes and receive refresh
+tokens.
 
-## 5. Create MCP Audience Scopes
+## 5. Optional: Keep DCR For Future Experiments
+
+Dynamic Client Registration is no longer required for the supported
+`braingeneerspy` bridge rollout, but you may still keep or pilot it for future
+generic-client experiments.
+
+If enabled, treat it as experimental and review:
+
+- anonymous registration exposure
+- trusted-host policy implications
+- redirect URI policy
+- how those choices interact with MCP clients from arbitrary user networks
+
+## 6. Create MCP Audience Scopes
 
 Following Keycloak's published MCP guidance, create three optional client
 scopes:
@@ -80,7 +108,7 @@ For each scope, add an audience mapper that injects:
 This gives broker-issued access tokens the audience expected by the current
 integrated-system MCP resource server.
 
-## 6. Decide Coarse MCP Eligibility
+## 7. Decide Coarse MCP Eligibility
 
 Two supported patterns:
 
@@ -101,30 +129,30 @@ Recommended first rollout:
 - keep the coarse realm role `mcp`
 - continue using YAML IAM as the real authorization layer
 
-## 7. Test The Broker Itself
+## 8. Test The Broker Itself
 
 Verify:
 
 - realm discovery:
-  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp/.well-known/openid-configuration`
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/.well-known/openid-configuration`
 - JWKS:
-  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp/protocol/openid-connect/certs`
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/protocol/openid-connect/certs`
 - browser login reaches CILogon
+- device flow works for client `braingeneerspy-bridge`
 - a test token contains:
   - issuer from the realm above
   - audience `https://integrated-system-mcp.braingeneers.gi.ucsc.edu/`
   - optional realm role `mcp`
 
-## 8. Switch MCP Runtime Only After Broker Validation
+## 9. Switch MCP Runtime Only After Broker Validation
 
 When the broker is ready, set the MCP runtime environment to:
 
-- `MCP_AUTH_ISSUER_URL=https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp`
-- `MCP_AUTH_JWKS_URL=https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp/protocol/openid-connect/certs`
+- `MCP_AUTH_ISSUER_URL=https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers`
+- `MCP_AUTH_JWKS_URL=https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/protocol/openid-connect/certs`
 - `MCP_AUTH_RESOURCE_SERVER_URL=https://integrated-system-mcp.braingeneers.gi.ucsc.edu`
 - `MCP_AUTH_AUDIENCE=https://integrated-system-mcp.braingeneers.gi.ucsc.edu/`
 - `MCP_AUTH_ROLE_CLAIM=realm_access.roles`
 - `MCP_ALLOWED_ROLES=mcp`
 
 Leave the rest of the web stack unchanged.
-

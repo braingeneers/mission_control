@@ -281,8 +281,7 @@ against oauth2-proxy, which will check for a valid session or JWT token. Oauth2 
 to indicate if the user is authenticated or not. If the user is not authenticated, the request is redirected to Auth0,
 and Auth0 forwards to CILogon for authentication. Once the user is authenticated, the user's roles are verified by
 Auth0 and an auth session is created. The user is then redirected back to the service-proxy, which performs another
-internal authentication request against oauth2-proxy which will now succeed. Note that the login to auth0 and cilogon.org uses
-the lab-shared braingeneers-admins-group account.
+internal authentication request against oauth2-proxy which will now succeed.
 
 This remains the current browser-oriented web-service authentication path.
 MCP-specific broker work under `oauth2.braingeneers.gi.ucsc.edu` is separate and
@@ -299,10 +298,35 @@ python -m braingeneers.iot.authenticate
 ``` 
 
 That `braingeneerspy` command will
-(auto) direct the user to the `/generate_token` page to get their first token (this requires manual user authentication using
-the normal university credentials authentication flow). Once the first token is obtained manually 
-it will have a 4 month expiration, and will be automatically
-renewed by `braingeneerspy` every 1 month. If the token is revoked or expires, the user must manually authenticate again.
+(auto) bootstrap two credentials:
+
+- the existing broad Auth0-backed service-account token from
+  `https://service-accounts.braingeneers.gi.ucsc.edu/generate_token`
+- a narrower interactive user token from the self-hosted Keycloak broker at
+  `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers`
+
+The interactive bridge token is a normal Keycloak-issued OIDC token with a
+refresh token. The remote MCP service continues to trust signed bearer-token
+claims, not proxy-injected identity headers.
+
+Once the first token bundle is obtained manually:
+
+- the service-account token keeps the current long-lived refresh behavior
+- the interactive user token refreshes itself through the standard Keycloak
+  token endpoint
+- if either token is revoked or its refresh window expires, the user must rerun
+  `python -m braingeneers.iot.authenticate`
+
+Bridge-issuer endpoints:
+
+- issuer:
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers`
+- JWKS:
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/protocol/openid-connect/certs`
+- device authorization:
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/protocol/openid-connect/auth/device`
+- token endpoint:
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/protocol/openid-connect/token`
 
 For services deployed under `mission_control`, the usual pattern is different from local interactive use: do not depend on manual `braingeneerspy` token bootstrap inside the container. Instead, mount `/secrets/braingeneers-jwt-service-account-token/config.json` to `braingeneers/iot/service_account/config.json`. That secret is refreshed daily by the `service-account-jwt-token-refresh` service and is the expected source for unattended service-to-service access.
 

@@ -20,10 +20,12 @@ we control, instead of depending on Auth0-specific third-party app behavior.
 
 This broker gives us:
 
-- one Braingeneers-controlled OAuth/OIDC issuer for MCP
+- one Braingeneers-controlled OAuth/OIDC issuer for MCP now and broader
+  Braingeneers identity work later
 - one CILogon-facing confidential client instead of direct CILogon registration
   for every MCP client
-- Dynamic Client Registration support under our control
+- a public bridge client that `braingeneerspy` can use through device flow
+- Dynamic Client Registration support under our control for future experiments
 - reusable infrastructure for future non-MCP workloads, without changing the web
   stack yet
 
@@ -67,11 +69,11 @@ The `secret-fetcher` service will place those files at:
 3. Start:
    - `oauth2-broker-db`
    - `oauth2-broker`
-4. Log into Keycloak and create realm `braingeneers-mcp`.
+4. Log into Keycloak and create realm `braingeneers`.
 5. Configure Keycloak to broker upstream login to CILogon.
 6. Ask CILogon support to add the new Keycloak broker callback:
-   - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp/broker/cilogon/endpoint`
-7. Configure Dynamic Client Registration, PKCE, MCP audience scopes, and realm
+   - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/broker/cilogon/endpoint`
+7. Configure the `braingeneerspy-bridge` client, MCP audience scopes, and realm
    roles as documented in `keycloak-bootstrap.md`.
 8. Point `integrated-system-mcp` at the new issuer only after public metadata
    and token issuance are verified end to end.
@@ -80,14 +82,14 @@ The `secret-fetcher` service will place those files at:
 
 Initial realm name:
 
-- `braingeneers-mcp`
+- `braingeneers`
 
 Initial issuer shape:
 
 - issuer:
-  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp`
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers`
 - JWKS:
-  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers-mcp/protocol/openid-connect/certs`
+  - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/protocol/openid-connect/certs`
 
 Initial protected resource audience for the current service:
 
@@ -97,6 +99,17 @@ Recommended first claim mapping for MCP:
 
 - `MCP_AUTH_ROLE_CLAIM=realm_access.roles`
 - `MCP_ALLOWED_ROLES=mcp`
+
+Recommended first human-user bridge client:
+
+- client id:
+  - `braingeneerspy-bridge`
+- client type:
+  - public
+- primary user flow:
+  - OAuth 2.0 Device Authorization Grant
+- required requested scopes:
+  - `openid profile email offline_access mcp:tools mcp:resources mcp:prompts`
 
 If the first pilot prefers identity-only tokens and YAML IAM, leave Keycloak
 role assignment empty and configure:

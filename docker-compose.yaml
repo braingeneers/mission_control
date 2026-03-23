@@ -123,6 +123,7 @@ services:
       - /var/run/docker.sock:/tmp/docker.sock:ro
       - ./service-proxy/default:/etc/nginx/vhost.d/default:ro
       - ./service-proxy/auth.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/auth.braingeneers.gi.ucsc.edu:ro
+      - ./service-proxy/service-accounts.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/service-accounts.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/oauth2.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/oauth2.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/uploader.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/uploader.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/uploader.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/uploader.braingeneers.gi.ucsc.edu_location:ro
@@ -268,8 +269,12 @@ services:
       MCP_BASE_URL: "https://integrated-system-mcp.braingeneers.gi.ucsc.edu"
       MCP_STREAMABLE_HTTP_PATH: "/mcp"
       MCP_HEALTH_PATH: "/healthz"
+      MCP_AUTH_ISSUER_URL: "https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers"
+      MCP_AUTH_JWKS_URL: "https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers/protocol/openid-connect/certs"
       MCP_AUTH_RESOURCE_SERVER_URL: "https://integrated-system-mcp.braingeneers.gi.ucsc.edu"
       MCP_AUTH_AUDIENCE: "https://integrated-system-mcp.braingeneers.gi.ucsc.edu/"
+      MCP_AUTH_ROLE_CLAIM: "realm_access.roles"
+      MCP_ALLOWED_ROLES: "mcp"
       MCP_IAM_POLICY_PATH: "/iam/integrated-system-mcp.policy.yaml"
       VIRTUAL_HOST: "integrated-system-mcp.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "8000"
