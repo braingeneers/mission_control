@@ -6,10 +6,22 @@ The intended audience for these files is the person who manages who should be al
 
 ## What These Files Do
 
-The MCP service makes access decisions in two stages:
+The MCP service makes access decisions in two layers:
 
-1. The caller must already have a coarse issuer-side role or group that allows use of the service at all.
+1. The service first validates the caller's bearer token and identity.
 2. These YAML files decide which specific resources that caller may access.
+
+Optional third layer:
+
+- a service policy may also declare `eligibility.required_roles_any` when a deployment
+  wants an extra coarse issuer-side gate before the YAML grants are evaluated
+
+Current helper-token default:
+
+- helper-issued user tokens are evaluated in identity-plus-YAML mode by default
+- if `eligibility.required_roles_any` is omitted and the service runtime does not
+  configure fallback roles, a valid authenticated identity plus matching YAML grants
+  is enough to authorize access
 
 For the integrated-system MCP server, the protected resource hierarchy is:
 
@@ -34,7 +46,8 @@ Standard Braingeneers pattern:
 
 - shared group definitions live in `groups.yaml`
 - each MCP service gets its own `<service>.policy.yaml`
-- all services reuse the same deny-by-default and coarse-role-plus-explicit-grants model
+- all services reuse the same deny-by-default and explicit-grants model
+- coarse service eligibility is optional and service-specific
 - services may define different resource trees, but operators should not need a different IAM workflow for each service
 
 Use [`policy.template.yaml`](/home/davidparks21/myprojects/Braingeneers/mission_control/iam/policy.template.yaml)
@@ -90,13 +103,13 @@ groups:
     description: Read-only users for integrated-system experiment UUIDs.
     principals:
       subjects:
-        - auth0|alice-example
-        - auth0|bob-example
+        - oauth2|CILogon|alice-example
+        - oauth2|CILogon|bob-example
   integrated-system-operators:
     description: Users allowed to run device actuation commands.
     principals:
       subjects:
-        - auth0|carol-example
+        - oauth2|CILogon|carol-example
   integrated-system-service-accounts:
     description: Machine clients allowed to call MCP.
     principals:
@@ -126,7 +139,7 @@ groups:
 ### Inside `principals`
 
 - `subjects`
-  Human user identities, usually OIDC subject strings such as `auth0|...` or
+  Human user identities, usually OIDC subject strings such as
   `oauth2|CILogon|...`.
 
 - `client_ids`
@@ -139,7 +152,7 @@ At least one of `subjects` or `client_ids` must be present.
 Use `subjects` when:
 
 - the caller is a person
-- the identity comes from an OIDC login such as Auth0, a self-hosted broker, or direct CILogon
+- the identity comes from an OIDC login such as the self-hosted broker or direct CILogon
 
 Use `client_ids` when:
 
@@ -150,8 +163,8 @@ Use `client_ids` when:
 
 For a human user, the safest identifier is usually their OIDC `subject`, which may look like:
 
-- `auth0|abc123...`
 - `oauth2|CILogon|http://cilogon.org/serverA/users/139196`
+- `oauth2|CILogon|http://cilogon.org/serverE/users/185999`
 
 For a service account, the safest identifier is usually its `client_id`, which is an application-style name or ID.
 
@@ -174,9 +187,6 @@ description: >
   UUID-first authorization for the integrated-system MCP server.
 group_files:
   - groups.yaml
-eligibility:
-  required_roles_any:
-    - mcp
 grants:
   - uuid: 2026-03-12-efi-sandbox
     description: Read-only access for the sandbox experiment.
@@ -209,10 +219,11 @@ grants:
   Which group definition files to load. Paths are relative to this folder. Most of the time this should include `groups.yaml`.
 
 - `eligibility.required_roles_any`
-  Coarse issuer-side roles that are allowed to use this MCP service at all.
+  Optional coarse issuer-side roles that are allowed to use this MCP service at all.
 
 Important:
 
+- Omit this block for identity-plus-YAML mode.
 - This does not replace the YAML grants.
 - A user can have the right role and still be denied if there is no UUID grant for them.
 
@@ -287,7 +298,7 @@ principals:
   groups:
     - integrated-system-readers
   subjects:
-    - auth0|special-case-user
+    - oauth2|CILogon|special-case-user
 ```
 
 ## Access Levels
@@ -452,8 +463,8 @@ groups:
     description: Read-only users for integrated-system experiment UUIDs.
     principals:
       subjects:
-        - auth0|alice-example
-        - auth0|new-reader-subject
+        - oauth2|CILogon|alice-example
+        - oauth2|CILogon|new-reader-subject
 ```
 
 Use this when the new person should inherit all existing reader grants.
@@ -553,9 +564,10 @@ This keeps the files understandable over time.
 The broker-backed `mock-organoid-a` device is intended for safe demos and policy testing.
 It is still governed by the same YAML model:
 
-- the caller must have the coarse Auth0 role `mcp`
+- the caller must present a valid authenticated identity
 - the caller must still have a YAML grant for the MockOrganoid UUID
 - access can still be narrowed by device name and command
+- deployments may add optional coarse eligibility if they want an extra issuer-side gate
 
 Example `groups.yaml` additions:
 
@@ -565,16 +577,12 @@ groups:
     description: Guest users limited to the mock organoid demo device.
     principals:
       subjects:
-        - auth0|guest-user-1
+        - oauth2|CILogon|guest-user-1
 ```
 
 Example `integrated-system-mcp.policy.yaml` additions:
 
 ```yaml
-eligibility:
-  required_roles_any:
-    - mcp
-
 grants:
   - uuid: 2026-03-12-efi-mock-organoid
     description: Guests may inspect the mock organoid demo UUID.
@@ -630,13 +638,14 @@ Important points:
 - keeping it on its own UUID makes the grant easy to reason about
 - if you add command rules, only the listed commands will be allowed for that grant
 - `START` and `END` still require an explicit allow rule even for mock devices
+- if your service deployment enables coarse eligibility, the caller must also satisfy that gate
 
 ## Troubleshooting
 
 If someone says they still cannot access a resource, check these in order:
 
 1. Are they in the right `subjects` or `client_ids` list, or in a group referenced by the grant?
-2. Do they have the required coarse Auth0 role `mcp`?
+2. Does the service policy or runtime enable coarse eligibility, and if so does the caller satisfy it?
 3. Is the UUID correct?
 4. Does the device name match the `name` pattern?
 5. Does the grant include the needed `access` level?
@@ -661,17 +670,17 @@ groups:
     description: Read-only users.
     principals:
       subjects:
-        - auth0|alice
+        - oauth2|CILogon|alice
   integrated-system-operators:
     description: Device operators.
     principals:
       subjects:
-        - auth0|carol
+        - oauth2|CILogon|carol
   integrated-system-experiment-admins:
     description: People allowed to start and end experiments.
     principals:
       subjects:
-        - auth0|david
+        - oauth2|CILogon|david
 ```
 
 `integrated-system-mcp.policy.yaml`
@@ -682,9 +691,6 @@ kind: braingeneers-mcp-policy
 service: integrated-system-mcp
 group_files:
   - groups.yaml
-eligibility:
-  required_roles_any:
-    - mcp
 grants:
   - uuid: 2026-04-01-efi-organoid-a
     description: Alice can inspect this UUID.

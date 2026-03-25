@@ -2,14 +2,12 @@ schema_version: 1
 kind: braingeneers-mcp-policy
 service: integrated-system-mcp
 description: >
-  UUID-first authorization for the integrated-system MCP server. Coarse Auth0 role
-  eligibility is checked first, then this policy decides which experiment UUIDs,
-  devices, and commands are available.
+  UUID-first authorization for the integrated-system MCP server. The default
+  helper-token rollout relies on validated identity plus explicit YAML grants.
+  Deployments may add optional coarse eligibility in the `eligibility` block
+  when they need an extra issuer-side service gate.
 group_files:
   - groups.yaml
-eligibility:
-  required_roles_any:
-    - mcp
 grants:
   - uuid: 2026-03-12-efi-sandbox
     description: Read-only visibility for a sandbox UUID.

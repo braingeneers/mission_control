@@ -2,25 +2,20 @@ schema_version: 1
 kind: braingeneers-mcp-policy
 service: your-mcp-service
 description: >
-  Replace this file with the resource hierarchy and grants for one MCP service.
+  Replace this file with the grants for one MCP service. The exact fields under
+  each grant are defined by that service's runtime adapter.
 group_files:
   - groups.yaml
-eligibility:
-  required_roles_any:
-    - mcp
+# Optional coarse service eligibility. Omit this block for identity-plus-YAML
+# mode, which is the current default for helper-issued user tokens.
+# eligibility:
+#   required_roles_any:
+#     - mcp
 grants:
-  - uuid: replace-with-resource-root-or-primary-scope
+  - service-defined-root-scope: replace-with-resource-root-or-primary-scope
     description: Replace with a human-readable grant description.
     principals:
       groups:
         - replace-with-group-name
     access:
       - read
-    devices:
-      - name: "*"
-        access:
-          - read
-        command_rules:
-          - effect: allow
-            commands:
-              - PING

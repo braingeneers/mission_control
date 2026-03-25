@@ -10,6 +10,7 @@ groups:
     description: Guest users limited to the broker-backed MockOrganoid demo device.
     principals:
       subjects:
+        - 4ca132bc-6e50-40c5-9c77-49ad88cf49c5
         - oauth2|CILogon|http://cilogon.org/serverA/users/139196
         - oauth2|CILogon|http://cilogon.org/serverE/users/134140
   integrated-system-operators:

@@ -71,7 +71,7 @@ Use one service policy file per MCP service:
 The platform rules are:
 
 - deny by default
-- coarse token roles are necessary but not sufficient
+- coarse service eligibility is optional
 - explicit grants are still required
 - each service may define its own resource hierarchy, but operator workflow should stay familiar
 
@@ -82,15 +82,24 @@ Current supported human-user MCP path:
 - `python -m braingeneers.iot.authenticate`
   - bootstraps both:
     - the broad Auth0-backed service-account token
-    - the narrower interactive user token for local MCP bridge use from
+    - the narrower interactive user token for local MCP helper use from
       Keycloak device flow
-- `python -m braingeneers.mcp.bridge`
-  - runs a local HTTP bridge that forwards to the real remote MCP service with
-    the interactive bearer token
-- Codex, Claude Code, and similar tools connect to the local bridge, not
-  directly to the public Braingeneers MCP hostname
+- `python -m braingeneers.mcp`
+  - runs a local stdio MCP adapter for the currently supported Braingeneers MCP
+    service using the interactive bearer token
+- Codex, Claude Code, Cursor, and similar tools launch the local stdio adapter, not the
+  public Braingeneers MCP hostname directly
 
-Current bridge-token issuer:
+Client examples:
+
+- Codex:
+  - `codex mcp add integrated-system-mcp -- python -m braingeneers.mcp`
+- Claude Code:
+  - `claude mcp add integrated-system-mcp -- python -m braingeneers.mcp`
+- Cursor:
+  - add a stdio MCP entry to `~/.cursor/mcp.json` with `type: "stdio"`, command `python`, and args `["-m", "braingeneers.mcp"]`
+
+Current helper-token issuer:
 
 - issuer:
   - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers`
@@ -105,16 +114,16 @@ This keeps the existing browser-oriented web `Auth0 -> CILogon` stack intact
 while removing MCP’s dependency on direct remote client OAuth interoperability
 for the first supported human flow.
 
-## Bridge-Issuer Configuration Checklist
+## Helper-Issuer Configuration Checklist
 
 Shared across Braingeneers MCP services:
 
-- same local bridge-token issuer host:
+- same local helper-token issuer host:
   - `https://oauth2.braingeneers.gi.ucsc.edu/realms/braingeneers`
-- same bridge client:
+- same helper client:
   - `braingeneerspy-bridge`
 - same public JWKS path on the Keycloak realm
-- same coarse role vocabulary in bridge tokens:
+- same coarse role vocabulary in helper tokens:
   - `mcp`
   - `user` remains reserved for normal web apps and should not grant MCP access
 
@@ -127,11 +136,12 @@ Service-specific per MCP service:
    - JWKS URL
    - audience
    - resource server URL
-4. Grant coarse roles only to principals eligible to use MCP at all.
-5. Keep fine-grained authorization in YAML policy, not just token roles.
+4. Decide whether the service needs optional coarse eligibility at all.
+5. If it does, configure the token role claim plus either `MCP_ALLOWED_ROLES` or `eligibility.required_roles_any`.
+6. Keep fine-grained authorization in YAML policy, not just token roles.
 
 The self-hosted Keycloak broker under `oauth2.braingeneers.gi.ucsc.edu`
-is now the supported issuer for the human-user bridge path.
+is now the supported issuer for the human-user helper path.
 
 Direct CILogon pilot notes:
 
@@ -209,7 +219,8 @@ Run these checks after deploy:
 3. Authorization-header preservation
    - send a bearer token through the public hostname and verify the backend sees token-based auth rather than stripped headers
 4. IAM enforcement
-   - confirm a principal with valid coarse role but no YAML grant is denied
+   - confirm a principal with a valid authenticated identity but no YAML grant is denied
+   - if the deployment enables coarse eligibility, confirm a principal with no coarse role is denied before YAML grants are evaluated
    - confirm a principal with the right YAML grant can only reach the UUID and device scope explicitly granted
 5. Human-user login
    - if tenant settings support the target MCP client flow, complete a real login through the client and verify tool access

@@ -449,12 +449,13 @@ The current preferred direction is:
 2. Stop requiring direct remote OAuth interoperability as the only supported MCP
    path.
 3. Keep the existing broad Auth0 service-account bootstrap path for legacy
-   callers, but move interactive bridge-user tokens to the self-hosted Keycloak
+   callers, but move interactive helper-user tokens to the self-hosted Keycloak
    broker at `oauth2.braingeneers.gi.ucsc.edu`.
-4. Build a local MCP bridge in `braingeneerspy`.
-5. Have Codex, Claude Code, and similar tools connect to that local bridge.
-6. Let the local bridge forward to the real remote MCP service over HTTP with the
-   bearer token Braingeneers manages.
+4. Build a local MCP helper in `braingeneerspy`.
+5. Have Codex, Claude Code, and similar tools launch that helper as a local
+   stdio MCP server.
+6. Let the local helper connect to the real remote MCP service over HTTP with
+   the bearer token Braingeneers manages.
 
 ## Important Constraint On The Final Plan
 
@@ -515,10 +516,10 @@ The current implementation direction is:
    service-account token.
 2. Have `python -m braingeneers.iot.authenticate` bootstrap:
    - the broad Auth0 service-account token from `service-accounts`
-   - the interactive bridge-user token directly from Keycloak device flow
-3. Configure the local bridge to refresh the user token against the standard
+   - the interactive helper-user token directly from Keycloak device flow
+3. Configure the local helper to refresh the user token against the standard
    Keycloak token endpoint with `grant_type=refresh_token`.
 4. Keep `oauth2.braingeneers.gi.ucsc.edu` as the long-lived issuer, JWKS host,
    and future-proof identity hostname.
-5. Run `python -m braingeneers.mcp.bridge` locally and point external MCP
-   clients at that bridge instead of at the public remote hostname.
+5. Run `python -m braingeneers.mcp` locally and point external MCP clients at
+   that stdio helper instead of at the public remote hostname.
