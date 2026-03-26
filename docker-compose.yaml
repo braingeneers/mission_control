@@ -316,6 +316,8 @@ services:
       - "42"
       - "--culture_media"
       - "BGN2"
+      - "--experiment_uuid"
+      - "2026-03-12-efi-mock-organoid"
     environment:
       BRAINGENEERS_HTTP_TRUST_ENV: "false"
       BRAINGENEERS_HTTP_USE_AUTH: "false"

@@ -222,6 +222,7 @@ Run these checks after deploy:
    - confirm a principal with a valid authenticated identity but no YAML grant is denied
    - if the deployment enables coarse eligibility, confirm a principal with no coarse role is denied before YAML grants are evaluated
    - confirm a principal with the right YAML grant can only reach the UUID and device scope explicitly granted
+   - for services that expose authorized-root discovery, confirm the caller sees only their granted top-level resources before any live resource enumeration
 5. Human-user login
    - if tenant settings support the target MCP client flow, complete a real login through the client and verify tool access
 6. Broker validation, when using the self-hosted path

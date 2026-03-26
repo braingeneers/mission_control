@@ -52,7 +52,6 @@ grants:
     principals:
       groups:
         - integrated-system-readers
-        - integrated-system-mock-organoid-guests
     access:
       - read
     devices:
@@ -60,35 +59,23 @@ grants:
         access:
           - read
   - uuid: 2026-03-12-efi-mock-organoid
-    description: Guests may use safe non-hardware commands against MockOrganoid only.
+    description: Guests may use the full mock command surface against MockOrganoid only.
     principals:
       groups:
         - integrated-system-mock-organoid-guests
     access:
+      - read
       - operate
-    devices:
-      - name: mock-organoid-a
-        access:
-          - operate
-        command_rules:
-          - effect: allow
-            commands:
-              - PING
-              - STATUS
-              - TWIDDLE
-  - uuid: 2026-03-12-efi-mock-organoid
-    description: Guests may bind MockOrganoid into or out of its demo UUID.
-    principals:
-      groups:
-        - integrated-system-mock-organoid-guests
-    access:
       - bind
     devices:
       - name: mock-organoid-a
         access:
+          - read
+          - operate
           - bind
         command_rules:
           - effect: allow
-            commands:
-              - START
-              - END
+            command_groups:
+              - read-only
+              - actuation
+              - experiment-control

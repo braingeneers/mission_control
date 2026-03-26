@@ -35,6 +35,12 @@ In plain language:
 - then decide which device names under that UUID they may touch
 - then decide which commands they may run on those devices
 
+For the integrated-system MCP service, user-facing discovery follows the same model:
+
+- `list_accessible_experiments` enumerates the experiment UUID grants visible to the caller
+- `list_devices` then shows live broker-backed devices inside one authorized UUID context
+- there is no separate discovery-only policy file
+
 The system is deny-by-default. If a user is not explicitly granted access, they are denied.
 
 ## Platform Pattern
@@ -597,39 +603,26 @@ grants:
           - read
 
   - uuid: 2026-03-12-efi-mock-organoid
-    description: Guests may use safe demo commands on the mock organoid.
+    description: Guests may use the full mock command surface on the mock organoid.
     principals:
       groups:
         - integrated-system-mock-organoid-guests
     access:
+      - read
       - operate
-    devices:
-      - name: mock-organoid-a
-        access:
-          - operate
-        command_rules:
-          - effect: allow
-            commands:
-              - PING
-              - STATUS
-              - TWIDDLE
-
-  - uuid: 2026-03-12-efi-mock-organoid
-    description: Guests may bind the mock organoid to or from its demo UUID.
-    principals:
-      groups:
-        - integrated-system-mock-organoid-guests
-    access:
       - bind
     devices:
       - name: mock-organoid-a
         access:
+          - read
+          - operate
           - bind
         command_rules:
           - effect: allow
-            commands:
-              - START
-              - END
+            command_groups:
+              - read-only
+              - actuation
+              - experiment-control
 ```
 
 Important points:
