@@ -567,8 +567,9 @@ This keeps the files understandable over time.
 
 ## MockOrganoid Example
 
-The broker-backed `mock-organoid-a` device is intended for safe demos and policy testing.
-It is still governed by the same YAML model:
+The broker-backed MockOrganoid deployment is intended for safe demos and policy testing.
+It exposes sibling mock devices such as `mock-maxwell-a`, `mock-opencvcamera-a`, and
+`mock-autoculture-a`, and it is still governed by the same YAML model:
 
 - the caller must present a valid authenticated identity
 - the caller must still have a YAML grant for the MockOrganoid UUID
@@ -598,12 +599,18 @@ grants:
     access:
       - read
     devices:
-      - name: mock-organoid-a
+      - name: mock-maxwell-a
+        access:
+          - read
+      - name: mock-opencvcamera-a
+        access:
+          - read
+      - name: mock-autoculture-a
         access:
           - read
 
   - uuid: 2026-03-12-efi-mock-organoid
-    description: Guests may use the full mock command surface on the mock organoid.
+    description: Guests may use the full mock command surface on the sibling mock devices.
     principals:
       groups:
         - integrated-system-mock-organoid-guests
@@ -612,7 +619,29 @@ grants:
       - operate
       - bind
     devices:
-      - name: mock-organoid-a
+      - name: mock-maxwell-a
+        access:
+          - read
+          - operate
+          - bind
+        command_rules:
+          - effect: allow
+            command_groups:
+              - read-only
+              - actuation
+              - experiment-control
+      - name: mock-opencvcamera-a
+        access:
+          - read
+          - operate
+          - bind
+        command_rules:
+          - effect: allow
+            command_groups:
+              - read-only
+              - actuation
+              - experiment-control
+      - name: mock-autoculture-a
         access:
           - read
           - operate
@@ -627,7 +656,7 @@ grants:
 
 Important points:
 
-- `mock-organoid-a` is still a normal device name in the policy file; it is not a special syntax
+- `mock-maxwell-a`, `mock-opencvcamera-a`, and `mock-autoculture-a` are still normal device names in the policy file; they are not special syntax
 - keeping it on its own UUID makes the grant easy to reason about
 - if you add command rules, only the listed commands will be allowed for that grant
 - `START` and `END` still require an explicit allow rule even for mock devices

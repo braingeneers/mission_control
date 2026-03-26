@@ -55,11 +55,17 @@ grants:
     access:
       - read
     devices:
-      - name: mock-organoid-a
+      - name: mock-maxwell-a
+        access:
+          - read
+      - name: mock-opencvcamera-a
+        access:
+          - read
+      - name: mock-autoculture-a
         access:
           - read
   - uuid: 2026-03-12-efi-mock-organoid
-    description: Guests may use the full mock command surface against MockOrganoid only.
+    description: Guests may use the full mock command surface against the sibling mock devices only.
     principals:
       groups:
         - integrated-system-mock-organoid-guests
@@ -68,7 +74,29 @@ grants:
       - operate
       - bind
     devices:
-      - name: mock-organoid-a
+      - name: mock-maxwell-a
+        access:
+          - read
+          - operate
+          - bind
+        command_rules:
+          - effect: allow
+            command_groups:
+              - read-only
+              - actuation
+              - experiment-control
+      - name: mock-opencvcamera-a
+        access:
+          - read
+          - operate
+          - bind
+        command_rules:
+          - effect: allow
+            command_groups:
+              - read-only
+              - actuation
+              - experiment-control
+      - name: mock-autoculture-a
         access:
           - read
           - operate
