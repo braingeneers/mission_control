@@ -241,6 +241,21 @@ services:
     networks:
       - braingeneers-net
 
+  # SpikeLab documentation site served from a prebuilt static nginx image.
+  spikelab:
+    image: braingeneers/spikelab-docs:latest
+    container_name: spikelab
+    restart: unless-stopped
+    expose:
+      - "80"
+    environment:
+      VIRTUAL_HOST: "spikelab.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "80"
+      LETSENCRYPT_HOST: "spikelab.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+    networks:
+      - braingeneers-net
+
   # Integrated-system MCP server. This stays behind the shared edge proxy, but
   # it does its own OAuth resource-server validation and must receive the
   # original Authorization header end to end. Future MCP services should follow
