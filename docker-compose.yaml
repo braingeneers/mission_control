@@ -948,8 +948,6 @@ services:
       - "--copy"
       - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
       - "--copy"
-      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
-      - "--copy"
       - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
       - "python"
       - "-m"
@@ -963,6 +961,7 @@ services:
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
       NEUROVIEW_PORT: "8000"
       NEUROVIEW_AWS_CREDENTIALS: "/home/jovyan/.aws/credentials"
+      NEUROVIEW_STREAM_ALLOWLIST: "braindance/2025-05-14busy_drugs/gabazine1/sorted-spikes/rt-sort/v1"
     networks:
       - braingeneers-net
     volumes:
