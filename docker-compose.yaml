@@ -938,6 +938,39 @@ services:
       secret-fetcher:
         condition: service_healthy
 
+  # Neuroview realtime electrophysiology viewer
+  neuroview:
+    image: braingeneers/neuroview:latest
+    container_name: neuroview
+    restart: unless-stopped
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
+      - "--copy"
+      - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
+      - "python"
+      - "-m"
+      - "neuroview"
+    expose:
+      - "8000"
+    environment:
+      VIRTUAL_HOST: "neuroview.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8000"
+      LETSENCRYPT_HOST: "neuroview.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+      NEUROVIEW_PORT: "8000"
+      NEUROVIEW_AWS_CREDENTIALS: "/home/jovyan/.aws/credentials"
+    networks:
+      - braingeneers-net
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+
   # Data lifecycle scheduled deletion web app
   data-lifecycle:
     image: braingeneers/data-lifecycle-deletion-web:latest
