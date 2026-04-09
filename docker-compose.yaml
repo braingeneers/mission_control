@@ -961,7 +961,38 @@ services:
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
       NEUROVIEW_PORT: "8000"
       NEUROVIEW_AWS_CREDENTIALS: "/home/jovyan/.aws/credentials"
-      NEUROVIEW_STREAM_ALLOWLIST: "braindance/2025-05-14busy_drugs/gabazine1/sorted-spikes/rt-sort/v1"
+      NEUROVIEW_ACTIVE_STREAM_MAX_AGE_SEC: "30"
+      NEUROVIEW_POLL_INTERVAL_MS: "50"
+      NEUROVIEW_LIVE_SNAPSHOT_INTERVAL_MS: "50"
+      NEUROVIEW_HEARTBEAT_SEC: "5"
+    networks:
+      - braingeneers-net
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+
+  # Neuroview demo spike streamer to feed Redis for demos
+  neuroview-demo-streamer:
+    image: braingeneers/neuroview-demo-streamer:latest
+    container_name: neuroview-demo-streamer
+    restart: unless-stopped
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
+      - "python"
+      - "/app/publish_demo_stream.py"
+    environment:
+      DEMO_SPIKE_FILE: "/data/gabazine1_cont_spike_data.pkl"
+      DEMO_STREAM_NAME: "braindance/2025-05-14busy_drugs/gabazine1/sorted-spikes/rt-sort/v1"
+      DEMO_BATCH_MS: "25"
+      DEMO_REALTIME_SCALE: "1.0"
+      DEMO_LOOP_GAP_MS: "1000"
+      DEMO_STREAM_SIZE: "50000"
+      DEMO_CLEAR_STREAM_ON_START: "1"
+      DEMO_AWS_CREDENTIALS: "/home/jovyan/.aws/credentials"
     networks:
       - braingeneers-net
     volumes:
