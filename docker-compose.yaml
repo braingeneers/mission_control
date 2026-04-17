@@ -948,7 +948,7 @@ services:
       - "--copy"
       - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
       - "--copy"
-      - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
+      - "/secrets/braingeneers-jwt-service-account-token/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
       - "python"
       - "-m"
       - "neuroview"
@@ -982,6 +982,8 @@ services:
     command:
       - "--copy"
       - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
+      - "--copy"
+      - "/secrets/braingeneers-jwt-service-account-token/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
       - "python"
       - "/app/publish_demo_stream.py"
     environment:
