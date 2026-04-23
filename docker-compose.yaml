@@ -131,6 +131,7 @@ services:
       - ./service-proxy/uploader-dev.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/uploader-dev.braingeneers.gi.ucsc.edu_location:ro
       - ./service-proxy/mxvisuals.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/mxvisuals.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/mxvisuals-backend.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/mxvisuals-backend.braingeneers.gi.ucsc.edu:ro
+      - ./service-proxy/spikelab.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/spikelab.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/integrated-system-mcp.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/integrated-system-mcp.braingeneers.gi.ucsc.edu:ro
     networks:
       - braingeneers-net

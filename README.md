@@ -203,7 +203,8 @@ The service-proxy auto discovers docker based web-services in our environment ba
 Nothing needs to be updated or changed when a new service is brought online. SSL, DNS, authentication, and network security are all provided and managed automatically.
 By default, virtual hosts inherit browser authentication from `service-proxy/default`; a host-specific file under
 [`service-proxy/`](/home/davidparks21/myprojects/Braingeneers/mission_control/service-proxy) can override that behavior for intentionally public services such as
-[`spikelab.braingeneers.gi.ucsc.edu`](/home/davidparks21/myprojects/Braingeneers/mission_control/service-proxy/spikelab.braingeneers.gi.ucsc.edu).
+[`spikelab.braingeneers.gi.ucsc.edu`](/home/davidparks21/myprojects/Braingeneers/mission_control/service-proxy/spikelab.braingeneers.gi.ucsc.edu). Because `service-proxy`
+bind-mounts each host override explicitly in [`docker-compose.yaml`](/home/davidparks21/myprojects/Braingeneers/mission_control/docker-compose.yaml:124), adding a new host override also requires adding the matching volume mount there.
 
 ## MCP Services
 
