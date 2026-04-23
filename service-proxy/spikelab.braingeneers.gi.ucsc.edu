@@ -1,0 +1,8 @@
+# SpikeLab docs are intentionally public and should bypass the shared browser
+# authentication flow at the edge.
+auth_request off;
+
+# Keep the standard proxy headers for downstream nginx.
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

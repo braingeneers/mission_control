@@ -201,6 +201,9 @@ We use a reverse proxy (service-proxy) which terminates SSL, maintains certifica
 and provides a secure front end to all our web-services.
 The service-proxy auto discovers docker based web-services in our environment based on a few simple environment variables set by the service.
 Nothing needs to be updated or changed when a new service is brought online. SSL, DNS, authentication, and network security are all provided and managed automatically.
+By default, virtual hosts inherit browser authentication from `service-proxy/default`; a host-specific file under
+[`service-proxy/`](/home/davidparks21/myprojects/Braingeneers/mission_control/service-proxy) can override that behavior for intentionally public services such as
+[`spikelab.braingeneers.gi.ucsc.edu`](/home/davidparks21/myprojects/Braingeneers/mission_control/service-proxy/spikelab.braingeneers.gi.ucsc.edu).
 
 ## MCP Services
 
