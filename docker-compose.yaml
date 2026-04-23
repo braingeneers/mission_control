@@ -1034,6 +1034,40 @@ services:
       secret-fetcher:
         condition: service_healthy
 
+  # Data Explorer dataset browser for Braingeneers S3 ephys UUIDs
+  data-explorer:
+    image: braingeneers/data-explorer:latest
+    container_name: data-explorer
+    restart: unless-stopped
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
+      - "uvicorn"
+      - "data_explorer.app:app"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+    expose:
+      - "8000"
+    environment:
+      VIRTUAL_HOST: "data-explorer.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8000"
+      LETSENCRYPT_HOST: "data-explorer.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+      DATA_EXPLORER_PORT: "8000"
+      DATA_EXPLORER_S3_ENDPOINT: "https://s3.braingeneers.gi.ucsc.edu"
+      DATA_EXPLORER_S3_BUCKET: "braingeneers"
+      DATA_EXPLORER_DATASET_PREFIX: "ephys/"
+    networks:
+      - braingeneers-net
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+
 # The braingeneers-net network is used to connect the containers together.
 networks:
   braingeneers-net:
