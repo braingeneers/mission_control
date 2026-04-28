@@ -764,10 +764,15 @@ services:
       - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
       - '--copy'
       - '/secrets/kube-config/config:/root/.kube/config'
-      - "--copy"
-      - "/secrets/service-accounts/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
-      - 'python'
-      - 'app.py'
+      - '--copy'
+      - '/secrets/braingeneers-jwt-service-account-token/config.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json'
+      - 'gunicorn'
+      - '--timeout'
+      - '1000'
+      - '--workers=1'
+      - '-b'
+      - '0.0.0.0:8050'
+      - 'app:server'
     environment:
       VIRTUAL_HOST: "mxwdash.braingeneers.gi.ucsc.edu"
       VIRTUAL_PORT: "8050"
