@@ -14,3 +14,4 @@ secrets/**
 certs
 ARCHIVE/**
 plotly-dash-picroscope-control-console/users.py
+plans/

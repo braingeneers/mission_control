@@ -1,0 +1,4 @@
+interface:
+  display_name: "Braingeneers Service Deploy"
+  short_description: "Build and deploy Braingeneers services on the lab server."
+  default_prompt: "Help me deploy a Braingeneers service on braingeneers.gi.ucsc.edu."
