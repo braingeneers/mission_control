@@ -51,10 +51,10 @@ Separate ordinary-user and admin workflows:
 - Ordinary users should know where secrets come from and when to ask for help.
 - Admins can use the wiki-documented delete-then-create replacement pattern.
 
-Local docs to read before advising:
+Docs to read before advising. Use a local checkout of `github.com/braingeneers/wiki` when available; otherwise use the GitHub links:
 
-- `../wiki/shared/prp.md`
-- `../wiki/shared/administrators.md`
+- `shared/prp.md`: https://github.com/braingeneers/wiki/blob/main/shared/prp.md
+- `shared/administrators.md`: https://github.com/braingeneers/wiki/blob/main/shared/administrators.md
 
 After adding or replacing a Kubernetes secret, restart or recreate `secret-fetcher` and watch its logs to confirm the new secret and keys were fetched. Services that depend on the changed secret may also need a targeted recreate.
 

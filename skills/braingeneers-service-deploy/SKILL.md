@@ -9,7 +9,7 @@ Use this skill for Braingeneers services managed by `mission_control` on `braing
 
 ## Start Here
 
-1. Confirm the user is working in or referencing the `mission_control` repo and read its current `README.md`, `docker-compose.yaml`, `service-proxy/`, `secret-fetcher/`, and relevant `../wiki` pages before advising or editing.
+1. Confirm the user is working in or referencing the `mission_control` repo and read its current `README.md`, `docker-compose.yaml`, `service-proxy/`, `secret-fetcher/`, and relevant Braingeneers wiki pages before advising or editing. If the wiki repo is available locally, use it; otherwise use `https://github.com/braingeneers/wiki`.
 2. Route the service into one branch before proposing changes:
    - `private-web`: browser-authenticated service behind `service-proxy/default`.
    - `public-web`: web service intentionally bypassing browser auth with a host-specific `service-proxy` override.
@@ -26,6 +26,7 @@ Load only the reference files needed for the current task:
 - `references/access-and-auth.md`: server access, NRP kubeconfig, `kubelogin`, service-account kubeconfig, web auth, service-account JWTs.
 - `references/service-routing.md`: private web, public web, headless, and MCP routing patterns.
 - `references/packaging.md`: registry-published image policy and Makefile target conventions.
+- `references/web-app-style.md`: Braingeneers web app visual language, reusable UI patterns, and bundled image assets.
 - `references/secrets.md`: Kubernetes secret lifecycle, secret-fetcher, entrypoint secret setup, and token refresh.
 - `references/operations.md`: deployment, update, verification, troubleshooting, and escalation.
 
@@ -41,13 +42,15 @@ Read local sources before making claims. Minimum source set:
 - Any matching `service-proxy/<hostname>` or `<hostname>_location` files
 - `secret-fetcher/download-secrets.sh`
 - `secret-fetcher/entrypoint-secrets-setup.sh`
-- `../wiki/shared/permissions.md`
-- `../wiki/shared/onboarding.md`
-- `../wiki/shared/nrp_quickstart.md`
-- `../wiki/shared/prp.md`
-- `../wiki/shared/administrators.md` only when admin-only secret or Auth0 work is relevant
+- Braingeneers wiki `shared/permissions.md`
+- Braingeneers wiki `shared/onboarding.md`
+- Braingeneers wiki `shared/nrp_quickstart.md`
+- Braingeneers wiki `shared/prp.md`
+- Braingeneers wiki `shared/administrators.md` only when admin-only secret or Auth0 work is relevant
 
-For MCP services, also read `docs/mcp-onboarding.md`, `../wiki/shared/mcp_architecture.md`, and `oauth2-broker/README.md`.
+For MCP services, also read `docs/mcp-onboarding.md`, Braingeneers wiki `shared/mcp_architecture.md`, and `oauth2-broker/README.md`.
+
+For browser-facing services with a new or refreshed UI, also read `references/web-app-style.md` and inspect nearby Braingeneers apps when available, especially `data-lifecycle`, `data_uploader`, and `data-explorer`.
 
 ### 2. Choose The Service Branch
 
@@ -57,6 +60,8 @@ Use the branch to determine which details matter:
 - `public-web`: use the same Compose service discovery, plus a host-specific `service-proxy/<hostname>` override with `auth_request off`; add the matching bind mount under the `service-proxy` service.
 - `headless`: use explicit `ports:` and network settings as needed. Do not add `VIRTUAL_HOST`, `LETSENCRYPT_HOST`, or service-proxy vhost files unless the service also has an HTTP UI.
 - `mcp`: follow the MCP onboarding contract. Preserve bearer tokens, strip proxy identity headers, mount IAM read-only, and configure issuer, JWKS, audience, and resource-server URL explicitly.
+
+When the branch includes a web UI, align the app with the existing Braingeneers operations-app style unless the user asks for a different design direction.
 
 ### 3. Handle Auth And Access
 

@@ -11,11 +11,11 @@ Before deploying or operating services, verify the user has:
 - Braingeneers NRP namespace access if they will use Kubernetes secrets or validate secret availability.
 - Docker or registry credentials if they will push images.
 
-Relevant local sources:
+Relevant sources. Use a local checkout of `github.com/braingeneers/wiki` when available; otherwise use the GitHub links:
 
-- `../wiki/shared/permissions.md`
-- `../wiki/shared/onboarding.md`
-- `../wiki/shared/prp.md`
+- `shared/permissions.md`: https://github.com/braingeneers/wiki/blob/main/shared/permissions.md
+- `shared/onboarding.md`: https://github.com/braingeneers/wiki/blob/main/shared/onboarding.md
+- `shared/prp.md`: https://github.com/braingeneers/wiki/blob/main/shared/prp.md
 - `README.md`
 
 ## NRP Kubeconfig Paths
@@ -65,5 +65,5 @@ MCP services do not use normal browser-session enforcement for MCP traffic. They
 Relevant local sources:
 
 - `docs/mcp-onboarding.md`
-- `../wiki/shared/mcp_architecture.md`
+- Braingeneers wiki `shared/mcp_architecture.md`: https://github.com/braingeneers/wiki/blob/main/shared/mcp_architecture.md
 - `oauth2-broker/README.md`

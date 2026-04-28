@@ -67,11 +67,11 @@ Examples:
 - MQTT maps ports including `1883`, `8883`, and EMQX dashboard or websocket ports.
 - RustDesk maps relay and rendezvous ports and uses secret-mounted RustDesk keys.
 
-Relevant local sources:
+Relevant sources. Use a local checkout of `github.com/braingeneers/wiki` when available; otherwise use the GitHub links:
 
 - `docker-compose.yaml`
-- `../wiki/shared/mqtt.md`
-- `../wiki/shared/rustdesk.md`
+- `shared/mqtt.md`: https://github.com/braingeneers/wiki/blob/main/shared/mqtt.md
+- `shared/rustdesk.md`: https://github.com/braingeneers/wiki/blob/main/shared/rustdesk.md
 
 ## MCP Services
 
@@ -93,4 +93,4 @@ Relevant local sources:
 - `docs/mcp-onboarding.md`
 - `service-proxy/mcp-resource-server.template`
 - `service-proxy/integrated-system-mcp.braingeneers.gi.ucsc.edu`
-- `../wiki/shared/mcp_architecture.md`
+- Braingeneers wiki `shared/mcp_architecture.md`: https://github.com/braingeneers/wiki/blob/main/shared/mcp_architecture.md
