@@ -991,16 +991,7 @@ services:
       - "--copy"
       - "/secrets/braingeneers-jwt-service-account-token/config.json:/opt/conda/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json"
       - "python"
-      - "/app/publish_demo_stream.py"
-    environment:
-      DEMO_SPIKE_FILE: "/data/gabazine1_cont_spike_data.pkl"
-      DEMO_STREAM_NAME: "braindance/2025-05-14busy_drugs/gabazine1/sorted-spikes/rt-sort/v1"
-      DEMO_BATCH_MS: "25"
-      DEMO_REALTIME_SCALE: "200.0"
-      DEMO_LOOP_GAP_MS: "1000"
-      DEMO_STREAM_SIZE: "50000"
-      DEMO_CLEAR_STREAM_ON_START: "1"
-      DEMO_AWS_CREDENTIALS: "/home/jovyan/.aws/credentials"
+      - "/app/run_demo_publishers.py"
     networks:
       - braingeneers-net
     volumes:
