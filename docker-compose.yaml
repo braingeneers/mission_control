@@ -972,10 +972,12 @@ services:
       NEUROVIEW_POLL_INTERVAL_MS: "50"
       NEUROVIEW_LIVE_SNAPSHOT_INTERVAL_MS: "50"
       NEUROVIEW_HEARTBEAT_SEC: "5"
+      NEUROVIEW_STREAM_PRIORITIES_CONFIG: "/app/state/stream_priorities.yaml"
     networks:
       - braingeneers-net
     volumes:
       - secrets:/secrets
+      - neuroview-state:/app/state
     depends_on:
       secret-fetcher:
         condition: service_healthy
@@ -1098,3 +1100,6 @@ volumes:
 
   # Volume for self-hosted OIDC broker database
   oauth2-broker-db-data:
+
+  # Volume for Neuroview stream ordering preferences
+  neuroview-state:
