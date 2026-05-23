@@ -18,6 +18,8 @@ Use this skill for Braingeneers services managed by `mission_control` on `braing
 3. Check access prerequisites early. Users need GI server access to `braingeneers.gi.ucsc.edu`, Braingeneers GitHub access, and Braingeneers NRP namespace access for secret-related operations.
 4. Prefer a published container image in Docker Hub, the PRP registry, or another registry over a server-local build. Use a small `Makefile` for repeatable `build`, `push`, `local-test` or `run-test`, and `shell` workflows when the service owns a custom image.
 5. Treat secrets as Kubernetes namespace resources materialized by `secret-fetcher` into the shared `/secrets` volume. Do not bake credentials into images.
+6. Keep `mission_control` as a thin deployment repo. Put project-specific code, scripts, scheduler logic, runtime defaults, and application config in the owning service repo and published image whenever possible.
+7. Avoid host-level configuration and local bind mounts. The normal operator requirements should be only a `mission_control` checkout and a valid `~/.kube/config` for `secret-fetcher`.
 
 ## Reference Loading
 
@@ -81,6 +83,10 @@ Push custom images to a registry before adding them to production Compose. Prefe
 
 Avoid depending on `build:` in production service definitions unless there is a deliberate reason. Server-local builds make migration and future rebuilds fragile when upstream package versions change.
 
+Keep service-owned operational code in the owning repo before packaging. Examples include schedulers, entrypoint wrappers, maintenance scripts, worker defaults, and static application config. Bake stable runtime defaults into the image or service repo config rather than storing them as `environment:` entries in `mission_control/docker-compose.yaml`. Use Compose environment variables only for deployment-specific wiring, hostnames, ports, secrets paths, or truly operator-tuned values.
+
+When you add a production service, explicitly state whether the image is registry-published and how it is built and pushed from the owning repo. If a required image has not been published yet, update the owning repo workflow first or call out the blocker instead of adding a server-local `build:`.
+
 ### 5. Wire Secrets Correctly
 
 When a service needs secrets:
@@ -93,6 +99,10 @@ When a service needs secrets:
 - Use `--env` for secret-backed env files.
 
 For unattended `braingeneerspy` services, prefer the daily refreshed `/secrets/braingeneers-jwt-service-account-token/config.json` mounted to the expected `braingeneers/iot/service_account/config.json` location. Do not recommend stale raw `service-accounts/config.json` patterns unless the local code specifically requires it and the risk is acknowledged.
+
+Avoid additional bind mounts for service files. Host-mounted files are acceptable for mission_control-owned proxy overrides, IAM policy files, and narrow legacy cases, but they should not be the default way to ship project-specific code or configuration.
+
+Use local Docker volumes only when the service genuinely needs restart-persistent local state. Any local volume must be disposable: the service stack should remain portable and able to cold start after the volume is lost. Do not add a volume just to remember scheduler state, cache recoverable data, or store artifacts that can be rebuilt or fetched from S3.
 
 ### 6. Deploy Conservatively
 

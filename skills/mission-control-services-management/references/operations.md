@@ -21,12 +21,15 @@ Before proposing or applying changes, check:
 
 - Service branch is clear: private web, public web, headless, or MCP.
 - Image is published to a registry or there is an explicit exception.
+- Any service-specific code, scheduler logic, runtime defaults, and application config live in the owning service repo and image rather than in `mission_control`.
 - Custom-image service has a repeatable `Makefile` or equivalent build notes.
-- Compose service has correct `image`, ports or expose, env vars, volumes, `depends_on`, and network settings.
+- Compose service has correct `image`, ports or expose, env vars, volumes, `depends_on`, and network settings, with env vars and mounts kept as small as practical.
 - Secrets are mounted through `/secrets`, not baked into images.
 - Proxy overrides have matching bind mounts.
 - Headless services do not accidentally receive web proxy settings.
 - MCP services preserve `Authorization` and do backend token validation.
+- Local volumes are used only for necessary disposable state; avoid volumes for recoverable caches, scheduler memory, or artifacts that belong in S3.
+- The service can be operated after cloning `mission_control` and providing `~/.kube/config`, without extra host-level files unless explicitly justified.
 
 ## Verification
 

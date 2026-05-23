@@ -31,6 +31,8 @@ When a service needs secrets:
 
 Do not put credentials in Docker images or Git-tracked service source.
 
+Keep secret wiring portable. Apart from the shared `secrets:/secrets` volume and the required `~/.kube/config` used by `secret-fetcher`, avoid depending on host-level credential files or service-specific files checked out next to `mission_control`.
+
 ## Entrypoint Wrapper
 
 Use `/secrets/entrypoint-secrets-setup.sh` when secrets must be moved or exported before the real process starts.
@@ -43,6 +45,8 @@ Supported operations:
 Use `--copy` for credentials files, kubeconfigs, SSH keys, RustDesk keys, or `braingeneerspy` runtime token files.
 
 Use `--env` for services with secret-backed environment files such as Auth0, database, or Keycloak variables.
+
+Prefer image-baked defaults over Compose environment variables. Use `--env` only for secret-backed env files, and use Compose `environment:` only when the value is deployment-specific rather than a stable application default.
 
 ## Creating And Replacing Secrets
 

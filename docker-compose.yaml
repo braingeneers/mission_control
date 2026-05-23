@@ -1035,6 +1035,27 @@ services:
       secret-fetcher:
         condition: service_healthy
 
+  # Scheduled data lifecycle backup process; headless service, no proxy routing.
+  data-lifecycle-backup:
+    image: braingeneers/data-lifecycle:latest
+    container_name: data-lifecycle-backup
+    restart: unless-stopped
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/home/jovyan/.aws/credentials"
+      - "--copy"
+      - "/secrets/prp-s3-credentials/rclone.conf:/home/jovyan/.config/rclone/rclone.conf"
+      - "python"
+      - "src/data_lifecycle_scheduler.py"
+    networks:
+      - braingeneers-net
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+
   # Data Explorer dataset browser for Braingeneers S3 ephys UUIDs
   data-explorer:
     image: braingeneers/data-explorer:latest

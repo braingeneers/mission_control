@@ -12,6 +12,24 @@ for access, then clone the repo into your home directory on `braingeneers` serve
 > cd mission_control
 ```
 
+## Using Codex for service deployment work
+
+When you want Codex to help add, update, deploy, or troubleshoot a lab service in this repo, ask it to use the `mission-control-services-management` skill. The skill is intended for developers working with `mission_control` services on `braingeneers.gi.ucsc.edu`.
+
+Use this skill for work involving:
+
+- private web services behind the default browser authentication
+- intentionally public web services with host-specific `service-proxy` overrides
+- headless or direct-port services that should not be routed through the web proxy
+- MCP services that need bearer-token forwarding and backend token validation
+- Kubernetes secret wiring through `secret-fetcher` and `/secrets`
+- published container image workflows, including service `Makefile` build, push, local-test, and shell targets
+- targeted service pull, recreate, log, and status checks for conservative deploys
+
+Before advising or editing, the skill directs Codex to inspect the current `README.md`, `docker-compose.yaml`, `service-proxy/`, `secret-fetcher/`, relevant Braingeneers wiki pages, and the focused references under [`skills/mission-control-services-management/`](skills/mission-control-services-management/). Developers should have GI server access, Braingeneers GitHub access, NRP namespace access for secret-related work, and registry credentials when publishing custom images.
+
+The skill source is [`skills/mission-control-services-management/SKILL.md`](skills/mission-control-services-management/SKILL.md).
+
 ## Manage individual services
 
 You can also start and stop a single services, this is the normal case so you don't 
@@ -41,6 +59,30 @@ docker compose logs my-service
 
 # See process status for all services
 docker compose ps
+```
+
+## Scheduled data lifecycle backup
+
+The `data-lifecycle-backup` service runs the scheduler baked into the
+registry-published `braingeneers/data-lifecycle:latest` backup image. Mission
+Control does not build this image on the server and does not mount
+project-specific scheduler code from the host.
+
+The image runs `./src/run_data_lifecycle.sh` at 9:00 PM Pacific time on Monday,
+Tuesday, and Friday.
+
+The service uses `secret-fetcher` and expects the `prp-s3-credentials`
+Kubernetes secret to include:
+
+- `credentials`
+- `rclone.conf`
+
+Deploy or refresh only this service on `braingeneers.gi.ucsc.edu`:
+
+```bash
+docker compose pull data-lifecycle-backup
+docker compose up -d --force-recreate data-lifecycle-backup
+docker compose logs -f data-lifecycle-backup
 ```
 
 ## Managing all services
