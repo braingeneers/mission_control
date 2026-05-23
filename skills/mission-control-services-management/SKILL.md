@@ -1,9 +1,9 @@
 ---
-name: braingeneers-service-deploy
+name: mission-control-services-management
 description: Build, deploy, update, or troubleshoot Braingeneers lab services managed by mission_control on braingeneers.gi.ucsc.edu. Use when Codex is helping create a new Docker Compose service, choose between proxied web, public web, headless port-published, or MCP service patterns, configure service-proxy overrides, handle Braingeneers Kubernetes secrets and secret-fetcher, choose NRP kubeconfig authentication, package images for Docker Hub or another registry, add Makefile build/push/local-test workflows, or operate existing services with docker compose.
 ---
 
-# Braingeneers Service Deploy
+# Mission Control Services Management
 
 Use this skill for Braingeneers services managed by `mission_control` on `braingeneers.gi.ucsc.edu`.
 
