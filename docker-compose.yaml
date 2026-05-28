@@ -129,7 +129,6 @@ services:
       - ./service-proxy/uploader.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/uploader.braingeneers.gi.ucsc.edu_location:ro
       - ./service-proxy/uploader-dev.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/uploader-dev.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/uploader-dev.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/uploader-dev.braingeneers.gi.ucsc.edu_location:ro
-      - ./service-proxy/search.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/search.braingeneers.gi.ucsc.edu_location:ro
       - ./service-proxy/mxvisuals.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/mxvisuals.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/mxvisuals-backend.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/mxvisuals-backend.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/spikelab.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/spikelab.braingeneers.gi.ucsc.edu:ro
@@ -884,37 +883,6 @@ services:
     dns: 8.8.8.8
     restart: unless-stopped
 
-  # Search engine and browser for experiments in NRP S3
-  search:
-    image: braingeneers/search
-    container_name: search
-    restart: unless-stopped
-    expose:
-      - "8080"
-    environment:
-      VIRTUAL_HOST: "search.braingeneers.gi.ucsc.edu"
-      VIRTUAL_PORT: "8080"
-      LETSENCRYPT_HOST: "search.braingeneers.gi.ucsc.edu"
-      LETSENCRYPT_EMAIL: "braingeners-admins-group@ucsc.edu"
-      S3_ENDPOINT: "https://s3.braingeneers.gi.ucsc.edu"
-      S3_PROFILE: "prp-braingeneers"
-      S3_BUCKET: "braingeneers"
-    volumes:
-      - search-db:/root/data
-      - secrets:/secrets
-    depends_on:
-      secret-fetcher:
-        condition: service_healthy
-    entrypoint: /secrets/entrypoint-secrets-setup.sh
-    command:
-      - '--copy'
-      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
-      - '/bin/bash'
-      - '-c'
-      - 'sqlite3 -init create.sql data/braingeneers.db .quit; cron; python main.py'
-    networks:
-      - braingeneers-net
-
   # Braingeneers data uploader web app
   uploader:
     image: braingeneers/braingeneers-data-uploader:latest
@@ -1113,9 +1081,6 @@ volumes:
 
   # Volume for rustdesk
   rustdesk-data:
-
-  # Volume for search
-  search-db:
 
   # Volume for self-hosted OIDC broker database
   oauth2-broker-db-data:
