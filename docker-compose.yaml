@@ -1083,7 +1083,7 @@ services:
       DATA_EXPLORER_S3_ENDPOINT: "https://s3.braingeneers.gi.ucsc.edu"
       DATA_EXPLORER_S3_BUCKET: "braingeneers"
       DATA_EXPLORER_DATASET_PREFIX: "ephys/"
-      DATA_EXPLORER_METADATA_INDEX_INTERVAL_SECONDS: "7200"
+      DATA_EXPLORER_METADATA_INDEX_INTERVAL_SECONDS: "3600"
     networks:
       - braingeneers-net
     volumes:
