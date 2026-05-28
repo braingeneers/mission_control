@@ -1057,7 +1057,7 @@ services:
       secret-fetcher:
         condition: service_healthy
 
-  # Data Explorer dataset browser for Braingeneers S3 ephys UUIDs
+  # Data Explorer dataset browser
   data-explorer:
     image: braingeneers/data-explorer:latest
     container_name: data-explorer
@@ -1079,11 +1079,6 @@ services:
       VIRTUAL_PORT: "8000"
       LETSENCRYPT_HOST: "data-explorer.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
-      DATA_EXPLORER_PORT: "8000"
-      DATA_EXPLORER_S3_ENDPOINT: "https://s3.braingeneers.gi.ucsc.edu"
-      DATA_EXPLORER_S3_BUCKET: "braingeneers"
-      DATA_EXPLORER_DATASET_PREFIX: "ephys/"
-      DATA_EXPLORER_METADATA_INDEX_INTERVAL_SECONDS: "3600"
     networks:
       - braingeneers-net
     volumes:

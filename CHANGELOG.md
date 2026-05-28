@@ -4,3 +4,4 @@
 2026-05-27 17:00 | service-proxy | add websocket upgrade handling for search service
 2026-05-27 18:00 | data-explorer | run metadata index refresh every 2 hours
 2026-05-27 18:03 | data-explorer | run metadata index refresh every hour
+2026-05-27 18:05 | data-explorer | keep compose service wiring minimal
