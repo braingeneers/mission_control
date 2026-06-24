@@ -7,3 +7,4 @@
 2026-05-27 18:05 | data-explorer | keep compose service wiring minimal
 2026-05-27 18:12 | services | remove legacy search service
 2026-06-16 14:36 | maxwell-dashboard | update service image to v0.85 for parameter wording refresh
+2026-06-24 16:27 | ephys services | update listener and dashboard service images to v0.86
