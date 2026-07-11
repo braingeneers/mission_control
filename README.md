@@ -110,17 +110,17 @@ POSTGRES_USER=services
 POSTGRES_PASSWORD=services
 ```
 
-`sql-db` stores active database files under `cache:/cache/sql-db`. The
-`sql-db-backup` sidecar writes one custom-format dump per day to
+`sql-db` stores active database files under `cache:/cache/sql-db`. Its image
+runs a daily backup at 08:00 UTC and writes one custom-format dump per day to
 `replicated:/replicated/sql-db/postgres` using 30 rolling filename slots. Older
 slots are overwritten by filename rather than deleted.
 
 Deploy or refresh only this service group on `braingeneers.gi.ucsc.edu`:
 
 ```bash
-docker compose pull sql-db sql-db-backup workflows workflows-backend
-docker compose up -d --force-recreate sql-db sql-db-backup workflows-backend workflows
-docker compose logs -f sql-db sql-db-backup workflows-backend workflows
+docker compose pull sql-db workflows workflows-backend
+docker compose up -d --force-recreate sql-db workflows-backend workflows
+docker compose logs -f sql-db workflows-backend workflows
 ```
 
 If shared Kubernetes secrets such as `prp-s3-credentials` or `kube-config`

@@ -1058,7 +1058,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   sql-db:
-    image: postgres:16-alpine
+    image: braingeneers/sql-db:20260711-1430e7d20b4e
     container_name: sql-db
     restart: unless-stopped
     environment:
@@ -1079,52 +1079,7 @@ services:
       - braingeneers-net
     volumes:
       - cache:/cache
-
-  sql-db-backup:
-    image: postgres:16-alpine
-    container_name: sql-db-backup
-    restart: unless-stopped
-    environment:
-      PGPASSWORD: "services"
-    command:
-      - "/bin/sh"
-      - "-c"
-      - |
-        mkdir -p /cache/sql-db/backups /replicated/sql-db/postgres
-        while true; do
-          epoch_day="$(($(date -u +%s) / 86400))"
-          slot="$(printf '%02d' "$((epoch_day % 30))")"
-          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-          basename="services-rotation-$${slot}"
-          tmp_dump="/cache/sql-db/backups/$${basename}.dump.tmp"
-          cache_dump="/cache/sql-db/backups/$${basename}.dump"
-          tmp_meta="/cache/sql-db/backups/$${basename}.json.tmp"
-          cache_meta="/cache/sql-db/backups/$${basename}.json"
-          final_dump="/replicated/sql-db/postgres/$${basename}.dump"
-          final_meta="/replicated/sql-db/postgres/$${basename}.json"
-          echo "[$${stamp}] backing up services database to $${final_dump}"
-          if pg_dump -h sql-db -U services -d services -Fc -f "$${tmp_dump}"; then
-            mv "$${tmp_dump}" "$${cache_dump}"
-            printf '{"created_at":"%s","database":"services","source_service":"sql-db","rotation_slot":"%s"}\n' "$${stamp}" "$${slot}" > "$${tmp_meta}"
-            mv "$${tmp_meta}" "$${cache_meta}"
-            cp "$${cache_dump}" "$${final_dump}.tmp"
-            mv "$${final_dump}.tmp" "$${final_dump}"
-            cp "$${cache_meta}" "$${final_meta}.tmp"
-            mv "$${final_meta}.tmp" "$${final_meta}"
-            echo "[$${stamp}] completed services database backup slot $${slot}"
-          else
-            echo "[$${stamp}] services database backup failed"
-          fi
-          sleep 86400
-        done
-    networks:
-      - braingeneers-net
-    volumes:
-      - cache:/cache
       - replicated:/replicated
-    depends_on:
-      sql-db:
-        condition: service_healthy
 
   workflows-backend:
     image: braingeneers/workflows-backend:20260711-2b2638fe87fc
