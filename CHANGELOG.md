@@ -10,3 +10,4 @@
 2026-06-24 16:27 | ephys services | update listener and dashboard service images to v0.86
 2026-07-11 14:33 | workflows service | added workflows.braingeneers.gi.ucsc.edu Compose services using Docker Hub images and secret-fetcher wiring
 2026-07-11 14:46 | workflows service | moved workflows to shared internal Mission Control Postgres and removed workflow-specific env secret
+2026-07-11 15:51 | shared services | renamed the internal SQL service and added cache/replicated volume standards with rolling database backups

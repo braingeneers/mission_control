@@ -92,30 +92,35 @@ private web app behind the shared browser authentication and SSL proxy. The
 frontend and backend images are built and pushed from the `workflows`
 repository:
 
-- `braingeneers/workflows-frontend:20260711-1fabab7d8052`
-- `braingeneers/workflows-backend:20260711-1fabab7d8052`
+- `braingeneers/workflows-frontend:20260711-2b2638fe87fc`
+- `braingeneers/workflows-backend:20260711-2b2638fe87fc`
 
 The backend uses the shared `secret-fetcher` volume. It expects:
 
 - `/secrets/prp-s3-credentials/credentials` for S3 access.
 - `/secrets/kube-config/config` for Kubernetes launch and run monitoring.
 
-The backend uses the shared internal `mission-control-postgres` database. That
+The backend uses the shared internal `sql-db` database service. That
 database is not published outside the Docker network and uses public default
 credentials as an internal compatibility guard, not as a security boundary:
 
 ```bash
-POSTGRES_DB=mission_control
-POSTGRES_USER=mission_control
-POSTGRES_PASSWORD=mission_control
+POSTGRES_DB=services
+POSTGRES_USER=services
+POSTGRES_PASSWORD=services
 ```
+
+`sql-db` stores active database files under `cache:/cache/sql-db`. The
+`sql-db-backup` sidecar writes one custom-format dump per day to
+`replicated:/replicated/sql-db/postgres` using 30 rolling filename slots. Older
+slots are overwritten by filename rather than deleted.
 
 Deploy or refresh only this service group on `braingeneers.gi.ucsc.edu`:
 
 ```bash
-docker compose pull workflows workflows-backend
-docker compose up -d --force-recreate mission-control-postgres workflows-backend workflows
-docker compose logs -f workflows-backend workflows
+docker compose pull sql-db sql-db-backup workflows workflows-backend
+docker compose up -d --force-recreate sql-db sql-db-backup workflows-backend workflows
+docker compose logs -f sql-db sql-db-backup workflows-backend workflows
 ```
 
 If shared Kubernetes secrets such as `prp-s3-credentials` or `kube-config`
@@ -125,6 +130,20 @@ were changed, refresh `secret-fetcher` first:
 docker compose up -d --force-recreate secret-fetcher
 docker compose logs -f secret-fetcher
 ```
+
+## Shared local volumes
+
+New services should use the shared Docker volumes `cache` and `replicated`
+instead of adding service-specific top-level volumes. Each service owns a
+directory under the volume root, such as `/cache/sql-db` or
+`/replicated/sql-db`.
+
+- `cache` is restart-persistent local state that may be lost without breaking
+  the service permanently. Active file changes belong here.
+- `replicated` is for backed-up static files. Services should stage changing
+  files in `cache` and publish completed artifacts into `replicated`.
+- Dot-prefixed temporary publish files in `replicated` should be treated as
+  incomplete and ignored by backup tooling.
 
 ## Managing all services
 
@@ -432,4 +451,4 @@ To ensure security and maintainability:
 
 1. The services are designed to be stateless except for the `~/.kube/config` requirement to retrieve the secrets.
 2. Services can rely on the Kubernetes secrets and can access any state files via our standard S3 service at `s3://braingeneers/` or other buckets.
-3. Services can cache files on the host OS, such as the generated certificates, but should be able to start cleanly if those files are lost. This could happen occasionally, but not regularly.
+3. Services that need local files should use service-scoped directories under the shared `cache` or `replicated` Docker volumes. Mutable files belong in `cache`; completed files that should be backed up belong in `replicated`.

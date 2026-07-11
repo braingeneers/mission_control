@@ -29,6 +29,7 @@ For production services, prefer:
 - Minimal `environment:` entries for application services. Stable runtime defaults belong in the image or service repo config, not in `mission_control/docker-compose.yaml`.
 - Small public env blocks are acceptable for infrastructure images when they are the image's initialization API, for example `POSTGRES_DB`, `POSTGRES_USER`, and a non-secret internal-only `POSTGRES_PASSWORD`.
 - Minimal bind mounts. Mount mission_control-owned files only when they are genuinely deployment-owned, such as proxy overrides or IAM policy files.
+- Shared local state volumes. Prefer service-scoped directories under `cache` and `replicated` over new service-specific top-level volumes.
 
 If an existing service uses `build:`, avoid rewriting it opportunistically. For a new service or a substantive service cleanup, recommend moving to a published image.
 
@@ -51,6 +52,15 @@ For custom-image services, recommend a small `Makefile` with stable targets:
 - `release`: optional; tag and push a versioned release.
 
 Keep target names boring and predictable. The point is to make repeated operations discoverable for future operators.
+
+## Shared Local Volumes
+
+New services that need local state should use the shared top-level Docker volumes:
+
+- `cache`: restart-persistent state that can be regenerated or recovered. Active file changes belong here.
+- `replicated`: backed-up static files. Services should stage work in `cache` and publish completed artifacts into service-scoped folders under `replicated`.
+
+Each service owns a service-named directory under the volume root, such as `/cache/sql-db` and `/replicated/sql-db`. Do not add a new top-level volume for each service unless a legacy image or external compatibility requirement requires it. Backup tooling should ignore dot-prefixed temporary publish files in `replicated`.
 
 Existing local examples:
 

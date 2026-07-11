@@ -20,6 +20,7 @@ Use this skill for Braingeneers services managed by `mission_control` on `braing
 5. Treat secrets as Kubernetes namespace resources materialized by `secret-fetcher` into the shared `/secrets` volume. Do not bake credentials into images.
 6. Keep `mission_control` as a thin deployment repo. Put project-specific code, scripts, scheduler logic, runtime defaults, and application config in the owning service repo and published image. Compose should not become a second application configuration file.
 7. Avoid host-level configuration and local bind mounts. The normal operator requirements should be only a `mission_control` checkout and a valid `~/.kube/config` for `secret-fetcher`.
+8. Use shared local volumes for persistent service state. `cache` is restart-persistent disposable state; `replicated` is backed-up static state. Each service owns a service-named subdirectory under the volume root.
 
 ## Reference Loading
 
@@ -102,7 +103,7 @@ For unattended `braingeneerspy` services, prefer the daily refreshed `/secrets/b
 
 Avoid additional bind mounts for service files. Host-mounted files are acceptable for mission_control-owned proxy overrides, IAM policy files, and narrow legacy cases, but they should not be the default way to ship project-specific code or configuration.
 
-Use local Docker volumes only when the service genuinely needs restart-persistent local state. Any local volume must be disposable: the service stack should remain portable and able to cold start after the volume is lost. Do not add a volume just to remember scheduler state, cache recoverable data, or store artifacts that can be rebuilt or fetched from S3.
+Use the shared `cache` and `replicated` Docker volumes for local service state. Mount the volume root and have each service create a service-named subdirectory, for example `/cache/sql-db` or `/replicated/sql-db`. Put active files, databases, mutable state, and restart-persistent disposable state in `cache`. Put only completed static files that should be backed up in `replicated`; stage changing files in `cache` and publish finished outputs into `replicated` with final names. Dot-prefixed temporary publish files in `replicated` are tolerated only as short-lived incomplete files and should be ignored by backup tooling. Do not add new service-specific top-level volumes unless a legacy image or external compatibility requirement makes it necessary.
 
 ### 6. Deploy Conservatively
 

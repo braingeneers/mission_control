@@ -1057,20 +1057,20 @@ services:
 
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
-  mission-control-postgres:
+  sql-db:
     image: postgres:16-alpine
-    container_name: mission-control-postgres
+    container_name: sql-db
     restart: unless-stopped
     environment:
-      PGDATA: "/var/lib/postgresql/data/pgdata"
-      POSTGRES_DB: "mission_control"
-      POSTGRES_USER: "mission_control"
-      POSTGRES_PASSWORD: "mission_control"
+      PGDATA: "/cache/sql-db/postgres/pgdata"
+      POSTGRES_DB: "services"
+      POSTGRES_USER: "services"
+      POSTGRES_PASSWORD: "services"
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U mission_control -d mission_control",
+          "pg_isready -U services -d services",
         ]
       interval: 10s
       timeout: 5s
@@ -1078,10 +1078,56 @@ services:
     networks:
       - braingeneers-net
     volumes:
-      - mission-control-postgres-data:/var/lib/postgresql/data
+      - cache:/cache
+
+  sql-db-backup:
+    image: postgres:16-alpine
+    container_name: sql-db-backup
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: "services"
+    command:
+      - "/bin/sh"
+      - "-c"
+      - |
+        mkdir -p /cache/sql-db/backups /replicated/sql-db/postgres
+        while true; do
+          epoch_day="$(($(date -u +%s) / 86400))"
+          slot="$(printf '%02d' "$((epoch_day % 30))")"
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          basename="services-rotation-$${slot}"
+          tmp_dump="/cache/sql-db/backups/$${basename}.dump.tmp"
+          cache_dump="/cache/sql-db/backups/$${basename}.dump"
+          tmp_meta="/cache/sql-db/backups/$${basename}.json.tmp"
+          cache_meta="/cache/sql-db/backups/$${basename}.json"
+          final_dump="/replicated/sql-db/postgres/$${basename}.dump"
+          final_meta="/replicated/sql-db/postgres/$${basename}.json"
+          echo "[$${stamp}] backing up services database to $${final_dump}"
+          if pg_dump -h sql-db -U services -d services -Fc -f "$${tmp_dump}"; then
+            mv "$${tmp_dump}" "$${cache_dump}"
+            printf '{"created_at":"%s","database":"services","source_service":"sql-db","rotation_slot":"%s"}\n' "$${stamp}" "$${slot}" > "$${tmp_meta}"
+            mv "$${tmp_meta}" "$${cache_meta}"
+            cp "$${cache_dump}" "$${final_dump}.tmp"
+            mv "$${final_dump}.tmp" "$${final_dump}"
+            cp "$${cache_meta}" "$${final_meta}.tmp"
+            mv "$${final_meta}.tmp" "$${final_meta}"
+            echo "[$${stamp}] completed services database backup slot $${slot}"
+          else
+            echo "[$${stamp}] services database backup failed"
+          fi
+          sleep 86400
+        done
+    networks:
+      - braingeneers-net
+    volumes:
+      - cache:/cache
+      - replicated:/replicated
+    depends_on:
+      sql-db:
+        condition: service_healthy
 
   workflows-backend:
-    image: braingeneers/workflows-backend:20260711-1fabab7d8052
+    image: braingeneers/workflows-backend:20260711-2b2638fe87fc
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1107,11 +1153,11 @@ services:
     depends_on:
       secret-fetcher:
         condition: service_healthy
-      mission-control-postgres:
+      sql-db:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20260711-1fabab7d8052
+    image: braingeneers/workflows-frontend:20260711-2b2638fe87fc
     container_name: workflows
     restart: unless-stopped
     expose:
@@ -1132,9 +1178,9 @@ networks:
   braingeneers-net:
     driver: bridge
 
-# Volumes are persisted on the host machine.
-# All services should be able to cold start when volumes are cleared, these are not a place for
-# permanent files that can't be replaced, those should be stored on S3 and copied in if needed.
+# Volumes are persisted on the host machine. New services should use shared
+# service-scoped directories under cache or replicated instead of creating
+# service-specific top-level volumes.
 volumes:
 
   # A shared volume for secrets only in-memory for security this is populated by the secret-fetcher service
@@ -1160,5 +1206,10 @@ volumes:
   # Volume for Neuroview stream ordering preferences
   neuroview-state:
 
-  # Volume for shared Mission Control Postgres state
-  mission-control-postgres-data:
+  # Shared restart-persistent disposable state. Each service creates a
+  # service-named subdirectory, such as /cache/sql-db.
+  cache:
+
+  # Shared backed-up static state. Each service creates a service-named
+  # subdirectory, such as /replicated/sql-db.
+  replicated:
