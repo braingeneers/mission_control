@@ -17,7 +17,9 @@ Acceptable registries include Docker Hub, the PRP GitLab registry, Quay, GitHub 
 
 Before adding or updating a production Compose service, verify and state where the image is built and pushed from. If the service owns custom code, the owning repo should provide the build and push workflow; `mission_control` should consume the resulting image.
 
-Do not add service-specific scripts, schedulers, worker code, or application config files to `mission_control` just to mount them into a container. Put those files in the owning repo, bake them into the image, and keep Compose focused on selecting the image and wiring secrets, networks, ports, dependencies, and proxy settings. Treat long service-specific `environment:` blocks as a design smell unless each key is clearly deployment-specific.
+Do not add service-specific scripts, schedulers, worker code, backup logic, or application config files to `mission_control` just to mount them into a container. Put those files in the owning repo, bake them into the image, and keep Compose focused on selecting the image and wiring secrets, networks, ports, dependencies, and proxy settings. Treat long service-specific `environment:` blocks as a design smell unless each key is clearly deployment-specific.
+
+Do not embed long shell scripts, scheduler loops, or maintenance programs directly in `docker-compose.yaml`. Compose should describe service topology and deployment wiring; executable behavior belongs in the image. Add an extra sidecar service only when it is independently operated, independently scaled, or meaningfully reusable. If helper behavior is tightly coupled to a service, package it inside that service's image.
 
 ## Compose Image Guidance
 
@@ -30,6 +32,7 @@ For production services, prefer:
 - Small public env blocks are acceptable for infrastructure images when they are the image's initialization API, for example `POSTGRES_DB`, `POSTGRES_USER`, and a non-secret internal-only `POSTGRES_PASSWORD`.
 - Minimal bind mounts. Mount mission_control-owned files only when they are genuinely deployment-owned, such as proxy overrides or IAM policy files.
 - Shared local state volumes. Prefer service-scoped directories under `cache` and `replicated` over new service-specific top-level volumes.
+- Manageable service units. Avoid creating separate Compose services for tightly coupled helper tasks that can run inside the owning service image.
 
 If an existing service uses `build:`, avoid rewriting it opportunistically. For a new service or a substantive service cleanup, recommend moving to a published image.
 
@@ -52,6 +55,8 @@ For custom-image services, recommend a small `Makefile` with stable targets:
 - `release`: optional; tag and push a versioned release.
 
 Keep target names boring and predictable. The point is to make repeated operations discoverable for future operators.
+
+Shared infrastructure images owned by `mission_control` should expose their build, push, shell, and smoke-test targets from the root `mission_control/Makefile`. Client repositories should not own targets for shared Mission Control services; they should document only the connection contract they require.
 
 ## Shared Local Volumes
 

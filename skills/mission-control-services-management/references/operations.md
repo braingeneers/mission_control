@@ -22,6 +22,8 @@ Before proposing or applying changes, check:
 - Service branch is clear: private web, public web, headless, or MCP.
 - Image is published to a registry or there is an explicit exception.
 - Any service-specific code, scheduler logic, runtime defaults, and application config live in the owning service repo and image rather than in `mission_control`.
+- Compose does not contain long embedded scripts, scheduler loops, backup logic, or maintenance programs.
+- Tightly coupled helper behavior is packaged in the owning service image; sidecars are reserved for independently operated, scaled, or reusable services.
 - Custom-image service has a repeatable `Makefile` or equivalent build notes.
 - Compose service has correct `image`, ports or expose, env vars, volumes, `depends_on`, and network settings, with env vars and mounts kept as small as practical.
 - Secrets are mounted through `/secrets`, not baked into images.
