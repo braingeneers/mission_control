@@ -1055,6 +1055,116 @@ services:
       secret-fetcher:
         condition: service_healthy
 
+  # Braingeneers workflow launch and run-monitoring web app.
+  # Images are built and pushed from github.com/braingeneers/workflows.
+  workflows-postgres:
+    image: postgres:16-alpine
+    container_name: workflows-postgres
+    restart: unless-stopped
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - "--env"
+      - "/secrets/workflows-web-service/workflows.env"
+      - "/usr/local/bin/docker-entrypoint.sh"
+      - "postgres"
+    environment:
+      PGDATA: "/var/lib/postgresql/data/pgdata"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          ". /secrets/workflows-web-service/workflows.env && pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - braingeneers-net
+    volumes:
+      - secrets:/secrets
+      - workflows-postgres-data:/var/lib/postgresql/data
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+
+  workflows-backend:
+    image: braingeneers/workflows-backend:20260711-203946931ed2
+    container_name: workflows-backend
+    restart: unless-stopped
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - "--env"
+      - "/secrets/workflows-web-service/workflows.env"
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
+      - "--copy"
+      - "/secrets/kube-config/config:/kube/config"
+      - "/bin/bash"
+      - "-lc"
+      - "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    environment:
+      ENVIRONMENT: "production"
+      AUTO_CREATE_TABLES: "false"
+      SEED_DEV_DATA: "false"
+      DEFAULT_OPERATOR_EMAIL: "workflow-service@braingeneers.local"
+      DEFAULT_OPERATOR_NAME: "Workflow Service Operator"
+      K8S_NAMESPACE: "braingeneers"
+      K8S_IN_CLUSTER: "false"
+      KUBECONFIG_PATH: "/kube/config"
+      NEXTFLOW_RUNNER_IMAGE: "nextflow/nextflow:25.04.6"
+      NEXTFLOW_SERVICE_ACCOUNT: "nextflow-sa"
+      LAUNCH_MODE: "kubernetes"
+      RUNS_ROOT: "/workspace/runs"
+      WORKSPACE_PVC_CLAIM: "flowforge-nextflow-work"
+      WORKSPACE_MOUNT_PATH: "/workspace"
+      STATUS_RECONCILER_ENABLED: "true"
+      STATUS_RECONCILER_INTERVAL_SECONDS: "10"
+      STALE_QUEUED_SECONDS: "900"
+      STALE_RUNNING_SECONDS: "43200"
+      DEFAULT_SUCCEEDED_RUN_RETENTION_DAYS: "3"
+      DEFAULT_FAILED_RUN_RETENTION_DAYS: "7"
+      PROVIDER_TIMEOUT_SECONDS: "10"
+      PROVIDER_RESULT_LIMIT: "100"
+      ENABLE_PROVIDER_RELOAD: "true"
+      WORKFLOW_REPO_PATH: "/workflow-repo"
+      WORKFLOW_REPO_SYNC_ENABLED: "false"
+      MQTT_ENABLED: "false"
+      S3_ENDPOINT: "https://s3.braingeneers.gi.ucsc.edu"
+      CORS_ORIGINS: "https://workflows.braingeneers.gi.ucsc.edu"
+    networks:
+      - braingeneers-net
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+      workflows-postgres:
+        condition: service_healthy
+
+  workflows:
+    image: braingeneers/workflows-frontend:20260711-203946931ed2
+    container_name: workflows
+    restart: unless-stopped
+    expose:
+      - "80"
+    environment:
+      VIRTUAL_HOST: "workflows.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "80"
+      LETSENCRYPT_HOST: "workflows.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+    networks:
+      - braingeneers-net
+    depends_on:
+      workflows-backend:
+        condition: service_healthy
+
 # The braingeneers-net network is used to connect the containers together.
 networks:
   braingeneers-net:
@@ -1087,3 +1197,6 @@ volumes:
 
   # Volume for Neuroview stream ordering preferences
   neuroview-state:
+
+  # Volume for the workflow web service Postgres database
+  workflows-postgres-data:

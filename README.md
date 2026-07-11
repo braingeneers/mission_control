@@ -85,6 +85,48 @@ docker compose up -d --force-recreate data-lifecycle-backup
 docker compose logs -f data-lifecycle-backup
 ```
 
+## Workflows web service
+
+The `workflows` service serves https://workflows.braingeneers.gi.ucsc.edu as a
+private web app behind the shared browser authentication and SSL proxy. The
+frontend and backend images are built and pushed from the `workflows`
+repository:
+
+- `braingeneers/workflows-frontend:20260711-203946931ed2`
+- `braingeneers/workflows-backend:20260711-203946931ed2`
+
+The backend uses the shared `secret-fetcher` volume. It expects:
+
+- `/secrets/prp-s3-credentials/credentials` for S3 access.
+- `/secrets/kube-config/config` for Kubernetes launch and run monitoring.
+- `/secrets/workflows-web-service/workflows.env` for database and app secrets.
+
+The `workflows.env` secret file should include:
+
+```bash
+POSTGRES_DB=flowforge
+POSTGRES_USER=flowforge
+POSTGRES_PASSWORD=<strong-password>
+DATABASE_URL=postgresql+psycopg://flowforge:<strong-password>@workflows-postgres:5432/flowforge
+SECRET_KEY=<long-random-value>
+```
+
+Deploy or refresh only this service group on `braingeneers.gi.ucsc.edu`:
+
+```bash
+docker compose pull workflows workflows-backend
+docker compose up -d --force-recreate workflows-postgres workflows-backend workflows
+docker compose logs -f workflows-backend workflows
+```
+
+If the `workflows-web-service` secret was newly created or changed, refresh
+`secret-fetcher` first:
+
+```bash
+docker compose up -d --force-recreate secret-fetcher
+docker compose logs -f secret-fetcher
+```
+
 ## Managing all services
 
 This should only be done when the server is rebooted, under normal conditions you will be managing individual services as describe above.
