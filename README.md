@@ -92,35 +92,34 @@ private web app behind the shared browser authentication and SSL proxy. The
 frontend and backend images are built and pushed from the `workflows`
 repository:
 
-- `braingeneers/workflows-frontend:20260711-203946931ed2`
-- `braingeneers/workflows-backend:20260711-203946931ed2`
+- `braingeneers/workflows-frontend:20260711-1fabab7d8052`
+- `braingeneers/workflows-backend:20260711-1fabab7d8052`
 
 The backend uses the shared `secret-fetcher` volume. It expects:
 
 - `/secrets/prp-s3-credentials/credentials` for S3 access.
 - `/secrets/kube-config/config` for Kubernetes launch and run monitoring.
-- `/secrets/workflows-web-service/workflows.env` for database and app secrets.
 
-The `workflows.env` secret file should include:
+The backend uses the shared internal `mission-control-postgres` database. That
+database is not published outside the Docker network and uses public default
+credentials as an internal compatibility guard, not as a security boundary:
 
 ```bash
-POSTGRES_DB=flowforge
-POSTGRES_USER=flowforge
-POSTGRES_PASSWORD=<strong-password>
-DATABASE_URL=postgresql+psycopg://flowforge:<strong-password>@workflows-postgres:5432/flowforge
-SECRET_KEY=<long-random-value>
+POSTGRES_DB=mission_control
+POSTGRES_USER=mission_control
+POSTGRES_PASSWORD=mission_control
 ```
 
 Deploy or refresh only this service group on `braingeneers.gi.ucsc.edu`:
 
 ```bash
 docker compose pull workflows workflows-backend
-docker compose up -d --force-recreate workflows-postgres workflows-backend workflows
+docker compose up -d --force-recreate mission-control-postgres workflows-backend workflows
 docker compose logs -f workflows-backend workflows
 ```
 
-If the `workflows-web-service` secret was newly created or changed, refresh
-`secret-fetcher` first:
+If shared Kubernetes secrets such as `prp-s3-credentials` or `kube-config`
+were changed, refresh `secret-fetcher` first:
 
 ```bash
 docker compose up -d --force-recreate secret-fetcher

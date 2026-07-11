@@ -17,7 +17,7 @@ Acceptable registries include Docker Hub, the PRP GitLab registry, Quay, GitHub 
 
 Before adding or updating a production Compose service, verify and state where the image is built and pushed from. If the service owns custom code, the owning repo should provide the build and push workflow; `mission_control` should consume the resulting image.
 
-Do not add service-specific scripts, schedulers, worker code, or application config files to `mission_control` just to mount them into a container. Put those files in the owning repo, bake them into the image, and keep Compose focused on selecting the image and wiring secrets, networks, ports, and proxy settings.
+Do not add service-specific scripts, schedulers, worker code, or application config files to `mission_control` just to mount them into a container. Put those files in the owning repo, bake them into the image, and keep Compose focused on selecting the image and wiring secrets, networks, ports, dependencies, and proxy settings. Treat long service-specific `environment:` blocks as a design smell unless each key is clearly deployment-specific.
 
 ## Compose Image Guidance
 
@@ -26,7 +26,8 @@ For production services, prefer:
 - `image: owner/service:version-or-managed-tag`
 - A clear owner or maintainer comment near the service.
 - Avoiding `build:` unless the user explicitly wants server-local builds and accepts the migration risk.
-- Minimal `environment:` entries. Stable runtime defaults belong in the image or service repo config, not in `mission_control/docker-compose.yaml`.
+- Minimal `environment:` entries for application services. Stable runtime defaults belong in the image or service repo config, not in `mission_control/docker-compose.yaml`.
+- Small public env blocks are acceptable for infrastructure images when they are the image's initialization API, for example `POSTGRES_DB`, `POSTGRES_USER`, and a non-secret internal-only `POSTGRES_PASSWORD`.
 - Minimal bind mounts. Mount mission_control-owned files only when they are genuinely deployment-owned, such as proxy overrides or IAM policy files.
 
 If an existing service uses `build:`, avoid rewriting it opportunistically. For a new service or a substantive service cleanup, recommend moving to a published image.

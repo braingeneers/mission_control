@@ -44,9 +44,9 @@ Supported operations:
 
 Use `--copy` for credentials files, kubeconfigs, SSH keys, RustDesk keys, or `braingeneerspy` runtime token files.
 
-Use `--env` for services with secret-backed environment files such as Auth0, database, or Keycloak variables.
+Use `--env` for services with genuinely secret-backed environment files such as Auth0 and Keycloak variables. Do not create fake-sensitive env files for values that are public by design, such as internal-only default database credentials.
 
-Prefer image-baked defaults over Compose environment variables. Use `--env` only for secret-backed env files, and use Compose `environment:` only when the value is deployment-specific rather than a stable application default.
+Prefer image-baked defaults over Compose environment variables. Use `--env` only for secret-backed env files, and use Compose `environment:` only when the value is deployment-specific rather than a stable application default. Be explicit about trust boundaries: while many services share the broad `/secrets` volume, secret-mounted credentials do not strongly isolate one compromised secret-mounted service from another. Keep secrets out of images and Git, but do not overstate isolation that the current shared secret-fetcher model does not provide.
 
 ## Creating And Replacing Secrets
 

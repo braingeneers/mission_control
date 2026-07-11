@@ -1057,23 +1057,20 @@ services:
 
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
-  workflows-postgres:
+  mission-control-postgres:
     image: postgres:16-alpine
-    container_name: workflows-postgres
+    container_name: mission-control-postgres
     restart: unless-stopped
-    entrypoint: /secrets/entrypoint-secrets-setup.sh
-    command:
-      - "--env"
-      - "/secrets/workflows-web-service/workflows.env"
-      - "/usr/local/bin/docker-entrypoint.sh"
-      - "postgres"
     environment:
       PGDATA: "/var/lib/postgresql/data/pgdata"
+      POSTGRES_DB: "mission_control"
+      POSTGRES_USER: "mission_control"
+      POSTGRES_PASSWORD: "mission_control"
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          ". /secrets/workflows-web-service/workflows.env && pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"",
+          "pg_isready -U mission_control -d mission_control",
         ]
       interval: 10s
       timeout: 5s
@@ -1081,20 +1078,14 @@ services:
     networks:
       - braingeneers-net
     volumes:
-      - secrets:/secrets
-      - workflows-postgres-data:/var/lib/postgresql/data
-    depends_on:
-      secret-fetcher:
-        condition: service_healthy
+      - mission-control-postgres-data:/var/lib/postgresql/data
 
   workflows-backend:
-    image: braingeneers/workflows-backend:20260711-203946931ed2
+    image: braingeneers/workflows-backend:20260711-1fabab7d8052
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
-      - "--env"
-      - "/secrets/workflows-web-service/workflows.env"
       - "--copy"
       - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
       - "--copy"
@@ -1109,35 +1100,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-    environment:
-      ENVIRONMENT: "production"
-      AUTO_CREATE_TABLES: "false"
-      SEED_DEV_DATA: "false"
-      DEFAULT_OPERATOR_EMAIL: "workflow-service@braingeneers.local"
-      DEFAULT_OPERATOR_NAME: "Workflow Service Operator"
-      K8S_NAMESPACE: "braingeneers"
-      K8S_IN_CLUSTER: "false"
-      KUBECONFIG_PATH: "/kube/config"
-      NEXTFLOW_RUNNER_IMAGE: "nextflow/nextflow:25.04.6"
-      NEXTFLOW_SERVICE_ACCOUNT: "nextflow-sa"
-      LAUNCH_MODE: "kubernetes"
-      RUNS_ROOT: "/workspace/runs"
-      WORKSPACE_PVC_CLAIM: "flowforge-nextflow-work"
-      WORKSPACE_MOUNT_PATH: "/workspace"
-      STATUS_RECONCILER_ENABLED: "true"
-      STATUS_RECONCILER_INTERVAL_SECONDS: "10"
-      STALE_QUEUED_SECONDS: "900"
-      STALE_RUNNING_SECONDS: "43200"
-      DEFAULT_SUCCEEDED_RUN_RETENTION_DAYS: "3"
-      DEFAULT_FAILED_RUN_RETENTION_DAYS: "7"
-      PROVIDER_TIMEOUT_SECONDS: "10"
-      PROVIDER_RESULT_LIMIT: "100"
-      ENABLE_PROVIDER_RELOAD: "true"
-      WORKFLOW_REPO_PATH: "/workflow-repo"
-      WORKFLOW_REPO_SYNC_ENABLED: "false"
-      MQTT_ENABLED: "false"
-      S3_ENDPOINT: "https://s3.braingeneers.gi.ucsc.edu"
-      CORS_ORIGINS: "https://workflows.braingeneers.gi.ucsc.edu"
     networks:
       - braingeneers-net
     volumes:
@@ -1145,11 +1107,11 @@ services:
     depends_on:
       secret-fetcher:
         condition: service_healthy
-      workflows-postgres:
+      mission-control-postgres:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20260711-203946931ed2
+    image: braingeneers/workflows-frontend:20260711-1fabab7d8052
     container_name: workflows
     restart: unless-stopped
     expose:
@@ -1198,5 +1160,5 @@ volumes:
   # Volume for Neuroview stream ordering preferences
   neuroview-state:
 
-  # Volume for the workflow web service Postgres database
-  workflows-postgres-data:
+  # Volume for shared Mission Control Postgres state
+  mission-control-postgres-data:
