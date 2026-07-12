@@ -1058,11 +1058,11 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   sql-db:
-    image: braingeneers/sql-db:20260711-1430e7d20b4e
+    image: braingeneers/sql-db:20260711-ea98cdb12b6b
     container_name: sql-db
     restart: unless-stopped
     environment:
-      PGDATA: "/cache/sql-db/postgres/pgdata"
+      PGDATA: "/local/sql-db/postgres/pgdata"
       POSTGRES_DB: "services"
       POSTGRES_USER: "services"
       POSTGRES_PASSWORD: "services"
@@ -1078,7 +1078,7 @@ services:
     networks:
       - braingeneers-net
     volumes:
-      - cache:/cache
+      - local:/local
       - replicated:/replicated
 
   workflows-backend:
@@ -1134,7 +1134,7 @@ networks:
     driver: bridge
 
 # Volumes are persisted on the host machine. New services should use shared
-# service-scoped directories under cache or replicated instead of creating
+# service-scoped directories under local or replicated instead of creating
 # service-specific top-level volumes.
 volumes:
 
@@ -1162,8 +1162,8 @@ volumes:
   neuroview-state:
 
   # Shared restart-persistent disposable state. Each service creates a
-  # service-named subdirectory, such as /cache/sql-db.
-  cache:
+  # service-named subdirectory, such as /local/sql-db.
+  local:
 
   # Shared backed-up static state. Each service creates a service-named
   # subdirectory, such as /replicated/sql-db.

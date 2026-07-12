@@ -110,7 +110,7 @@ POSTGRES_USER=services
 POSTGRES_PASSWORD=services
 ```
 
-`sql-db` stores active database files under `cache:/cache/sql-db`. Its image
+`sql-db` stores active database files under `local:/local/sql-db`. Its image
 runs a daily backup at 08:00 UTC and writes one custom-format dump per day to
 `replicated:/replicated/sql-db/postgres` using 30 rolling filename slots. Older
 slots are overwritten by filename rather than deleted.
@@ -133,15 +133,15 @@ docker compose logs -f secret-fetcher
 
 ## Shared local volumes
 
-New services should use the shared Docker volumes `cache` and `replicated`
+New services should use the shared Docker volumes `local` and `replicated`
 instead of adding service-specific top-level volumes. Each service owns a
-directory under the volume root, such as `/cache/sql-db` or
+directory under the volume root, such as `/local/sql-db` or
 `/replicated/sql-db`.
 
-- `cache` is restart-persistent local state that may be lost without breaking
+- `local` is restart-persistent local state that may be lost without breaking
   the service permanently. Active file changes belong here.
 - `replicated` is for backed-up static files. Services should stage changing
-  files in `cache` and publish completed artifacts into `replicated`.
+  files in `local` and publish completed artifacts into `replicated`.
 - Dot-prefixed temporary publish files in `replicated` should be treated as
   incomplete and ignored by backup tooling.
 
@@ -451,4 +451,4 @@ To ensure security and maintainability:
 
 1. The services are designed to be stateless except for the `~/.kube/config` requirement to retrieve the secrets.
 2. Services can rely on the Kubernetes secrets and can access any state files via our standard S3 service at `s3://braingeneers/` or other buckets.
-3. Services that need local files should use service-scoped directories under the shared `cache` or `replicated` Docker volumes. Mutable files belong in `cache`; completed files that should be backed up belong in `replicated`.
+3. Services that need local files should use service-scoped directories under the shared `local` or `replicated` Docker volumes. Mutable files belong in `local`; completed files that should be backed up belong in `replicated`.
