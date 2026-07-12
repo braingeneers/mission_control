@@ -48,6 +48,10 @@ sql-db-test-backup: sql-db-build
 	docker run --rm -v sql-db-test-replicated:/replicated postgres:16-alpine \
 		sh -lc 'test "$$(find /replicated/sql-db/postgres -maxdepth 1 -type f | wc -l)" -eq 2'
 	docker run --rm -v sql-db-test-replicated:/replicated postgres:16-alpine \
+		sh -lc 'test "$$(find /replicated/sql-db/postgres -maxdepth 1 -type f -name "*.tmp" | wc -l)" -eq 0'
+	docker run --rm -v sql-db-test-replicated:/replicated postgres:16-alpine \
+		sh -lc 'test "$$(find /replicated/sql-db/postgres -maxdepth 1 -type f -name ".*" | wc -l)" -eq 0'
+	docker run --rm -v sql-db-test-replicated:/replicated postgres:16-alpine \
 		sh -lc 'pg_restore -l "$$(find /replicated/sql-db/postgres -name "*.dump" | head -n 1)" >/dev/null'
 	docker container rm -f sql-db-test >/dev/null
 	docker network rm sql-db-test >/dev/null

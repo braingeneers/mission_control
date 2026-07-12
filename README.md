@@ -69,13 +69,21 @@ Control does not build this image on the server and does not mount
 project-specific scheduler code from the host.
 
 The image runs `./src/run_data_lifecycle.sh` at 9:00 PM Pacific time on Monday,
-Tuesday, and Friday.
+Tuesday, and Friday. It also runs a daily replicated-volume sync at 2:00 AM
+Pacific time, copying new and changed files from the shared read-only
+`replicated` volume to `s3://braingeneersdev/services/replicated/` without
+deleting remote objects.
 
 The service uses `secret-fetcher` and expects the `prp-s3-credentials`
 Kubernetes secret to include:
 
 - `credentials`
 - `rclone.conf`
+
+The service mounts `replicated:/replicated:ro` so it can publish backed-up
+static service artifacts to NRP/S3. The destination is intentionally
+`braingeneersdev` for now and can be switched to `braingeneers` through the
+backup image's `REPLICATED_SYNC_DESTINATION` default or deployment environment.
 
 Deploy or refresh only this service on `braingeneers.gi.ucsc.edu`:
 

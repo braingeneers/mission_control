@@ -65,7 +65,7 @@ New services that need local state should use the shared top-level Docker volume
 - `local`: restart-persistent state that can be regenerated or recovered. Active file changes belong here.
 - `replicated`: backed-up static files. Services should stage work in `local` and publish completed artifacts into service-scoped folders under `replicated`.
 
-Each service owns a service-named directory under the volume root, such as `/local/sql-db` and `/replicated/sql-db`. Do not add a new top-level volume for each service unless a legacy image or external compatibility requirement requires it. Backup tooling should ignore dot-prefixed temporary publish files in `replicated`.
+Each service owns a service-named directory under the volume root, such as `/local/sql-db` and `/replicated/sql-db`. Do not add a new top-level volume for each service unless a legacy image or external compatibility requirement requires it. If incomplete files must briefly exist in `replicated`, write them with dot-prefixed names such as `.artifact.tmp`, then atomically rename to final non-dot-prefixed names. Do not use visible suffix-only names such as `artifact.tmp` in `replicated`; suffix temp names are acceptable in `local` staging. Backup tooling should ignore dot-prefixed temporary publish files in `replicated`.
 
 Existing local examples:
 

@@ -14,3 +14,6 @@
 2026-07-11 16:17 | shared services | packaged SQL database backups into the owning service image and clarified Compose service guidance
 2026-07-11 17:14 | shared services | renamed the restart-persistent shared volume from cache to local
 2026-07-11 17:22 | shared services | clarified sql-db as shared infrastructure instead of client-specific service wiring
+2026-07-11 17:38 | shared services | aligned sql-db replicated backup temp files with dot-prefixed publish convention
+2026-07-12 18:20 | data lifecycle backup | mount replicated volume for daily NRP/S3 sync
+2026-07-11 18:19 | service guidance | documented dot-prefixed temporary publish convention for replicated volume writes

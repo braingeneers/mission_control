@@ -33,6 +33,8 @@ tmp_meta="${local_dir}/${basename}.json.tmp"
 local_meta="${local_dir}/${basename}.json"
 final_dump="${replicated_dir}/${basename}.dump"
 final_meta="${replicated_dir}/${basename}.json"
+replicated_tmp_dump="${replicated_dir}/.${basename}.dump.tmp"
+replicated_tmp_meta="${replicated_dir}/.${basename}.json.tmp"
 
 echo "[${stamp}] backing up ${db_name} database to ${final_dump}"
 
@@ -43,9 +45,9 @@ printf '{"created_at":"%s","database":"%s","source_service":"sql-db","rotation_s
   "$stamp" "$db_name" "$slot" > "$tmp_meta"
 mv "$tmp_meta" "$local_meta"
 
-cp "$local_dump" "${final_dump}.tmp"
-mv "${final_dump}.tmp" "$final_dump"
-cp "$local_meta" "${final_meta}.tmp"
-mv "${final_meta}.tmp" "$final_meta"
+cp "$local_dump" "$replicated_tmp_dump"
+mv "$replicated_tmp_dump" "$final_dump"
+cp "$local_meta" "$replicated_tmp_meta"
+mv "$replicated_tmp_meta" "$final_meta"
 
 echo "[${stamp}] completed ${db_name} database backup slot ${slot}"

@@ -1021,6 +1021,7 @@ services:
       - braingeneers-net
     volumes:
       - secrets:/secrets
+      - replicated:/replicated:ro
     depends_on:
       secret-fetcher:
         condition: service_healthy
