@@ -9,7 +9,8 @@
 2026-06-16 14:36 | maxwell-dashboard | update service image to v0.85 for parameter wording refresh
 2026-06-24 16:27 | ephys services | update listener and dashboard service images to v0.86
 2026-07-11 14:33 | workflows service | added workflows.braingeneers.gi.ucsc.edu Compose services using Docker Hub images and secret-fetcher wiring
-2026-07-11 14:46 | workflows service | moved workflows to shared internal Mission Control Postgres and removed workflow-specific env secret
+2026-07-11 14:46 | shared services | introduced shared internal Mission Control Postgres for service clients
 2026-07-11 15:51 | shared services | renamed the internal SQL service and added local/replicated volume standards with rolling database backups
 2026-07-11 16:17 | shared services | packaged SQL database backups into the owning service image and clarified Compose service guidance
 2026-07-11 17:14 | shared services | renamed the restart-persistent shared volume from cache to local
+2026-07-11 17:22 | shared services | clarified sql-db as shared infrastructure instead of client-specific service wiring

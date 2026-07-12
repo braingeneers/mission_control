@@ -85,6 +85,33 @@ docker compose up -d --force-recreate data-lifecycle-backup
 docker compose logs -f data-lifecycle-backup
 ```
 
+## Shared SQL database service
+
+`sql-db` is the shared internal SQL database service for Mission Control
+applications. It is not published outside the Docker network and uses public
+default credentials as an internal compatibility guard, not as a security
+boundary:
+
+```bash
+POSTGRES_DB=services
+POSTGRES_USER=services
+POSTGRES_PASSWORD=services
+```
+
+`sql-db` stores active database files under `local:/local/sql-db`. Its image
+runs a daily backup at 08:00 UTC and writes one custom-format dump per day to
+`replicated:/replicated/sql-db/postgres` using 30 rolling filename slots. Older
+slots are overwritten by filename rather than deleted.
+
+Deploy or refresh only the shared database service on
+`braingeneers.gi.ucsc.edu`:
+
+```bash
+docker compose pull sql-db
+docker compose up -d --force-recreate sql-db
+docker compose logs -f sql-db
+```
+
 ## Workflows web service
 
 The `workflows` service serves https://workflows.braingeneers.gi.ucsc.edu as a
@@ -100,27 +127,16 @@ The backend uses the shared `secret-fetcher` volume. It expects:
 - `/secrets/prp-s3-credentials/credentials` for S3 access.
 - `/secrets/kube-config/config` for Kubernetes launch and run monitoring.
 
-The backend uses the shared internal `sql-db` database service. That
-database is not published outside the Docker network and uses public default
-credentials as an internal compatibility guard, not as a security boundary:
+The backend uses the shared internal `sql-db` database service. Ensure
+`sql-db` is already running; refresh it separately only when the shared
+database service changes.
+
+Deploy or refresh the workflows service group on `braingeneers.gi.ucsc.edu`:
 
 ```bash
-POSTGRES_DB=services
-POSTGRES_USER=services
-POSTGRES_PASSWORD=services
-```
-
-`sql-db` stores active database files under `local:/local/sql-db`. Its image
-runs a daily backup at 08:00 UTC and writes one custom-format dump per day to
-`replicated:/replicated/sql-db/postgres` using 30 rolling filename slots. Older
-slots are overwritten by filename rather than deleted.
-
-Deploy or refresh only this service group on `braingeneers.gi.ucsc.edu`:
-
-```bash
-docker compose pull sql-db workflows workflows-backend
-docker compose up -d --force-recreate sql-db workflows-backend workflows
-docker compose logs -f sql-db workflows-backend workflows
+docker compose pull workflows workflows-backend
+docker compose up -d --force-recreate workflows-backend workflows
+docker compose logs -f workflows-backend workflows
 ```
 
 If shared Kubernetes secrets such as `prp-s3-credentials` or `kube-config`

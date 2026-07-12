@@ -1055,8 +1055,8 @@ services:
       secret-fetcher:
         condition: service_healthy
 
-  # Braingeneers workflow launch and run-monitoring web app.
-  # Images are built and pushed from github.com/braingeneers/workflows.
+  # Shared internal SQL database service for Mission Control applications.
+  # The image is owned by this repository and stores mutable data under local.
   sql-db:
     image: braingeneers/sql-db:20260711-ea98cdb12b6b
     container_name: sql-db
@@ -1081,6 +1081,8 @@ services:
       - local:/local
       - replicated:/replicated
 
+  # Braingeneers workflow launch and run-monitoring web app.
+  # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
     image: braingeneers/workflows-backend:20260711-2b2638fe87fc
     container_name: workflows-backend
