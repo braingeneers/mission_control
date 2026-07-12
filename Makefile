@@ -31,14 +31,14 @@ sql-db-shell:
 
 sql-db-test-backup: sql-db-build
 	docker network create sql-db-test >/dev/null
-	docker volume create sql-db-test-cache >/dev/null
+	docker volume create sql-db-test-local >/dev/null
 	docker volume create sql-db-test-replicated >/dev/null
 	docker run -d --name sql-db-test --network sql-db-test \
-		-e PGDATA=/cache/sql-db/postgres/pgdata \
+		-e PGDATA=/local/sql-db/postgres/pgdata \
 		-e POSTGRES_DB=services \
 		-e POSTGRES_USER=services \
 		-e POSTGRES_PASSWORD=services \
-		-v sql-db-test-cache:/cache \
+		-v sql-db-test-local:/local \
 		-v sql-db-test-replicated:/replicated \
 		$(SQL_DB_IMAGE):$(SQL_DB_TAG)
 	docker run --rm --network sql-db-test -e PGPASSWORD=services postgres:16-alpine \
@@ -51,4 +51,4 @@ sql-db-test-backup: sql-db-build
 		sh -lc 'pg_restore -l "$$(find /replicated/sql-db/postgres -name "*.dump" | head -n 1)" >/dev/null'
 	docker container rm -f sql-db-test >/dev/null
 	docker network rm sql-db-test >/dev/null
-	docker volume rm sql-db-test-cache sql-db-test-replicated >/dev/null
+	docker volume rm sql-db-test-local sql-db-test-replicated >/dev/null

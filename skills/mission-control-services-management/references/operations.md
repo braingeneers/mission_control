@@ -30,7 +30,7 @@ Before proposing or applying changes, check:
 - Proxy overrides have matching bind mounts.
 - Headless services do not accidentally receive web proxy settings.
 - MCP services preserve `Authorization` and do backend token validation.
-- New local state uses service-scoped directories under shared `cache` or `replicated` volumes; active files stay in `cache`, and only completed static files go in `replicated`.
+- New local state uses service-scoped directories under shared `local` or `replicated` volumes; active files stay in `local`, and only completed static files go in `replicated`.
 - The service can be operated after cloning `mission_control` and providing `~/.kube/config`, without extra host-level files unless explicitly justified.
 
 ## Verification

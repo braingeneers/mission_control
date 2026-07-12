@@ -6,12 +6,12 @@ a small cron-managed backup script in the same container.
 
 ## Runtime Paths
 
-- Active database files: `/cache/sql-db/postgres/pgdata`
-- Backup staging files: `/cache/sql-db/backups`
+- Active database files: `/local/sql-db/postgres/pgdata`
+- Backup staging files: `/local/sql-db/backups`
 - Static backup outputs: `/replicated/sql-db/postgres`
 
-The service expects the shared Mission Control `cache` and `replicated` Docker
-volumes to be mounted at `/cache` and `/replicated`.
+The service expects the shared Mission Control `local` and `replicated` Docker
+volumes to be mounted at `/local` and `/replicated`.
 
 ## Backups
 
@@ -27,7 +27,7 @@ services-rotation-29.json
 ```
 
 Slots are selected from the UTC epoch day modulo 30, so old backups are
-overwritten by filename. The script stages work under `/cache` and publishes
+overwritten by filename. The script stages work under `/local` and publishes
 completed files into `/replicated`.
 
 Run a manual backup from a running container:
