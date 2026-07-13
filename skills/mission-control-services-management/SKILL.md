@@ -1,6 +1,6 @@
 ---
 name: mission-control-services-management
-description: Build, deploy, update, or troubleshoot Braingeneers lab services managed by mission_control on braingeneers.gi.ucsc.edu. Use when Codex is helping create a new Docker Compose service, choose between proxied web, public web, headless port-published, or MCP service patterns, configure service-proxy overrides, handle Braingeneers Kubernetes secrets and secret-fetcher, choose NRP kubeconfig authentication, package images for Docker Hub or another registry, add Makefile build/push/local-test workflows, or operate existing services with docker compose.
+description: Build, deploy, update, or troubleshoot Braingeneers lab services managed by mission_control on braingeneers.gi.ucsc.edu. Use when Codex is helping create a new Docker Compose service, choose between proxied web, public web, headless port-published, or MCP service patterns, connect a client to the shared sql-db PostgreSQL service, configure service-proxy overrides, handle Braingeneers Kubernetes secrets and secret-fetcher, choose NRP kubeconfig authentication, package images for Docker Hub or another registry, add Makefile build/push/local-test workflows, or operate existing services with docker compose.
 ---
 
 # Mission Control Services Management
@@ -22,6 +22,7 @@ Use this skill for Braingeneers services managed by `mission_control` on `braing
 7. Avoid host-level configuration and local bind mounts. The normal operator requirements should be only a `mission_control` checkout and a valid `~/.kube/config` for `secret-fetcher`.
 8. Use shared local volumes for persistent service state. `local` is restart-persistent disposable state; `replicated` is backed-up static state. Each service owns a service-named subdirectory under the volume root.
 9. Keep service topology manageable. Package tightly coupled helper behavior inside the owning service image; add sidecar services only when they are independently operated, scaled, or reused.
+10. When a service needs PostgreSQL, prefer the shared internal `sql-db` service. Give each new client its own schema; do not add another production Postgres container by default.
 
 ## Reference Loading
 
@@ -32,6 +33,7 @@ Load only the reference files needed for the current task:
 - `references/packaging.md`: registry-published image policy and Makefile target conventions.
 - `references/web-app-style.md`: Braingeneers web app visual language, reusable UI patterns, and bundled image assets.
 - `references/secrets.md`: Kubernetes secret lifecycle, secret-fetcher, entrypoint secret setup, and token refresh.
+- `references/sql-db.md`: shared PostgreSQL client contract, schema provisioning, connection wiring, migrations, backups, and troubleshooting.
 - `references/operations.md`: deployment, update, verification, troubleshooting, and escalation.
 
 ## Workflow
@@ -55,6 +57,8 @@ Read local sources before making claims. Minimum source set:
 For MCP services, also read `docs/mcp-onboarding.md`, Braingeneers wiki `shared/mcp_architecture.md`, and `oauth2-broker/README.md`.
 
 For browser-facing services with a new or refreshed UI, also read `references/web-app-style.md` and inspect nearby Braingeneers apps when available, especially `data-lifecycle`, `data_uploader`, and `data-explorer`.
+
+For services that need relational persistence, also read `sql-db/README.md` and `references/sql-db.md`. Inspect the Workflows backend as the first client, but remember that its use of the `public` schema is a legacy exception rather than the pattern for new clients.
 
 ### 2. Choose The Service Branch
 
@@ -108,7 +112,15 @@ Avoid additional bind mounts for service files. Host-mounted files are acceptabl
 
 Use the shared `local` and `replicated` Docker volumes for local service state. Mount the volume root and have each service create a service-named subdirectory, for example `/local/sql-db` or `/replicated/sql-db`. Put active files, databases, mutable state, and restart-persistent disposable state in `local`. Put only completed static files that should be backed up in `replicated`; stage changing files in `local` and publish finished outputs into `replicated` with final names. If a service must write an incomplete publish file inside `replicated`, use a dot-prefixed temporary name such as `.artifact.tmp` and atomically rename it to the final non-dot-prefixed name. Do not use visible suffix-only temporary names such as `artifact.tmp` in `replicated`; ordinary suffix temp names are acceptable in `local` staging directories. Dot-prefixed temporary publish files in `replicated` are tolerated only as short-lived incomplete files and should be ignored by backup tooling. Do not add new service-specific top-level volumes unless a legacy image or external compatibility requirement makes it necessary.
 
-### 6. Deploy Conservatively
+### 6. Reuse The Shared SQL Database
+
+When an application needs PostgreSQL, use `sql-db:5432` on `braingeneers-net`, the shared `services` database and role, and a service-specific schema. Normalize a Compose service name by replacing hyphens with underscores and require the result to match `[a-z][a-z0-9_]*`.
+
+Have an operator provision the schema once before first deployment. Configure the client's driver and migration tool to select only its schema, and verify `current_schema()` before migrations run. Add a healthy `sql-db` dependency to the client, but do not publish the database port, mount database volumes into the client, or add another production Postgres service without a deliberate infrastructure exception.
+
+Keep client models, migrations, local-development database configuration, and startup behavior in the owning client repository and image. The shared image, backup implementation, and build/push workflow remain owned by `mission_control`. See `references/sql-db.md` for the exact contract and operational checks.
+
+### 7. Deploy Conservatively
 
 For existing services, prefer targeted operations:
 

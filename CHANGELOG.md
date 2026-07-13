@@ -17,3 +17,4 @@
 2026-07-11 17:38 | shared services | aligned sql-db replicated backup temp files with dot-prefixed publish convention
 2026-07-12 18:20 | data lifecycle backup | mount replicated volume for daily NRP/S3 sync
 2026-07-11 18:19 | service guidance | documented dot-prefixed temporary publish convention for replicated volume writes
+2026-07-13 11:34 | shared SQL service | documented schema-isolated client onboarding and reusable service-creation guidance

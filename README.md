@@ -106,10 +106,19 @@ POSTGRES_USER=services
 POSTGRES_PASSWORD=services
 ```
 
+New clients join `braingeneers-net`, wait for the `sql-db` health check, and own
+a normalized service-named schema in the shared `services` database. They must
+configure their connection and migration tooling to use that schema instead of
+creating tables in `public`. Workflows is the current legacy `public`-schema
+client until it receives a separately planned migration.
+
 `sql-db` stores active database files under `local:/local/sql-db`. Its image
 runs a daily backup at 08:00 UTC and writes one custom-format dump per day to
 `replicated:/replicated/sql-db/postgres` using 30 rolling filename slots. Older
 slots are overwritten by filename rather than deleted.
+
+See [`sql-db/README.md`](sql-db/README.md) for schema provisioning, connection
+URLs, Compose wiring, migrations, backup/restore, and troubleshooting.
 
 Deploy or refresh only the shared database service on
 `braingeneers.gi.ucsc.edu`:
