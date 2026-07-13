@@ -1071,7 +1071,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U services -d services",
+          "pg_isready -U services -d services >/dev/null && [ \"$$(psql -X -U services -d services -tAc 'SELECT current_schema() IS NULL')\" = t ]",
         ]
       interval: 10s
       timeout: 5s

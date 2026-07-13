@@ -20,7 +20,8 @@ operational requirement.
 - Isolation: schemas prevent accidental namespace collisions; the shared role
   means they are not a security boundary.
 - Legacy exception: Workflows currently uses `public` and must not be copied as
-  the schema pattern for a new client.
+  the schema pattern for a new client. Do not enable the production guardrail
+  until Workflows has migrated to `workflows`.
 
 An operator creates the schema once before the first deployment:
 
@@ -40,6 +41,14 @@ Do not add `public` as a writable fallback. Before migrations, verify that
 `SHOW search_path` selects the client schema and `SELECT current_schema()`
 returns it. Ensure migration version tables, including Alembic's
 `alembic_version`, are created in that schema.
+
+The sql-db image gives default `services` connections an empty `search_path`,
+so omitted client configuration fails rather than creating objects in `public`.
+This is a configuration guardrail only: the shared superuser can still target a
+schema explicitly. For an existing cluster, apply
+`sql-db/require-client-schema.sql` once after every legacy client has migrated;
+fresh clusters apply it during initialization. The sql-db health check verifies
+that a default connection has no current schema.
 
 ## Compose And Packaging
 
@@ -79,4 +88,6 @@ docker compose logs -f sql-db
 For connection failures, verify database health, shared network membership,
 hostname, and schema existence. If a new client's migrations create objects in
 `public`, stop it and fix the connection or migration configuration before
-retrying.
+retrying. If the guardrail exposes an unexpected legacy client, the documented
+temporary rollback is
+`ALTER ROLE services IN DATABASE services RESET search_path`.

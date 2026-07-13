@@ -112,6 +112,13 @@ configure their connection and migration tooling to use that schema instead of
 creating tables in `public`. Workflows is the current legacy `public`-schema
 client until it receives a separately planned migration.
 
+The sql-db image makes an unconfigured default connection fail closed with no
+current schema, while schema-aware client connections override that default.
+This guardrail is installed automatically for fresh clusters. It must not be
+applied to the existing production database until Workflows has migrated to the
+`workflows` schema; see the sql-db guide for the backup, verification, rollout,
+and rollback procedure.
+
 `sql-db` stores active database files under `local:/local/sql-db`. Its image
 runs a daily backup at 08:00 UTC and writes one custom-format dump per day to
 `replicated:/replicated/sql-db/postgres` using 30 rolling filename slots. Older

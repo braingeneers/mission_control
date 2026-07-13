@@ -28,7 +28,21 @@ application tables in `public` and do not use another service's schema.
 
 Workflows was deployed before this convention and currently uses `public`.
 Treat it as a legacy exception until a separately planned production migration
-moves it into a `workflows` schema.
+moves it into a `workflows` schema. Do not enable the sql-db schema guardrail in
+production until that migration is complete.
+
+## Default schema guardrail
+
+The sql-db image installs a database-specific empty default `search_path` for
+the shared `services` role. A client that omits its service schema therefore has
+no current schema, and unqualified migrations fail instead of silently creating
+objects in `public`. A correctly configured client overrides the default with
+its connection-level `search_path`.
+
+This is an accidental-misconfiguration guardrail, not access isolation. The
+shared `services` role remains a superuser and can explicitly target `public` or
+another client schema. Enforcing that boundary would require separate roles and
+credentials for every client.
 
 ## Provision a client schema
 
@@ -66,7 +80,8 @@ SELECT current_schema();
 `current_schema()` must return the client's schema. Migration tools must also
 store their version table there; for example, Alembic's default
 `alembic_version` table is safe only after the schema-aware connection has been
-verified.
+verified. A default connection without a schema override should return `NULL`
+from `current_schema()` after the guardrail is enabled.
 
 The client and `sql-db` must share `braingeneers-net`. Make database readiness an
 explicit dependency:
@@ -105,6 +120,47 @@ postgresql+psycopg://services:services@sql-db:5432/services
 
 Use Workflows as an example of network and health-dependency wiring, not as an
 example of the schema contract for a new client.
+
+## Enable the guardrail on the existing database
+
+Initialization scripts only run for a new PostgreSQL data directory. Enable the
+same policy once on the existing production database only after Workflows uses
+the `workflows` schema and no application tables or migration-version tables
+remain in `public`.
+
+On `braingeneers.gi.ucsc.edu`, take a backup and inspect both schemas before
+applying the policy:
+
+```bash
+docker compose exec sql-db /usr/local/bin/backup-sql-db.sh
+docker compose exec sql-db psql -U services -d services \
+  -c "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema IN ('public', 'workflows') ORDER BY 1, 2;"
+docker compose exec sql-db psql -X -U services -d services -c 'SHOW search_path;'
+```
+
+Verify the Workflows connection itself reports `current_schema() = 'workflows'`
+before continuing. Apply the versioned policy file from the Mission Control
+checkout, then verify a new default connection has no current schema:
+
+```bash
+docker compose exec -T sql-db psql -X -U services -d services \
+  -v ON_ERROR_STOP=1 < sql-db/require-client-schema.sql
+docker compose exec sql-db psql -X -U services -d services \
+  -tAc 'SELECT current_schema() IS NULL;'
+```
+
+The policy file refuses to run while tables, partitioned tables, views,
+materialized views, sequences, or foreign tables remain in `public`. The final
+query must return `t`. Then publish the updated sql-db image, update its
+immutable Compose tag, recreate only `sql-db`, and verify sql-db health,
+Workflows readiness, schema locations, and another backup. If an unexpected
+legacy client is blocked, roll back the session default while correcting that
+client:
+
+```bash
+docker compose exec sql-db psql -X -U services -d services \
+  -c 'ALTER ROLE services IN DATABASE services RESET search_path;'
+```
 
 ## Image and runtime paths
 
@@ -170,7 +226,7 @@ docker compose logs -f sql-db
 Useful checks from the server are:
 
 ```bash
-docker compose exec sql-db pg_isready -U services -d services
+docker compose exec sql-db /usr/local/bin/check-client-schema-policy.sh
 docker compose exec sql-db psql -U services -d services -c '\dn'
 ```
 
