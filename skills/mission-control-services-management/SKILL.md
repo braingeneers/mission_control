@@ -22,7 +22,7 @@ Use this skill for Braingeneers services managed by `mission_control` on `braing
 7. Avoid host-level configuration and local bind mounts. The normal operator requirements should be only a `mission_control` checkout and a valid `~/.kube/config` for `secret-fetcher`.
 8. Use shared local volumes for persistent service state. `local` is restart-persistent disposable state; `replicated` is backed-up static state. Each service owns a service-named subdirectory under the volume root.
 9. Keep service topology manageable. Package tightly coupled helper behavior inside the owning service image; add sidecar services only when they are independently operated, scaled, or reused.
-10. When a service needs PostgreSQL, prefer the shared internal `sql-db` service. Give each new client its own schema; do not add another production Postgres container by default.
+10. When a service needs PostgreSQL, prefer the shared internal `sql-db` service. Give each client its own schema; do not add another production Postgres container by default.
 
 ## Reference Loading
 
@@ -58,7 +58,10 @@ For MCP services, also read `docs/mcp-onboarding.md`, Braingeneers wiki `shared/
 
 For browser-facing services with a new or refreshed UI, also read `references/web-app-style.md` and inspect nearby Braingeneers apps when available, especially `data-lifecycle`, `data_uploader`, and `data-explorer`.
 
-For services that need relational persistence, also read `sql-db/README.md` and `references/sql-db.md`. Inspect the Workflows backend as the first client, but remember that its use of the `public` schema is a legacy exception rather than the pattern for new clients.
+For services that need relational persistence, also read `sql-db/README.md` and
+`references/sql-db.md`. Inspect current client wiring in `docker-compose.yaml`
+when useful, but follow the documented schema contract rather than inferring
+database configuration from another client.
 
 ### 2. Choose The Service Branch
 

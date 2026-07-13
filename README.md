@@ -106,18 +106,17 @@ POSTGRES_USER=services
 POSTGRES_PASSWORD=services
 ```
 
-New clients join `braingeneers-net`, wait for the `sql-db` health check, and own
+Clients join `braingeneers-net`, wait for the `sql-db` health check, and own
 a normalized service-named schema in the shared `services` database. They must
 configure their connection and migration tooling to use that schema instead of
-creating tables in `public`. Workflows is the current legacy `public`-schema
-client until it receives a separately planned migration.
+creating tables in `public`.
 
 The sql-db image makes an unconfigured default connection fail closed with no
 current schema, while schema-aware client connections override that default.
 This guardrail is installed automatically for fresh clusters. It must not be
-applied to the existing production database until Workflows has migrated to the
-`workflows` schema; see the sql-db guide for the backup, verification, rollout,
-and rollback procedure.
+applied to an existing database until every client selects its owned schema and
+`public` contains no application relations; see the sql-db guide for the backup,
+verification, rollout, and rollback procedure.
 
 `sql-db` stores active database files under `local:/local/sql-db`. Its image
 runs a daily backup at 08:00 UTC and writes one custom-format dump per day to
@@ -141,10 +140,8 @@ docker compose logs -f sql-db
 The `workflows` service serves https://workflows.braingeneers.gi.ucsc.edu as a
 private web app behind the shared browser authentication and SSL proxy. The
 frontend and backend images are built and pushed from the `workflows`
-repository:
-
-- `braingeneers/workflows-frontend:20260711-2b2638fe87fc`
-- `braingeneers/workflows-backend:20260711-2b2638fe87fc`
+repository. The immutable deployed image tags are recorded in
+`docker-compose.yaml` rather than duplicated here.
 
 The backend uses the shared `secret-fetcher` volume. It expects:
 

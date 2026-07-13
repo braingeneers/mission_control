@@ -19,3 +19,4 @@
 2026-07-11 18:19 | service guidance | documented dot-prefixed temporary publish convention for replicated volume writes
 2026-07-13 11:34 | shared SQL service | documented schema-isolated client onboarding and reusable service-creation guidance
 2026-07-13 12:18 | shared SQL service | add fail-closed schema selection guardrail, validation, and gated rollout guidance
+2026-07-13 12:22 | shared SQL service | make schema guidance client-agnostic and remove transitional public-schema history

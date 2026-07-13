@@ -21,15 +21,10 @@ not a security boundary. Network isolation comes from Docker, and schema
 separation prevents accidental table and migration-name collisions between
 applications.
 
-New clients must own one PostgreSQL schema. Derive the schema from the Compose
+Each client must own one PostgreSQL schema. Derive the schema from the Compose
 service name by replacing hyphens with underscores; names must match
 `[a-z][a-z0-9_]*`. For example, `my-service` owns `my_service`. Do not create new
 application tables in `public` and do not use another service's schema.
-
-Workflows was deployed before this convention and currently uses `public`.
-Treat it as a legacy exception until a separately planned production migration
-moves it into a `workflows` schema. Do not enable the sql-db schema guardrail in
-production until that migration is complete.
 
 ## Default schema guardrail
 
@@ -107,40 +102,26 @@ For local development, a client may run its own disposable Postgres container
 with the same database, role, and schema contract. That local container is not
 part of the production Mission Control topology.
 
-## First client: Workflows
-
-The Workflows backend demonstrates the current production wiring in
-`docker-compose.yaml`: it joins `braingeneers-net`, waits for the healthy
-`sql-db` service, and runs Alembic before starting. Its image currently defaults
-to this legacy public-schema URL:
-
-```text
-postgresql+psycopg://services:services@sql-db:5432/services
-```
-
-Use Workflows as an example of network and health-dependency wiring, not as an
-example of the schema contract for a new client.
-
 ## Enable the guardrail on the existing database
 
 Initialization scripts only run for a new PostgreSQL data directory. Enable the
-same policy once on the existing production database only after Workflows uses
-the `workflows` schema and no application tables or migration-version tables
-remain in `public`.
+same policy once on an existing database only after every client selects its
+owned schema and no application tables or migration-version tables remain in
+`public`.
 
-On `braingeneers.gi.ucsc.edu`, take a backup and inspect both schemas before
-applying the policy:
+On `braingeneers.gi.ucsc.edu`, take a backup and inspect the application schemas
+before applying the policy:
 
 ```bash
 docker compose exec sql-db /usr/local/bin/backup-sql-db.sh
 docker compose exec sql-db psql -U services -d services \
-  -c "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema IN ('public', 'workflows') ORDER BY 1, 2;"
+  -c "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY 1, 2;"
 docker compose exec sql-db psql -X -U services -d services -c 'SHOW search_path;'
 ```
 
-Verify the Workflows connection itself reports `current_schema() = 'workflows'`
-before continuing. Apply the versioned policy file from the Mission Control
-checkout, then verify a new default connection has no current schema:
+Verify each client connection reports its expected service schema before
+continuing. Apply the versioned policy file from the Mission Control checkout,
+then verify a new default connection has no current schema:
 
 ```bash
 docker compose exec -T sql-db psql -X -U services -d services \
@@ -153,8 +134,8 @@ The policy file refuses to run while tables, partitioned tables, views,
 materialized views, sequences, or foreign tables remain in `public`. The final
 query must return `t`. Then publish the updated sql-db image, update its
 immutable Compose tag, recreate only `sql-db`, and verify sql-db health,
-Workflows readiness, schema locations, and another backup. If an unexpected
-legacy client is blocked, roll back the session default while correcting that
+client readiness, schema locations, and another backup. If a client without an
+explicit schema is blocked, roll back the session default while correcting that
 client:
 
 ```bash

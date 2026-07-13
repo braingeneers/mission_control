@@ -19,9 +19,6 @@ operational requirement.
   underscores, matching `[a-z][a-z0-9_]*`.
 - Isolation: schemas prevent accidental namespace collisions; the shared role
   means they are not a security boundary.
-- Legacy exception: Workflows currently uses `public` and must not be copied as
-  the schema pattern for a new client. Do not enable the production guardrail
-  until Workflows has migrated to `workflows`.
 
 An operator creates the schema once before the first deployment:
 
@@ -46,9 +43,10 @@ The sql-db image gives default `services` connections an empty `search_path`,
 so omitted client configuration fails rather than creating objects in `public`.
 This is a configuration guardrail only: the shared superuser can still target a
 schema explicitly. For an existing cluster, apply
-`sql-db/require-client-schema.sql` once after every legacy client has migrated;
-fresh clusters apply it during initialization. The sql-db health check verifies
-that a default connection has no current schema.
+`sql-db/require-client-schema.sql` once after every client selects its owned
+schema and `public` contains no application relations; fresh clusters apply it
+during initialization. The sql-db health check verifies that a default
+connection has no current schema.
 
 ## Compose And Packaging
 
@@ -86,8 +84,8 @@ docker compose logs -f sql-db
 ```
 
 For connection failures, verify database health, shared network membership,
-hostname, and schema existence. If a new client's migrations create objects in
+hostname, and schema existence. If a client's migrations create objects in
 `public`, stop it and fix the connection or migration configuration before
-retrying. If the guardrail exposes an unexpected legacy client, the documented
-temporary rollback is
+retrying. If the guardrail exposes a client without an explicit schema, the
+documented temporary rollback is
 `ALTER ROLE services IN DATABASE services RESET search_path`.

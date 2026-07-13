@@ -53,18 +53,18 @@ docker exec "$container" /usr/local/bin/check-client-schema-policy.sh
 # The same SQL file must migrate an existing cluster safely and repeatedly.
 docker exec "$container" psql -X -U services -d services -v ON_ERROR_STOP=1 \
   -c "ALTER ROLE services IN DATABASE services RESET search_path" >/dev/null
-legacy_schema="$(docker run --rm --network "$network" -e PGPASSWORD=services postgres:16-alpine \
+default_schema="$(docker run --rm --network "$network" -e PGPASSWORD=services postgres:16-alpine \
   psql -X -h "$container" -U services -d services -tAc 'SELECT current_schema()')"
-test "$legacy_schema" = "public"
+test "$default_schema" = "public"
 docker exec "$container" psql -X -U services -d services -v ON_ERROR_STOP=1 \
-  -c 'CREATE TABLE public.legacy_guardrail_probe (id integer)' >/dev/null
+  -c 'CREATE TABLE public.public_guardrail_probe (id integer)' >/dev/null
 if docker exec "$container" psql -X -U services -d services \
   -f /docker-entrypoint-initdb.d/010-require-client-schema.sql >/dev/null 2>&1; then
   echo "sql-db test: policy enabled while public still contained a relation" >&2
   exit 1
 fi
 docker exec "$container" psql -X -U services -d services -v ON_ERROR_STOP=1 \
-  -c 'DROP TABLE public.legacy_guardrail_probe' >/dev/null
+  -c 'DROP TABLE public.public_guardrail_probe' >/dev/null
 docker exec "$container" psql -X -U services -d services \
   -f /docker-entrypoint-initdb.d/010-require-client-schema.sql >/dev/null
 docker exec "$container" psql -X -U services -d services \
