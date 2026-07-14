@@ -23,3 +23,4 @@
 2026-07-14 10:25 | shared SQL service | document stable application schema names and the workflows ownership mapping
 2026-07-14 10:31 | workflows service | select the owned workflows schema in published backend and frontend deployment images
 2026-07-14 10:34 | shared SQL service | publish and pin the fail-closed client-schema guardrail image
+2026-07-14 13:22 | workflows service | update Mission Control image pins to the latest workflow build tag
