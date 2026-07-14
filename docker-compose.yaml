@@ -709,7 +709,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Temporarily disabled in normal production compose; re-enable with --profile mqtt-listener when needed.
   mqtt-job-listener:
+    profiles:
+      - mqtt-listener
     image: braingeneers/spike_sorting_listener:v0.86
     container_name: mqtt-job-listener
     entrypoint: /secrets/entrypoint-secrets-setup.sh
