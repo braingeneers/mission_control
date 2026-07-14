@@ -22,3 +22,4 @@
 2026-07-13 12:22 | shared SQL service | make schema guidance client-agnostic and remove transitional public-schema history
 2026-07-14 10:25 | shared SQL service | document stable application schema names and the workflows ownership mapping
 2026-07-14 10:31 | workflows service | select the owned workflows schema in published backend and frontend deployment images
+2026-07-14 10:34 | shared SQL service | publish and pin the fail-closed client-schema guardrail image
