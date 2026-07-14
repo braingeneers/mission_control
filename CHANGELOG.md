@@ -29,3 +29,4 @@
 2026-07-14 13:22 | workflows service | update Mission Control image pins to the latest workflow build tag
 2026-07-14 20:45 | workflows service | repointed Mission Control images to the corrected backend startup-fix release
 2026-07-14 21:15 | workflows service | pinned the responsive live Nextflow-stage backend release
+2026-07-14 21:30 | workflows service | pinned guarded Alembic baselining for existing workflow schemas
