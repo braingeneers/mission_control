@@ -117,7 +117,7 @@ Use the shared `local` and `replicated` Docker volumes for local service state. 
 
 ### 6. Reuse The Shared SQL Database
 
-When an application needs PostgreSQL, use `sql-db:5432` on `braingeneers-net`, the shared `services` database and role, and a service-specific schema. Normalize a Compose service name by replacing hyphens with underscores and require the result to match `[a-z][a-z0-9_]*`.
+When an application needs PostgreSQL, use `sql-db:5432` on `braingeneers-net`, the shared `services` database and role, and an application-specific schema. Normalize the stable application name by replacing hyphens with underscores and require the result to match `[a-z][a-z0-9_]*`. For a multi-container application, use the product or service-group name rather than a component name and record the mapping in `sql-db/README.md`.
 
 Have an operator provision the schema once before first deployment. Configure the client's driver and migration tool to select only its schema, and verify `current_schema()` before migrations run. Add a healthy `sql-db` dependency to the client, but do not publish the database port, mount database volumes into the client, or add another production Postgres service without a deliberate infrastructure exception.
 

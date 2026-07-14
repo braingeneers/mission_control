@@ -21,10 +21,19 @@ not a security boundary. Network isolation comes from Docker, and schema
 separation prevents accidental table and migration-name collisions between
 applications.
 
-Each client must own one PostgreSQL schema. Derive the schema from the Compose
-service name by replacing hyphens with underscores; names must match
-`[a-z][a-z0-9_]*`. For example, `my-service` owns `my_service`. Do not create new
-application tables in `public` and do not use another service's schema.
+Each application must own one PostgreSQL schema. Use its stable application
+name, replacing hyphens with underscores; names must match
+`[a-z][a-z0-9_]*`. For a single-container application this is normally the
+Compose service name. For a multi-container application, use the product or
+service-group name rather than a component name such as `my_service_backend`.
+Record exceptions from a direct Compose-name mapping here. Do not create new
+application tables in `public` and do not use another application's schema.
+
+Current application mappings are:
+
+| Database client | Application | Owned schema |
+| --- | --- | --- |
+| `workflows-backend` | Workflows | `workflows` |
 
 ## Default schema guardrail
 
@@ -101,6 +110,18 @@ database volumes into a client.
 For local development, a client may run its own disposable Postgres container
 with the same database, role, and schema contract. That local container is not
 part of the production Mission Control topology.
+
+The Workflows production image selects and asserts `workflows` before backend
+startup or Alembic migrations. Its connection URL is:
+
+```text
+postgresql+psycopg://services:services@sql-db:5432/services?options=-csearch_path%3Dworkflows
+```
+
+Its repository owns the guarded one-time migration from the former `public`
+layout. Stop the backend, take and verify a full database backup, run that
+migration, compare row counts, and confirm `public` is empty before enabling
+the default-schema guardrail described below.
 
 ## Enable the guardrail on the existing database
 

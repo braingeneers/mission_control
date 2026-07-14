@@ -107,7 +107,7 @@ POSTGRES_PASSWORD=services
 ```
 
 Clients join `braingeneers-net`, wait for the `sql-db` health check, and own
-a normalized service-named schema in the shared `services` database. They must
+a normalized application-named schema in the shared `services` database. They must
 configure their connection and migration tooling to use that schema instead of
 creating tables in `public`.
 
@@ -148,9 +148,10 @@ The backend uses the shared `secret-fetcher` volume. It expects:
 - `/secrets/prp-s3-credentials/credentials` for S3 access.
 - `/secrets/kube-config/config` for Kubernetes launch and run monitoring.
 
-The backend uses the shared internal `sql-db` database service. Ensure
-`sql-db` is already running; refresh it separately only when the shared
-database service changes.
+The backend uses the shared internal `sql-db` database service and owns the
+`workflows` schema. Its production image selects that schema and verifies it
+before Alembic migrations or application startup. Ensure `sql-db` is already
+running; refresh it separately only when the shared database service changes.
 
 Deploy or refresh the workflows service group on `braingeneers.gi.ucsc.edu`:
 

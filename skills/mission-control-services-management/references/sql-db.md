@@ -15,8 +15,10 @@ operational requirement.
 
 - Host and port: `sql-db:5432` on `braingeneers-net`.
 - Database, user, and password: `services`.
-- Schema: normalized Compose service name, with hyphens replaced by
-  underscores, matching `[a-z][a-z0-9_]*`.
+- Schema: normalized stable application name, with hyphens replaced by
+  underscores, matching `[a-z][a-z0-9_]*`. This is normally the Compose service
+  name for a single-container client. Multi-container applications use their
+  product or service-group name and record that mapping in `sql-db/README.md`.
 - Isolation: schemas prevent accidental namespace collisions; the shared role
   means they are not a security boundary.
 
