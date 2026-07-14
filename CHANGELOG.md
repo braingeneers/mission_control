@@ -26,3 +26,4 @@
 2026-07-14 10:31 | workflows service | select the owned workflows schema in published backend and frontend deployment images
 2026-07-14 10:34 | shared SQL service | publish and pin the fail-closed client-schema guardrail image
 2026-07-14 13:22 | workflows service | update Mission Control image pins to the latest workflow build tag
+2026-07-14 20:45 | workflows service | repointed Mission Control images to the corrected backend startup-fix release
