@@ -1,3 +1,4 @@
+2026-07-15 11:16 | workflows service | configure the public GitHub App ID in Compose while keeping only the private key in secrets
 2026-07-15 10:50 | workflows service | pin the versioned-catalog release with private GitHub App definition refreshes
 2026-07-15 10:00 | workflows service | wire organization-owned read-only GitHub App credentials for workflow definition refreshes
 2026-07-15 09:33 | workflows service | pin the frontend release restoring distinct Dashboard and Workflows routes
