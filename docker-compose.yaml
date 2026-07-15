@@ -1118,7 +1118,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20260715-8a147f3ed35e
+    image: braingeneers/workflows-frontend:20260715-9320be96037d
     container_name: workflows
     restart: unless-stopped
     expose:

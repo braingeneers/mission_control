@@ -1,3 +1,4 @@
+2026-07-15 09:33 | workflows service | pin the frontend release restoring distinct Dashboard and Workflows routes
 2026-07-15 09:25 | workflows service | pin the dashboard-linked and layout-verified frontend release
 2026-07-14 21:10 | workflows service | temporarily disable mqtt-job-listener in production compose via optional profile
 2026-07-14 20:57 | workflows service | bump Workflows images for post-migration search_path init startup fix
