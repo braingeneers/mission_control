@@ -1,3 +1,4 @@
+2026-07-15 13:30 | workflows service | pin the Nextflow 26 runtime and live workflow version and startup-status release
 2026-07-15 12:27 | workflows service | pin the combined Ephys run release with per-recording task fan-out and artifact links
 2026-07-15 11:16 | workflows service | configure the public GitHub App ID in Compose while keeping only the private key in secrets
 2026-07-15 10:50 | workflows service | pin the versioned-catalog release with private GitHub App definition refreshes
