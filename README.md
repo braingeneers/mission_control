@@ -147,7 +147,7 @@ The backend uses the shared `secret-fetcher` volume. It expects:
 
 - `/secrets/prp-s3-credentials/credentials` for S3 access.
 - `/secrets/kube-config/config` for Kubernetes launch and run monitoring.
-- `/secrets/github-readonly/app-id` and `/secrets/github-readonly/braingeneers-runtime-readonly.private-key.pem` for read-only workflow-definition refreshes from the private Braingeneers GitHub organization. The backend exchanges these GitHub App credentials for a short-lived installation token; it does not store a long-lived Git access token.
+- `/secrets/github-readonly/braingeneers-runtime-readonly.private-key.pem` for read-only workflow-definition refreshes from the private Braingeneers GitHub organization. The public App ID is configured directly in Compose as `GITHUB_APP_ID`; the backend exchanges the App ID and secret-mounted PEM for a short-lived installation token and does not store a long-lived Git access token.
 
 The backend uses the shared internal `sql-db` database service and owns the
 `workflows` schema. Its production image selects that schema and verifies it

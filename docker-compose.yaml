@@ -1103,7 +1103,7 @@ services:
     expose:
       - "8000"
     environment:
-      GITHUB_APP_ID_FILE: "/secrets/github-readonly/app-id"
+      GITHUB_APP_ID: "4307214"
       GITHUB_APP_PRIVATE_KEY_PATH: "/secrets/github-readonly/braingeneers-runtime-readonly.private-key.pem"
       GITHUB_APP_ORGANIZATION: "braingeneers"
       WORKFLOW_REPO_AUTH_MODE: "github_app"
