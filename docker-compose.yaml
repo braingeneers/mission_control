@@ -1102,6 +1102,11 @@ services:
       - "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     expose:
       - "8000"
+    environment:
+      GITHUB_APP_ID_FILE: "/secrets/github-readonly/app-id"
+      GITHUB_APP_PRIVATE_KEY_PATH: "/secrets/github-readonly/braingeneers-runtime-readonly.private-key.pem"
+      GITHUB_APP_ORGANIZATION: "braingeneers"
+      WORKFLOW_REPO_AUTH_MODE: "github_app"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/readyz"]
       interval: 10s
