@@ -1,3 +1,5 @@
+2026-07-15 10:50 | workflows service | pin the versioned-catalog release with private GitHub App definition refreshes
+2026-07-15 10:00 | workflows service | wire organization-owned read-only GitHub App credentials for workflow definition refreshes
 2026-07-15 09:33 | workflows service | pin the frontend release restoring distinct Dashboard and Workflows routes
 2026-07-15 09:25 | workflows service | pin the dashboard-linked and layout-verified frontend release
 2026-07-14 21:10 | workflows service | temporarily disable mqtt-job-listener in production compose via optional profile
