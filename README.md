@@ -159,8 +159,8 @@ the internal `mqtt` service on `workflows/launch` with QoS 1 and applies the
 same catalog validation, durable request idempotency, provenance, and
 Kubernetes launch path used by the web API. The retired standalone
 `nextflow-launcher` service and arbitrary-Git-URL protocol are not deployed.
-The existing `maxwell-dashboard` service is managed separately and remains in
-Compose until an operator deliberately retires it.
+The retired `mqtt-job-listener`, `job-scanner`, and `maxwell-dashboard`
+definitions remain commented in Compose for reference and are not deployed.
 
 Deploy or refresh the workflows service group on `braingeneers.gi.ucsc.edu`:
 

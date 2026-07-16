@@ -687,87 +687,85 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Temporarily disabled in normal production compose; re-enable with --profile mqtt-listener when needed.
-  mqtt-job-listener:
-    profiles:
-      - mqtt-listener
-    image: braingeneers/spike_sorting_listener:v0.86
-    container_name: mqtt-job-listener
-    entrypoint: /secrets/entrypoint-secrets-setup.sh
-    command:
-      - '--copy'
-      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
-      - '--copy'
-      - '/secrets/kube-config/config:/root/.kube/config'
-      - '--copy'
-      - '/secrets/braingeneers-jwt-service-account-token/config.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json'
-      - 'python'
-      - 'mqtt_listener.py'
-    networks:
-      - braingeneers-net
-    depends_on:
-      secret-fetcher:
-        condition: service_healthy
-    volumes:
-      - secrets:/secrets
-    restart: unless-stopped
+  # Retired legacy Ephys services retained as comments for reference.
+  # mqtt-job-listener:
+  #   profiles:
+  #     - mqtt-listener
+  #   image: braingeneers/spike_sorting_listener:v0.86
+  #   container_name: mqtt-job-listener
+  #   entrypoint: /secrets/entrypoint-secrets-setup.sh
+  #   command:
+  #     - '--copy'
+  #     - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
+  #     - '--copy'
+  #     - '/secrets/kube-config/config:/root/.kube/config'
+  #     - '--copy'
+  #     - '/secrets/braingeneers-jwt-service-account-token/config.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json'
+  #     - 'python'
+  #     - 'mqtt_listener.py'
+  #   networks:
+  #     - braingeneers-net
+  #   depends_on:
+  #     secret-fetcher:
+  #       condition: service_healthy
+  #   volumes:
+  #     - secrets:/secrets
+  #   restart: unless-stopped
 
-  # Job scanner service managed by Sury
-  job-scanner:
-    image: surygeng/job_scanner:v0.1
-    container_name: job-scanner
-    entrypoint: /secrets/entrypoint-secrets-setup.sh
-    command:
-      - '--copy'
-      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
-      - '--copy'
-      - '/secrets/kube-config/config:/root/.kube/config'
-      - 'python'
-      - 'scan_pod.py'
-    networks:
-      - braingeneers-net
-    depends_on:
-      secret-fetcher:
-        condition: service_healthy
-    volumes:
-      - secrets:/secrets
-    restart: unless-stopped
+  # job-scanner:
+  #   image: surygeng/job_scanner:v0.1
+  #   container_name: job-scanner
+  #   entrypoint: /secrets/entrypoint-secrets-setup.sh
+  #   command:
+  #     - '--copy'
+  #     - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
+  #     - '--copy'
+  #     - '/secrets/kube-config/config:/root/.kube/config'
+  #     - 'python'
+  #     - 'scan_pod.py'
+  #   networks:
+  #     - braingeneers-net
+  #   depends_on:
+  #     secret-fetcher:
+  #       condition: service_healthy
+  #   volumes:
+  #     - secrets:/secrets
+  #   restart: unless-stopped
 
-  # maxwell recording dashboard managed by Sury
-  maxwell-dashboard:
-    #image: surygeng/maxwell_dashboard:v0.1
-    image: braingeneers/maxwell_dashboard:v0.86
-    container_name: maxwell-dashboard
-    entrypoint: /secrets/entrypoint-secrets-setup.sh
-    expose:
-      - "8050"
-    command:
-      - '--copy'
-      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
-      - '--copy'
-      - '/secrets/kube-config/config:/root/.kube/config'
-      - '--copy'
-      - '/secrets/braingeneers-jwt-service-account-token/config.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json'
-      - 'gunicorn'
-      - '--timeout'
-      - '1000'
-      - '--workers=1'
-      - '-b'
-      - '0.0.0.0:8050'
-      - 'app:server'
-    environment:
-      VIRTUAL_HOST: "mxwdash.braingeneers.gi.ucsc.edu"
-      VIRTUAL_PORT: "8050"
-      LETSENCRYPT_HOST: "mxwdash.braingeneers.gi.ucsc.edu"
-      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
-    networks:
-      - braingeneers-net
-    depends_on:
-      secret-fetcher:
-        condition: service_healthy
-    volumes:
-      - secrets:/secrets
-    restart: unless-stopped
+  # maxwell-dashboard:
+  #   # image: surygeng/maxwell_dashboard:v0.1
+  #   image: braingeneers/maxwell_dashboard:v0.86
+  #   container_name: maxwell-dashboard
+  #   entrypoint: /secrets/entrypoint-secrets-setup.sh
+  #   expose:
+  #     - "8050"
+  #   command:
+  #     - '--copy'
+  #     - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
+  #     - '--copy'
+  #     - '/secrets/kube-config/config:/root/.kube/config'
+  #     - '--copy'
+  #     - '/secrets/braingeneers-jwt-service-account-token/config.json:/usr/local/lib/python3.10/site-packages/braingeneers/iot/service_account/config.json'
+  #     - 'gunicorn'
+  #     - '--timeout'
+  #     - '1000'
+  #     - '--workers=1'
+  #     - '-b'
+  #     - '0.0.0.0:8050'
+  #     - 'app:server'
+  #   environment:
+  #     VIRTUAL_HOST: "mxwdash.braingeneers.gi.ucsc.edu"
+  #     VIRTUAL_PORT: "8050"
+  #     LETSENCRYPT_HOST: "mxwdash.braingeneers.gi.ucsc.edu"
+  #     LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+  #   networks:
+  #     - braingeneers-net
+  #   depends_on:
+  #     secret-fetcher:
+  #       condition: service_healthy
+  #   volumes:
+  #     - secrets:/secrets
+  #   restart: unless-stopped
 
   #  # Auto help desk service
   #  auto-helpdesk:
