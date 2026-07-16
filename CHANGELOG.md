@@ -1,3 +1,4 @@
+2026-07-16 12:24 | workflows service | pin compact artifact labels and responsive artifact presentation release
 2026-07-16 11:43 | workflows service | pin concurrent task progress and Quick Configure tooltip release
 2026-07-16 10:45 | legacy Ephys services | retain the retired listener, scanner, and mxwdash definitions as commented Compose reference
 2026-07-16 10:36 | service releases | pin the MQTT-enabled Workflows and Data Uploader image releases
