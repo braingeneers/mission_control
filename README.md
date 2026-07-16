@@ -154,12 +154,30 @@ The backend uses the shared internal `sql-db` database service and owns the
 before Alembic migrations or application startup. Ensure `sql-db` is already
 running; refresh it separately only when the shared database service changes.
 
+The backend is also the sole managed MQTT workflow launcher. It subscribes to
+the internal `mqtt` service on `workflows/launch` with QoS 1 and applies the
+same catalog validation, durable request idempotency, provenance, and
+Kubernetes launch path used by the web API. The retired standalone
+`nextflow-launcher` service and arbitrary-Git-URL protocol are not deployed.
+The existing `maxwell-dashboard` service is managed separately and remains in
+Compose until an operator deliberately retires it.
+
 Deploy or refresh the workflows service group on `braingeneers.gi.ucsc.edu`:
 
 ```bash
 docker compose pull workflows workflows-backend
 docker compose up -d --force-recreate workflows-backend workflows
 docker compose logs -f workflows-backend workflows
+```
+
+The uploader publishes selected Ephys workflow requests to the same internal
+MQTT broker. Refresh it alongside Workflows when the launch contract or
+uploader image changes:
+
+```bash
+docker compose pull uploader workflows workflows-backend
+docker compose up -d --force-recreate workflows-backend workflows uploader
+docker compose logs -f workflows-backend workflows uploader
 ```
 
 If shared Kubernetes secrets such as `prp-s3-credentials` or `kube-config`
