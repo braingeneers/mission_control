@@ -623,28 +623,6 @@ services:
       secret-fetcher:
         condition: service_healthy
 
-  # Listens to MQTT and launches workflows on the "start/workflow" topic; maintainer: lblauvel@ucsc.edu
-  nextflow-launcher:
-    image: quay.io/ucsc_cgl/nextflow-launcher:latest
-    container_name: nextflow-launcher
-    entrypoint: /secrets/entrypoint-secrets-setup.sh
-    command:
-      - '--copy'
-      - '/secrets/prp-s3-credentials/credentials:/root/.aws/credentials'
-      - '--copy'
-      - '/secrets/nextflow-service-account/kube-config:/root/.kube/config'
-      - 'python3.11'
-      - '/usr/local/bin/run.py'
-    depends_on:
-      secret-fetcher:
-        condition: service_healthy
-    volumes:
-      - secrets:/secrets
-      - /workflows:/workflows
-    networks:
-      - braingeneers-net
-    restart: unless-stopped
-
   rustdesk-hbbs:
     container_name: rustdesk-hbbs
     ports:
@@ -909,6 +887,10 @@ services:
       LETSENCRYPT_HOST: "uploader.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
       PROD: "true"
+      MQTT_BROKER_HOST: "mqtt"
+      MQTT_BROKER_PORT: "1883"
+      MQTT_WORKFLOW_TOPIC: "workflows/launch"
+      MQTT_QOS: "1"
     networks:
       - braingeneers-net
     volumes:
@@ -1107,6 +1089,11 @@ services:
       GITHUB_APP_PRIVATE_KEY_PATH: "/secrets/github-readonly/braingeneers-runtime-readonly.private-key.pem"
       GITHUB_APP_ORGANIZATION: "braingeneers"
       WORKFLOW_REPO_AUTH_MODE: "github_app"
+      MQTT_ENABLED: "true"
+      MQTT_BROKER_HOST: "mqtt"
+      MQTT_BROKER_PORT: "1883"
+      MQTT_TOPICS: "workflows/launch"
+      MQTT_QOS: "1"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/readyz"]
       interval: 10s
@@ -1121,6 +1108,8 @@ services:
         condition: service_healthy
       sql-db:
         condition: service_healthy
+      mqtt:
+        condition: service_started
 
   workflows:
     image: braingeneers/workflows-frontend:20260716-c0ba52463233
