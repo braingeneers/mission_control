@@ -48,3 +48,4 @@
 2026-07-14 21:30 | workflows service | pinned guarded Alembic baselining for existing workflow schemas
 2026-07-15 15:42 | workflows service | deploy generic task-label UI and concise Ephys workflow task tags
 2026-07-16 13:37 | workflows service | pinned recovered Kubernetes scheduling status and live task activity release
+2026-07-16 14:11 | workflows service | pinned compact responsive artifact-link release
