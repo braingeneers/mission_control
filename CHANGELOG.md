@@ -1,3 +1,4 @@
+2026-07-16 11:43 | workflows service | pin concurrent task progress and Quick Configure tooltip release
 2026-07-16 10:45 | legacy Ephys services | retain the retired listener, scanner, and mxwdash definitions as commented Compose reference
 2026-07-16 10:36 | service releases | pin the MQTT-enabled Workflows and Data Uploader image releases
 2026-07-16 10:11 | workflow MQTT launch | enable the Workflows backend listener and remove the unused standalone launcher
