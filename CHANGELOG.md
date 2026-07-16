@@ -1,3 +1,4 @@
+2026-07-16 09:30 | workflows service | pin the full-width active progress sweep release
 2026-07-15 17:00 | workflows service | pin explicit task-log selection and resilient reconciliation release
 2026-07-15 14:54 | workflows service | pin the task-label formatting and transient scheduling triage release
 2026-07-15 13:30 | workflows service | pin the Nextflow 26 runtime and live workflow version and startup-status release
