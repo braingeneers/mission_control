@@ -1,3 +1,6 @@
+2026-07-16 10:36 | service releases | pin the MQTT-enabled Workflows and Data Uploader image releases
+2026-07-16 10:11 | workflow MQTT launch | enable the Workflows backend listener and remove the unused standalone launcher
+2026-07-16 10:11 | data uploader | route selected workflow requests through the internal MQTT broker
 2026-07-16 09:30 | workflows service | pin the full-width active progress sweep release
 2026-07-15 17:00 | workflows service | pin explicit task-log selection and resilient reconciliation release
 2026-07-15 14:54 | workflows service | pin the task-label formatting and transient scheduling triage release
@@ -41,5 +44,3 @@
 2026-07-14 21:15 | workflows service | pinned the responsive live Nextflow-stage backend release
 2026-07-14 21:30 | workflows service | pinned guarded Alembic baselining for existing workflow schemas
 2026-07-15 15:42 | workflows service | deploy generic task-label UI and concise Ephys workflow task tags
-2026-07-16 10:11 | workflow MQTT launch | enable the Workflows backend listener and remove the unused standalone launcher
-2026-07-16 10:11 | data uploader | route selected workflow requests through the internal MQTT broker

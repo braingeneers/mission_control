@@ -866,7 +866,7 @@ services:
 
   # Braingeneers data uploader web app
   uploader:
-    image: braingeneers/braingeneers-data-uploader:latest
+    image: braingeneers/braingeneers-data-uploader:20260716-3cbdb0ebc84d
     container_name: uploader-dev
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1070,7 +1070,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20260716-c0ba52463233
+    image: braingeneers/workflows-backend:20260716-5c9b417970c6
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1112,7 +1112,7 @@ services:
         condition: service_started
 
   workflows:
-    image: braingeneers/workflows-frontend:20260716-c0ba52463233
+    image: braingeneers/workflows-frontend:20260716-5c9b417970c6
     container_name: workflows
     restart: unless-stopped
     expose:
