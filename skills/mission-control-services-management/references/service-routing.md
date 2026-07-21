@@ -21,7 +21,20 @@ Expected Compose features:
 - `VIRTUAL_HOST`, `VIRTUAL_PORT`, `LETSENCRYPT_HOST`, and `LETSENCRYPT_EMAIL` are set.
 - The service joins `braingeneers-net`.
 
-Default browser auth comes from `service-proxy/default`, which performs an internal auth request and passes proxy-derived identity headers such as `X-Email` and `X-Groups` to the backend.
+Default browser auth comes from `service-proxy/default`, which performs an internal auth request and configures these application-facing identity headers from the authentication response:
+
+- `X-User`
+- `X-Email`
+- `X-Groups`
+- `X-Name`
+- `X-Given-Name`
+- `X-Family-Name`
+- `X-Preferred-Username`
+- `X-Subject`
+
+Treat this as a description of the current proxy configuration, not a guarantee that every header is populated. Header values depend on the deployed oauth2-proxy version, identity-provider claims, and authentication method; missing source fields may produce empty or omitted headers. Verify the deployed route before advising an application to depend on a particular field.
+
+On this authenticated path, service-proxy overwrites these names with values from the authentication subrequest and strips `Authorization` before forwarding the request. Trust the identity headers only when the application is reachable solely through this protected proxy path.
 
 ## Public Web
 
@@ -33,6 +46,7 @@ Required shape:
 - Host-specific file under `service-proxy/<hostname>`.
 - `auth_request off` in that vhost override.
 - Matching bind mount in the `service-proxy` service in `docker-compose.yaml`.
+- Treat identity-looking request headers as untrusted client input; this route does not provide proxy-authenticated identity.
 
 Example source: `service-proxy/spikelab.braingeneers.gi.ucsc.edu`.
 

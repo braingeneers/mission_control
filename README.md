@@ -446,6 +446,33 @@ and Auth0 forwards to CILogon for authentication. Once the user is authenticated
 Auth0 and an auth session is created. The user is then redirected back to the service-proxy, which performs another
 internal authentication request against oauth2-proxy which will now succeed.
 
+For virtual hosts that inherit `service-proxy/default`, service-proxy maps fields
+from the successful authentication response into these application-facing request
+headers:
+
+- `X-User`
+- `X-Email`
+- `X-Groups`
+- `X-Name`
+- `X-Given-Name`
+- `X-Family-Name`
+- `X-Preferred-Username`
+- `X-Subject`
+
+This list describes the headers configured in `service-proxy/default`; it does not
+guarantee that every header has a value. The oauth2-proxy version, identity-provider
+claims, and authentication method determine which source fields are returned. A
+header whose source field is unavailable may be empty or omitted, so verify the
+deployed route before making an application depend on a particular field.
+
+On the normal authenticated path, service-proxy overwrites these header names with
+values from the authentication subrequest and removes the downstream `Authorization`
+header after using it for authentication. Public virtual hosts configured with
+`auth_request off` do not provide trusted proxy-derived identity, so their backends
+must not treat client-supplied identity headers as authenticated user information.
+MCP virtual hosts are a separate case: they explicitly strip these identity headers
+and preserve `Authorization` so the backend can validate the bearer token itself.
+
 This remains the current browser-oriented web-service authentication path.
 MCP-specific broker work under `oauth2.braingeneers.gi.ucsc.edu` is separate and
 should not be treated as a change to the existing web flow.

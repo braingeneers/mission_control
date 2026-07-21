@@ -29,7 +29,7 @@ Use this skill for Braingeneers services managed by `mission_control` on `braing
 Load only the reference files needed for the current task:
 
 - `references/access-and-auth.md`: server access, NRP kubeconfig, `kubelogin`, service-account kubeconfig, web auth, service-account JWTs.
-- `references/service-routing.md`: private web, public web, headless, and MCP routing patterns.
+- `references/service-routing.md`: private web, proxy identity headers, public web, headless, and MCP routing patterns.
 - `references/packaging.md`: registry-published image policy and Makefile target conventions.
 - `references/web-app-style.md`: Braingeneers web app visual language, reusable UI patterns, and bundled image assets.
 - `references/secrets.md`: Kubernetes secret lifecycle, secret-fetcher, entrypoint secret setup, and token refresh.
