@@ -36,6 +36,12 @@ Treat this as a description of the current proxy configuration, not a guarantee 
 
 On this authenticated path, service-proxy overwrites these names with values from the authentication subrequest and strips `Authorization` before forwarding the request. Trust the identity headers only when the application is reachable solely through this protected proxy path.
 
+### Validated Workflows Identity
+
+The current protected Workflows production route has been inspected end to end. It provides a usable authenticated email in `X-Email`; `X-User` contains an opaque CILogon subject, while `X-Groups`, `X-Name`, `X-Given-Name`, `X-Family-Name`, `X-Preferred-Username`, and `X-Subject` are empty. Workflows uses only `X-Email` for browser attribution and ignores `X-User` as a display identity.
+
+This is authoritative only on the protected private-web route, where nginx overwrites the header from the authentication subrequest. Prod-local and direct local requests do not necessarily have proxy identity headers, so Workflows falls back to the friendly initiator `User`. Do not log identity headers now that the contract has been validated. This finding is specific to the current Workflows deployment; validate the populated fields separately before another service depends on them.
+
 ## Public Web
 
 Use only when the service is intentionally public.

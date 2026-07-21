@@ -143,6 +143,15 @@ frontend and backend images are built and pushed from the `workflows`
 repository. The immutable deployed image tags are recorded in
 `docker-compose.yaml` rather than duplicated here.
 
+The protected production route has been validated to provide the authenticated
+user's usable email in `X-Email`. In the same deployment, `X-User` contains an
+opaque CILogon subject and the other configured identity headers are empty.
+Workflows therefore uses only `X-Email` for browser action attribution. This is
+authoritative only because the private proxy overwrites the header; prod-local
+and other no-proxy requests may omit it, in which case Workflows records the
+friendly initiator `User`. Do not add identity-header debug logging: these
+values are user information and the production behavior is now documented.
+
 The backend uses the shared `secret-fetcher` volume. It expects:
 
 - `/secrets/prp-s3-credentials/credentials` for S3 access.
@@ -464,6 +473,11 @@ guarantee that every header has a value. The oauth2-proxy version, identity-prov
 claims, and authentication method determine which source fields are returned. A
 header whose source field is unavailable may be empty or omitted, so verify the
 deployed route before making an application depend on a particular field.
+
+For the current Workflows production route, that verification found a usable
+`X-Email`, an opaque CILogon subject in `X-User`, and no values in the remaining
+configured identity headers. This observation is deployment-specific rather
+than a general guarantee for every service or identity provider.
 
 On the normal authenticated path, service-proxy overwrites these header names with
 values from the authentication subrequest and removes the downstream `Authorization`

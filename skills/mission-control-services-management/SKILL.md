@@ -78,6 +78,7 @@ When the branch includes a web UI, align the app with the existing Braingeneers 
 
 Use the wiki for access instructions rather than restating long onboarding text. For NRP auth, be precise:
 
+- For the private Workflows production route, the validated browser identity contract is `X-Email`: it contains the usable authenticated email and is authoritative because the protected proxy overwrites it. `X-User` is currently an opaque CILogon subject and the other configured identity headers are empty. Workflows must tolerate a missing or unusable `X-Email` for prod-local testing by using `User`, and must not log identity headers. Treat this finding as Workflows-specific; verify other routes independently.
 - User kubeconfigs downloaded from the NRP portal currently require `kubelogin`; verify current official NRP docs when the user is actively setting this up.
 - On `braingeneers.gi.ucsc.edu`, the practical pattern is often the service-account kubeconfig already used by `mission_control`, because operators may not have admin access to install `kubelogin` system-wide.
 - Secret access expects Kubernetes credentials with access to the Braingeneers namespace. This is the primary authentication challenge for `secret-fetcher`.
