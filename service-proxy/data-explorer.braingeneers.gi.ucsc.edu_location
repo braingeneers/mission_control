@@ -1,0 +1,7 @@
+# Keep live file and generated ZIP downloads flowing without nginx buffering or
+# reaching its default 60-second inactivity limit while the app waits on S3.
+proxy_buffering off;
+proxy_max_temp_file_size 0;
+proxy_read_timeout 3600;
+proxy_send_timeout 3600;
+send_timeout 3600;

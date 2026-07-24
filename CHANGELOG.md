@@ -1,3 +1,4 @@
+2026-07-24 11:27 | data-explorer | allow long unbuffered file and generated ZIP downloads through the service proxy
 2026-07-16 12:24 | workflows service | pin compact artifact labels and responsive artifact presentation release
 2026-07-16 11:43 | workflows service | pin concurrent task progress and Quick Configure tooltip release
 2026-07-16 10:45 | legacy Ephys services | retain the retired listener, scanner, and mxwdash definitions as commented Compose reference
