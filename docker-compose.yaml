@@ -898,6 +898,43 @@ services:
       secret-fetcher:
         condition: service_healthy
 
+  # Acceptance-test uploader; runs alongside the production uploader above.
+  uploader-dev:
+    image: braingeneers/braingeneers-data-uploader:20260727-05c18f177226
+    container_name: uploader-acceptance
+    restart: unless-stopped
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
+      - "uvicorn"
+      - "data_uploader.app:app"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+    expose:
+      - "8000"
+    environment:
+      VIRTUAL_HOST: "uploader-dev.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8000"
+      LETSENCRYPT_HOST: "uploader-dev.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+      PROD: "false"
+      MQTT_BROKER_HOST: "mqtt"
+      MQTT_BROKER_PORT: "1883"
+      MQTT_WORKFLOW_TOPIC: "workflows/launch"
+      MQTT_QOS: "1"
+      METADATA_TEMPLATE_DIR: "/replicated/uploader-dev/metadata-templates"
+    networks:
+      - braingeneers-net
+    volumes:
+      - secrets:/secrets
+      - replicated:/replicated
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+
   # Neuroview realtime electrophysiology viewer
   neuroview:
     image: braingeneers/neuroview:latest

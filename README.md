@@ -189,6 +189,22 @@ docker compose up -d --force-recreate workflows-backend workflows uploader
 docker compose logs -f workflows-backend workflows uploader
 ```
 
+For side-by-side uploader acceptance testing, `uploader` remains the production
+service at https://uploader.braingeneers.gi.ucsc.edu and `uploader-dev` runs the
+candidate image at https://uploader-dev.braingeneers.gi.ucsc.edu. The development
+service uses `PROD=false`, so dataset writes go to the development bucket, and
+stores its metadata templates separately from production under
+`/replicated/uploader-dev/metadata-templates`.
+
+Deploy or refresh only the acceptance-test service:
+
+```bash
+docker compose pull uploader-dev
+docker compose up -d --force-recreate uploader-dev
+docker compose ps uploader uploader-dev
+docker compose logs --tail=100 uploader-dev
+```
+
 If shared Kubernetes secrets such as `prp-s3-credentials` or `kube-config`
 were changed, refresh `secret-fetcher` first:
 
@@ -210,6 +226,13 @@ directory under the volume root, such as `/local/sql-db` or
   files in `local` and publish completed artifacts into `replicated`.
 - Dot-prefixed temporary publish files in `replicated` should be treated as
   incomplete and ignored by backup tooling.
+
+Uploader versions that support metadata presets store their versioned template
+JSON in an environment-specific service directory. Production uses
+`/replicated/uploader/metadata-templates`; the acceptance-test service uses
+`/replicated/uploader-dev/metadata-templates`. They publish completed records
+with atomic renames from dot-prefixed temporary files, so the daily
+replicated-volume sync copies only complete template revisions.
 
 ## Managing all services
 
