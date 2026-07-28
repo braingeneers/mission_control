@@ -900,7 +900,7 @@ services:
 
   # Acceptance-test uploader; runs alongside the production uploader above.
   uploader-dev:
-    image: braingeneers/braingeneers-data-uploader:20260727-05c18f177226
+    image: braingeneers/braingeneers-data-uploader:20260727-68ae55e8c63c
     container_name: uploader-acceptance
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -926,6 +926,7 @@ services:
       MQTT_WORKFLOW_TOPIC: "workflows/launch"
       MQTT_QOS: "1"
       METADATA_TEMPLATE_DIR: "/replicated/uploader-dev/metadata-templates"
+      NRP_LLM_API_KEY_FILE: "/secrets/nrp-llm-api-key"
     networks:
       - braingeneers-net
     volumes:
