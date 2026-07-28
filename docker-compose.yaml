@@ -900,7 +900,7 @@ services:
 
   # Acceptance-test uploader; runs alongside the production uploader above.
   uploader-dev:
-    image: braingeneers/braingeneers-data-uploader:20260727-68ae55e8c63c
+    image: braingeneers/braingeneers-data-uploader:20260728-bdd3cf43ce43
     container_name: uploader-acceptance
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
