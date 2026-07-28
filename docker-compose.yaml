@@ -865,7 +865,7 @@ services:
 
   # Braingeneers data uploader web app
   uploader:
-    image: braingeneers/braingeneers-data-uploader:20260724-6760fcb6bc5c
+    image: braingeneers/braingeneers-data-uploader:20260728-c845c3427b9d
     container_name: uploader-dev
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
