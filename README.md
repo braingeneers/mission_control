@@ -30,6 +30,17 @@ Before advising or editing, the skill directs Codex to inspect the current `READ
 
 The skill source is [`skills/mission-control-services-management/SKILL.md`](skills/mission-control-services-management/SKILL.md).
 
+Before committing changes to Compose or `service-proxy`, run the complete local
+configuration gate:
+
+```bash
+make test
+```
+
+This validates the Compose model, nginx authentication and identity-header
+inheritance for both uploader hosts, and the production/development bucket and
+immutable-image contracts.
+
 ## Manage individual services
 
 You can also start and stop a single services, this is the normal case so you don't 
@@ -187,6 +198,7 @@ uploader image changes:
 docker compose pull uploader workflows workflows-backend
 docker compose up -d --force-recreate workflows-backend workflows uploader
 docker compose logs -f workflows-backend workflows uploader
+make verify-uploader-deployment SERVICE=uploader
 ```
 
 For side-by-side uploader acceptance testing, `uploader` remains the production
@@ -206,7 +218,13 @@ docker compose pull uploader-dev
 docker compose up -d --force-recreate uploader-dev
 docker compose ps uploader uploader-dev
 docker compose logs --tail=100 uploader-dev
+make verify-uploader-deployment SERVICE=uploader-dev
 ```
+
+The deployment verifier compares the Compose image reference, the pulled image
+ID, the running container image ID, `APP_VERSION`, and `PROD`. Run it after every
+uploader image update so an old container left behind by a pull or restart is
+reported immediately.
 
 If shared Kubernetes secrets such as `prp-s3-credentials` or `kube-config`
 were changed, refresh `secret-fetcher` first:

@@ -17,3 +17,10 @@
   the `/_oauth2_proxy_auth` location in `service-proxy/default`. Authentication
   subrequests do not receive the original request body; forwarding its length
   makes authenticated POST, PUT, and PATCH requests wait indefinitely.
+- Run `make test` after changing Compose or proxy configuration. It validates Compose, authenticated
+  uploader proxy inheritance, production/acceptance uploader bucket and image contracts, and the
+  stale-container deployment verifier.
+- After an operator updates either uploader service, run
+  `make verify-uploader-deployment SERVICE=uploader` or
+  `make verify-uploader-deployment SERVICE=uploader-dev` on the server. A pull plus restart does not
+  replace an existing container; the verifier compares the configured and running image IDs.
