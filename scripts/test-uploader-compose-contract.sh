@@ -59,7 +59,7 @@ assert_equal \
     "Acceptance uploader hostname"
 assert_equal \
     "$(service_value uploader-dev '.container_name')" \
-    "null" \
+    "uploader-dev" \
     "Acceptance uploader explicit container name"
 assert_immutable_uploader_image uploader-dev
 
