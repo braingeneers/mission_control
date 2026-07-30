@@ -481,6 +481,12 @@ and Auth0 forwards to CILogon for authentication. Once the user is authenticated
 Auth0 and an auth session is created. The user is then redirected back to the service-proxy, which performs another
 internal authentication request against oauth2-proxy which will now succeed.
 
+The internal authentication subrequest must use `proxy_pass_request_body off`
+and clear `Content-Length`. Nginx does not provide the original body to an
+`auth_request` subrequest, so retaining its length causes OAuth2 Proxy to wait
+for nonexistent bytes and prevents authenticated POST, PUT, or PATCH requests
+from reaching their application.
+
 For virtual hosts that inherit `service-proxy/default`, service-proxy maps fields
 from the successful authentication response into these application-facing request
 headers:

@@ -2,6 +2,12 @@
 
 Use this reference for day-two service management and troubleshooting.
 
+## Operator Boundary
+
+Never SSH to, log in to, or run commands on the production server. Provide exact
+commands for the user or operator to run. Agent-side production diagnosis is
+limited to HTTPS application APIs with an approved local service-account JWT.
+
 ## Normal Service Operations
 
 Prefer targeted operations:
@@ -62,6 +68,7 @@ Proxy problems:
 - Host does not route: missing `VIRTUAL_HOST`, wrong `VIRTUAL_PORT`, service not on `braingeneers-net`, or proxy not recreated.
 - Override ignored: missing bind mount under the `service-proxy` service.
 - Backend does not receive `Authorization`: default proxy strips it; use MCP-specific override only when backend is responsible for token validation.
+- Authenticated requests with bodies hang before reaching the backend: ensure the authentication subrequest sets `proxy_pass_request_body off` and clears `Content-Length`.
 
 Secret problems:
 

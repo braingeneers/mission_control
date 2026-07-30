@@ -13,3 +13,7 @@
 - Keep uploader `proxy_set_header` directives at vhost scope. Defining any in a
   generated `_location` prevents inheritance of the trusted identity-header
   overrides and downstream `Authorization` stripping from `service-proxy/default`.
+- Keep `proxy_pass_request_body off` and an empty `Content-Length` header inside
+  the `/_oauth2_proxy_auth` location in `service-proxy/default`. Authentication
+  subrequests do not receive the original request body; forwarding its length
+  makes authenticated POST, PUT, and PATCH requests wait indefinitely.

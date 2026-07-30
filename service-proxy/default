@@ -36,6 +36,10 @@ proxy_set_header Authorization "";
 location = /_oauth2_proxy_auth {
     internal;
     proxy_pass       http://oauth2-proxy:4180/oauth2/auth;
+    # auth_request subrequests do not consume the original request body.
+    # Clear its length so OAuth2 Proxy does not wait for bytes that will never arrive.
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
     proxy_set_header Host             $host;
     proxy_set_header X-Real-IP        $remote_addr;
     proxy_set_header X-Scheme         $scheme;

@@ -5,12 +5,13 @@ IMAGE_SHA ?= $(shell git rev-parse --short=12 HEAD)
 SQL_DB_IMAGE ?= braingeneers/sql-db
 SQL_DB_TAG ?= $(IMAGE_DATE)-$(IMAGE_SHA)
 
-.PHONY: help compose-validate sql-db-build sql-db-push sql-db-shell sql-db-test-backup
+.PHONY: help compose-validate service-proxy-test sql-db-build sql-db-push sql-db-shell sql-db-test-backup
 
 help:
 	@printf '%s\n' \
 		'Available targets:' \
 		'  make compose-validate' \
+		'  make service-proxy-test' \
 		'  make sql-db-build' \
 		'  make sql-db-push' \
 		'  make sql-db-shell' \
@@ -18,6 +19,9 @@ help:
 
 compose-validate:
 	docker compose -f docker-compose.yaml config -q
+
+service-proxy-test:
+	./service-proxy/test-default-auth-config.sh
 
 sql-db-build:
 	docker build -t $(SQL_DB_IMAGE):$(SQL_DB_TAG) -t $(SQL_DB_IMAGE):latest sql-db

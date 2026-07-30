@@ -24,6 +24,12 @@ Use this skill for Braingeneers services managed by `mission_control` on `braing
 9. Keep service topology manageable. Package tightly coupled helper behavior inside the owning service image; add sidecar services only when they are independently operated, scaled, or reused.
 10. When a service needs PostgreSQL, prefer the shared internal `sql-db` service. Give each client its own schema; do not add another production Postgres container by default.
 
+## Production Server Boundary
+
+- Never SSH to, log in to, or execute commands on `braingeneers.gi.ucsc.edu` or any of its SSH aliases.
+- Limit agent-side production diagnosis to HTTPS application APIs using an approved local service-account JWT without exposing the token.
+- For every server-side pull, migration, Compose operation, proxy reload, restart, or diagnostic command, provide the exact commands for the user or operator to run and wait for their reported result.
+
 ## Reference Loading
 
 Load only the reference files needed for the current task:
