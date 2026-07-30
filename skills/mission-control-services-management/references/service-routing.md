@@ -71,6 +71,19 @@ Examples:
 - `service-proxy/uploader.braingeneers.gi.ucsc.edu`
 - `service-proxy/uploader.braingeneers.gi.ucsc.edu_location`
 
+For authenticated private-web routes, keep `proxy_set_header` directives out of
+`<hostname>_location` files. Nginx inherits `proxy_set_header` directives from the parent only
+when none are defined at the current level. Adding even one location-level header therefore
+discards the complete parent set, including the trusted `X-Email` override and downstream
+`Authorization` stripping from `service-proxy/default`.
+
+Put service-specific headers such as websocket `Upgrade` and `Connection` at vhost scope, after
+including `service-proxy/default`, and reserve the `_location` file for directives that do not
+break header inheritance. Inspect every new or changed authenticated `_location` file for
+`proxy_set_header` before finishing the change. Public-web and MCP routes intentionally use
+different identity and authorization policies; follow their explicit route patterns instead of
+applying the private-web inheritance rule to them.
+
 ## Headless Services
 
 Headless services do not use `VIRTUAL_HOST` or `LETSENCRYPT_HOST` unless they also expose a separate web UI.

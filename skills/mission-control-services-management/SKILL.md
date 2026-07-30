@@ -78,6 +78,13 @@ Use the branch to determine which details matter:
 - `headless`: use explicit `ports:` and network settings as needed. Do not add `VIRTUAL_HOST`, `LETSENCRYPT_HOST`, or service-proxy vhost files unless the service also has an HTTP UI.
 - `mcp`: follow the MCP onboarding contract. Preserve bearer tokens, strip proxy identity headers, mount IAM read-only, and configure issuer, JWKS, audience, and resource-server URL explicitly.
 
+For authenticated `private-web` routes, keep every `proxy_set_header` directive at vhost scope.
+Never add one to a generated `<hostname>_location`: nginx would stop inheriting the complete
+trusted identity-header overrides and `Authorization` stripping from `service-proxy/default`.
+After changing a custom location, inspect it explicitly for `proxy_set_header` directives. See
+`references/service-routing.md` for the safe pattern and the intentional public-web and MCP
+exceptions.
+
 When the branch includes a web UI, align the app with the existing Braingeneers operations-app style unless the user asks for a different design direction.
 
 ### 3. Handle Auth And Access
