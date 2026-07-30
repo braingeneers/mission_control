@@ -43,6 +43,10 @@ assert_equal \
     "$(service_value uploader '.environment.VIRTUAL_HOST')" \
     "uploader.braingeneers.gi.ucsc.edu" \
     "Production uploader hostname"
+assert_equal \
+    "$(service_value uploader '.container_name')" \
+    "null" \
+    "Production uploader explicit container name"
 assert_immutable_uploader_image uploader
 
 assert_equal \
@@ -53,6 +57,10 @@ assert_equal \
     "$(service_value uploader-dev '.environment.VIRTUAL_HOST')" \
     "uploader-dev.braingeneers.gi.ucsc.edu" \
     "Acceptance uploader hostname"
+assert_equal \
+    "$(service_value uploader-dev '.container_name')" \
+    "null" \
+    "Acceptance uploader explicit container name"
 assert_immutable_uploader_image uploader-dev
 
 echo "Uploader Compose contracts are valid."

@@ -20,6 +20,8 @@
 - Run `make test` after changing Compose or proxy configuration. It validates Compose, authenticated
   uploader proxy inheritance, production/acceptance uploader bucket and image contracts, and the
   stale-container deployment verifier.
+- Do not set `container_name` for `uploader` or `uploader-dev`; Compose-derived names keep container
+  and log labels aligned with the service names without introducing global naming conflicts.
 - After an operator updates either uploader service, run
   `make verify-uploader-deployment SERVICE=uploader` or
   `make verify-uploader-deployment SERVICE=uploader-dev` on the server. A pull plus restart does not
