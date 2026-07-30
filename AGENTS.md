@@ -23,6 +23,8 @@
 - Leave `uploader` without `container_name` so Compose manages production naming. Set
   `uploader-dev` to `container_name: uploader-dev` so its operator log prefix matches the service
   name; keep contract tests for both choices.
+- Keep both uploader services at `PROD=true`. Despite its acceptance hostname, `uploader-dev`
+  discovers, updates, and uploads datasets in the production `braingeneers` bucket.
 - After an operator updates either uploader service, run
   `make verify-uploader-deployment SERVICE=uploader` or
   `make verify-uploader-deployment SERVICE=uploader-dev` on the server. A pull plus restart does not

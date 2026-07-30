@@ -22,7 +22,7 @@ if [[ "$1" == "compose" ]]; then
     case " $* " in
         *" config --format json "*)
             printf '%s\n' \
-                '{"services":{"uploader":{"image":"'"${expected_image}"'","environment":{"PROD":"true"}},"uploader-dev":{"image":"'"${expected_image}"'","environment":{"PROD":"false"}}}}'
+                '{"services":{"uploader":{"image":"'"${expected_image}"'","environment":{"PROD":"true"}},"uploader-dev":{"image":"'"${expected_image}"'","environment":{"PROD":"true"}}}}'
             ;;
         *" ps -q uploader "*|*" ps -q uploader-dev "*)
             printf '%s\n' "fake-container"
@@ -34,7 +34,7 @@ if [[ "$1" == "compose" ]]; then
             printf '%s\n' "${FAKE_PROD:-true}"
             ;;
         *" exec -T uploader-dev printenv PROD "*)
-            printf '%s\n' "${FAKE_PROD:-false}"
+            printf '%s\n' "${FAKE_PROD:-true}"
             ;;
         *)
             echo "Unexpected fake docker compose command: $*" >&2

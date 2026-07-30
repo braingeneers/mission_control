@@ -203,9 +203,10 @@ make verify-uploader-deployment SERVICE=uploader
 
 For side-by-side uploader acceptance testing, `uploader` remains the production
 service at https://uploader.braingeneers.gi.ucsc.edu and `uploader-dev` runs the
-candidate image at https://uploader-dev.braingeneers.gi.ucsc.edu. The development
-service uses `PROD=false`, so dataset writes go to the development bucket, and
-stores its metadata templates separately from production under
+candidate image at https://uploader-dev.braingeneers.gi.ucsc.edu. The candidate
+service uses `PROD=true`, so dataset discovery, metadata operations, and uploads
+all use the production `braingeneers` bucket. Treat it as production-data access
+despite the `-dev` hostname. It stores its metadata templates separately under
 `/replicated/uploader-dev/metadata-templates`. Its optional AI metadata prefill
 reads the NRP LLM key from the shared secret-fetcher volume at
 `/secrets/nrp-llm-api-key`; if that secret is unavailable, the candidate keeps

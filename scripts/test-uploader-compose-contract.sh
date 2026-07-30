@@ -51,7 +51,7 @@ assert_immutable_uploader_image uploader
 
 assert_equal \
     "$(service_value uploader-dev '.environment.PROD')" \
-    "false" \
+    "true" \
     "Acceptance uploader bucket mode"
 assert_equal \
     "$(service_value uploader-dev '.environment.VIRTUAL_HOST')" \
