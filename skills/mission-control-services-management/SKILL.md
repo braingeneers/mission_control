@@ -27,7 +27,7 @@ Use this skill for Braingeneers services managed by `mission_control` on `braing
 ## Production Server Boundary
 
 - Never SSH to, log in to, or execute commands on `braingeneers.gi.ucsc.edu` or any of its SSH aliases.
-- Limit agent-side production diagnosis to HTTPS application APIs using an approved local service-account JWT without exposing the token.
+- Limit agent-side production diagnosis to HTTPS application APIs using an approved local service-account JWT without exposing the token. Load `references/access-and-auth.md` and follow its local HTTPS API workflow; discover the active token dynamically instead of hard-coding a workstation path.
 - For every server-side pull, migration, Compose operation, proxy reload, restart, or diagnostic command, provide the exact commands for the user or operator to run and wait for their reported result.
 
 ## Reference Loading

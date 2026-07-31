@@ -2,6 +2,13 @@
 
 Use this reference when the user needs access, kubeconfig, web auth, or token guidance.
 
+- [Access checklist](#access-checklist)
+- [NRP kubeconfig paths](#nrp-kubeconfig-paths)
+- [Browser web auth](#browser-web-auth)
+- [Service-account JWTs](#service-account-jwts)
+  - [Local HTTPS API diagnosis](#local-https-api-diagnosis)
+- [MCP auth](#mcp-auth)
+
 ## Access Checklist
 
 Before deploying or operating services, verify the user has:
@@ -42,6 +49,118 @@ Relevant local sources:
 ## Service-Account JWTs
 
 The `service-accounts` service generates broad Auth0-backed service-account JWTs. For local interactive user bootstrap, `braingeneerspy` can use `python -m braingeneers.iot.authenticate`.
+
+The standard Auth0 service-account JWT authenticates HTTPS requests to ordinary
+Braingeneers web services protected by `oauth2-proxy`; it is not limited to one
+application. Send it as `Authorization: Bearer <token>` to the service's documented
+`/api/...` endpoint. The proxy consumes that header for authentication and strips it
+before forwarding the request to an ordinary private-web backend. MCP routes use a
+separate backend-validation contract and must not assume this pattern.
+
+### Local HTTPS API Diagnosis
+
+Discover the token file through the active Python environment rather than assuming a
+fixed checkout, Conda environment, or site-packages path:
+
+```bash
+token_file="$(python - <<'PY'
+from pathlib import Path
+import braingeneers.iot
+
+candidates = [
+    Path(package_path) / "service_account" / "config.json"
+    for package_path in braingeneers.iot.__path__
+]
+print(next((path for path in candidates if path.is_file()), candidates[0]))
+PY
+)"
+```
+
+Run these commands from a Python environment that has `braingeneerspy` installed.
+The package-path approach supports Python versions that predate
+`importlib.resources.files()` and also follows editable installs.
+
+If the file is missing, generate it interactively with:
+
+```bash
+python -m braingeneers.iot.authenticate
+```
+
+For routine refresh, ask `braingeneerspy` to check the stored token without opening
+MQTT or Redis connections:
+
+```bash
+python - <<'PY'
+import io
+from braingeneers.iot.messaging import MessageBroker
+
+token_data = MessageBroker(
+    credentials_file=io.StringIO(""),
+).jwt_service_account_token
+print("Declared expires_at:", token_data.get("expires_at", "missing"))
+PY
+```
+
+Re-run the embedded-expiration check below after refreshing. The current helper
+uses the surrounding `expires_at` value to decide whether to refresh; if that value
+is later than the embedded `exp`, regenerate interactively instead.
+
+Validate the JWT's embedded `exp` claim without printing the credential. Treat the
+embedded claim as authoritative if it disagrees with the surrounding JSON
+`expires_at` value:
+
+```bash
+python - "$token_file" <<'PY'
+import base64
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+import sys
+
+token_data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+token = token_data["access_token"]
+payload_part = token.split(".")[1]
+payload_part += "=" * (-len(payload_part) % 4)
+payload = json.loads(base64.urlsafe_b64decode(payload_part))
+expires_at = datetime.fromtimestamp(payload["exp"], timezone.utc)
+print("JWT exp:", expires_at.isoformat())
+print("Declared expires_at:", token_data.get("expires_at", "missing"))
+if expires_at <= datetime.now(timezone.utc):
+    raise SystemExit("JWT is expired; regenerate it before making API requests.")
+PY
+```
+
+Load the token without echoing it and call a read-only API endpoint:
+
+```bash
+service_url="https://SERVICE.braingeneers.gi.ucsc.edu"
+api_path="/api/HEALTH-OR-STATUS-ENDPOINT"
+bearer_token="$(python - "$token_file" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["access_token"])
+PY
+)"
+curl --silent --show-error --fail \
+  --location --max-redirs 0 \
+  -H "Authorization: Bearer ${bearer_token}" \
+  "${service_url}${api_path}"
+unset bearer_token
+```
+
+Use the same pattern for any ordinary protected Braingeneers web-service API. For
+Data Explorer paths, searches, and downloads, use the `data-explorer-cli-access`
+skill when it is available.
+
+An unexpected `302` redirect to the login service means the proxy did not accept
+the bearer request. Confirm that the header was sent, inspect the embedded `exp`,
+and regenerate the token with `python -m braingeneers.iot.authenticate` if it is
+expired or rejected. Do not trust a later wrapper `expires_at` when the embedded
+JWT has already expired, and never print or paste the token into commands, logs,
+source files, shell history, or chat. Capturing it directly into a shell variable
+for the bearer header is acceptable; do not echo that variable.
 
 For services deployed under `mission_control`, prefer the refreshed runtime token:
 
