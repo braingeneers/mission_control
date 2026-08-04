@@ -174,6 +174,14 @@ The backend uses the shared internal `sql-db` database service and owns the
 before Alembic migrations or application startup. Ensure `sql-db` is already
 running; refresh it separately only when the shared database service changes.
 
+The backend mounts the shared `local` volume at `/local` and stores collected
+run diagnostics under `/local/workflows/runs`. These launch-file copies,
+Nextflow traces and reports, task logs, resource telemetry, and collection
+markers survive backend container recreation but remain disposable. They do
+not belong in the backed-up `replicated` volume. Kubernetes continues to use
+the PVC-backed `/workspace/runs` path, which can lazily repopulate an older
+run's local collected cache while the PVC data remains available.
+
 The backend is also the sole managed MQTT workflow launcher. It subscribes to
 the internal `mqtt` service on `workflows/launch` with QoS 1 and applies the
 same catalog validation, durable request idempotency, provenance, and

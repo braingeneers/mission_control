@@ -5,7 +5,7 @@ IMAGE_SHA ?= $(shell git rev-parse --short=12 HEAD)
 SQL_DB_IMAGE ?= braingeneers/sql-db
 SQL_DB_TAG ?= $(IMAGE_DATE)-$(IMAGE_SHA)
 
-.PHONY: help test compose-validate service-proxy-test uploader-compose-test uploader-deployment-verifier-test verify-uploader-deployment sql-db-build sql-db-push sql-db-shell sql-db-test-backup
+.PHONY: help test compose-validate service-proxy-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test verify-uploader-deployment sql-db-build sql-db-push sql-db-shell sql-db-test-backup
 
 help:
 	@printf '%s\n' \
@@ -15,6 +15,7 @@ help:
 		'  make service-proxy-test' \
 		'  make uploader-compose-test' \
 		'  make uploader-deployment-verifier-test' \
+		'  make workflows-compose-test' \
 		'  make verify-uploader-deployment SERVICE=uploader|uploader-dev' \
 		'  make sql-db-build' \
 		'  make sql-db-push' \
@@ -24,7 +25,7 @@ help:
 compose-validate:
 	docker compose -f docker-compose.yaml config -q
 
-test: compose-validate service-proxy-test uploader-compose-test uploader-deployment-verifier-test
+test: compose-validate service-proxy-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test
 
 service-proxy-test:
 	./service-proxy/test-default-auth-config.sh
@@ -34,6 +35,9 @@ uploader-compose-test:
 
 uploader-deployment-verifier-test:
 	./scripts/test-verify-uploader-deployment.sh
+
+workflows-compose-test:
+	./scripts/test-workflows-compose-contract.sh
 
 verify-uploader-deployment:
 	@test -n "$(SERVICE)" || { echo "SERVICE=uploader or SERVICE=uploader-dev is required" >&2; exit 2; }

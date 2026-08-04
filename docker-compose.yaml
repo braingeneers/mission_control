@@ -1130,6 +1130,7 @@ services:
       MQTT_BROKER_PORT: "1883"
       MQTT_TOPICS: "workflows/launch"
       MQTT_QOS: "1"
+      COLLECTED_RUNS_ROOT: "/local/workflows/runs"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/readyz"]
       interval: 10s
@@ -1139,6 +1140,7 @@ services:
       - braingeneers-net
     volumes:
       - secrets:/secrets
+      - local:/local
     depends_on:
       secret-fetcher:
         condition: service_healthy
