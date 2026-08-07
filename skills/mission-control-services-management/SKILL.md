@@ -1,6 +1,6 @@
 ---
 name: mission-control-services-management
-description: Build, deploy, update, or troubleshoot Braingeneers lab services managed by mission_control on braingeneers.gi.ucsc.edu. Use when Codex is helping create a new Docker Compose service, choose between proxied web, public web, headless port-published, or MCP service patterns, connect a client to the shared sql-db PostgreSQL service, configure service-proxy overrides, handle Braingeneers Kubernetes secrets and secret-fetcher, choose NRP kubeconfig authentication, package images for Docker Hub or another registry, add Makefile build/push/local-test workflows, or operate existing services with docker compose.
+description: Build, deploy, update, or troubleshoot Braingeneers lab services managed by mission_control on braingeneers.gi.ucsc.edu. Use when Codex is helping create a new Docker Compose service, choose between proxied web, public web, headless port-published, or MCP service patterns, connect services to NRP-hosted open-weight LLMs, connect a client to the shared sql-db PostgreSQL service, configure service-proxy overrides, handle Braingeneers Kubernetes secrets and secret-fetcher, choose NRP kubeconfig authentication, package images for Docker Hub or another registry, add Makefile build/push/local-test workflows, or operate existing services with docker compose.
 ---
 
 # Mission Control Services Management
@@ -39,6 +39,7 @@ Load only the reference files needed for the current task:
 - `references/packaging.md`: registry-published image policy and Makefile target conventions.
 - `references/web-app-style.md`: Braingeneers web app visual language, reusable UI patterns, and bundled image assets.
 - `references/secrets.md`: Kubernetes secret lifecycle, secret-fetcher, entrypoint secret setup, and token refresh.
+- `references/hosted-llms.md`: NRP-hosted LLM API access, model selection, secret-file wiring, reliability, and service operations.
 - `references/sql-db.md`: shared PostgreSQL client contract, schema provisioning, connection wiring, migrations, backups, and troubleshooting.
 - `references/operations.md`: deployment, update, verification, troubleshooting, and escalation.
 
@@ -68,6 +69,8 @@ For services that need relational persistence, also read `sql-db/README.md` and
 `references/sql-db.md`. Inspect current client wiring in `docker-compose.yaml`
 when useful, but follow the documented schema contract rather than inferring
 database configuration from another client.
+
+For services that call the NRP-hosted LLM API, also read `references/hosted-llms.md` before designing application behavior or Compose secret wiring. Treat hosted LLM access as a cross-cutting capability after selecting the normal private-web, public-web, headless, or MCP branch.
 
 ### 2. Choose The Service Branch
 
@@ -122,6 +125,8 @@ When a service needs secrets:
 - Use `/secrets/entrypoint-secrets-setup.sh` only when the app needs copied files or exported env vars before launch.
 - Use `--copy` for files such as AWS credentials, kubeconfigs, SSH keys, or service-account token files.
 - Use `--env` for secret-backed env files.
+
+For the NRP-hosted LLM token, follow `references/hosted-llms.md`. Prefer an application-owned API-key file setting pointed at the exact fetched key. The key is a raw token file, not an env file for `--env`.
 
 For unattended `braingeneerspy` services, prefer the daily refreshed `/secrets/braingeneers-jwt-service-account-token/config.json` mounted to the expected `braingeneers/iot/service_account/config.json` location. Do not recommend stale raw `service-accounts/config.json` patterns unless the local code specifically requires it and the risk is acknowledged.
 

@@ -1,6 +1,6 @@
 ---
 name: nrp-cluster
-description: Build, deploy, and monitor Kubernetes batch jobs on the NRP Nautilus cluster. Use this skill for pipeline execution workflows, S3/W&B setup checks, and job-level troubleshooting.
+description: Build, deploy, and monitor Kubernetes batch jobs on the NRP Nautilus cluster. Use this skill for pipeline execution workflows, S3/W&B setup checks, jobs that call NRP-hosted open-weight LLMs through the managed OpenAI-compatible API, and job-level troubleshooting.
 ---
 
 # NRP Cluster Management
@@ -13,11 +13,12 @@ Use this skill when working on compute pipelines that run as Kubernetes jobs on 
    - `references/agent-context.md`
    - `references/readme.md`
    - `references/nrp_setup.md`
-2. Confirm you have credentials/environment available for:
-   - `AWS_ACCESS_KEY_ID`
-   - `AWS_SECRET_ACCESS_KEY`
-   - `WANDB_API_KEY` (optional for runs that use W&B)
-   - `kubelogin` plugin and valid kubeconfig for NRP cluster access (PowerShell/WSL path differs by environment).
+   - For a job that calls an NRP-hosted LLM, also read `references/hosted-llms.md` and verify the current official NRP documentation linked there.
+2. Confirm the credentials required by the workload are available without printing them:
+   - `kubelogin` plugin and a valid kubeconfig for NRP cluster access (PowerShell/WSL path differs by environment).
+   - `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` only when the job uses S3.
+   - `WANDB_API_KEY` only when the run uses W&B.
+   - The existing `nrp-llm-api-key/nrp_llm_api_key` Kubernetes Secret key only when the job calls the NRP-hosted LLM API.
 3. Confirm user intent:
    - Build/push image
    - Update job config
@@ -37,6 +38,7 @@ Use this skill when working on compute pipelines that run as Kubernetes jobs on 
 - Runtime-aware job policy checks (resource limits, GPU policy, sleep bans).
 - Pod/job status checks, log retrieval, and failed-job cleanup.
 - Template-level customization guidance (pipeline scripts, S3 prefixes, command entrypoint).
+- OpenAI-compatible NRP-hosted LLM calls, model discovery, Kubernetes Secret injection, cache isolation, and retry/resume design.
 
 ## Policy Reminders (high priority)
 
@@ -53,6 +55,7 @@ Read only the files needed for your task:
 - `references/nrp_setup.md` for platform setup, prerequisites, and troubleshooting.
 - `references/readme.md` for the template architecture and quick start.
 - `references/agent-context.md` for agent-specific command patterns.
+- `references/hosted-llms.md` for jobs that call NRP-hosted open-weight models.
 - `/.agent/workflows/build-push.md` to build/publish.
 - `/.agent/workflows/deploy-job.md` to submit jobs.
 - `/.agent/workflows/monitor-job.md` to inspect and clean up jobs/pods.
@@ -74,12 +77,14 @@ Before submission, ask for or confirm:
 - Resource requests and limits
 - GPU count/type if required
 - Optional run command override
+- NRP-hosted LLM model and request policy if the job calls the managed API; discover active model IDs instead of assuming a stale model name.
 
 ### 3) Deploy
 
 - Use `/.agent/workflows/deploy-job.md`.
 - Verify image and credentials are available before submission.
 - Confirm `kubectl` access and cluster context are valid.
+- For hosted LLM use, inject the existing API key with `secretKeyRef`; never retrieve its value into the submission command or request a GPU solely for remote inference.
 
 ### 4) Monitor and debug
 
@@ -95,4 +100,3 @@ Escalate for issues that are clearly out-of-repo:
 - NRP quota/policy enforcement questions.
 - Persistent cluster scheduling failures unrelated to job YAML.
 - Registry permission errors preventing image push.
-
