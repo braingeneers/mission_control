@@ -1,3 +1,4 @@
+2026-08-16 15:06 | workflows service | pin non-failing low-activity Ephys outcome release
 2026-08-13 17:22 | workflows service | pin the user-focused workflow start copy release
 2026-07-24 11:27 | data-explorer | allow long unbuffered file and generated ZIP downloads through the service proxy
 2026-07-16 12:24 | workflows service | pin compact artifact labels and responsive artifact presentation release
