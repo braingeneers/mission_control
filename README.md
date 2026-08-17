@@ -218,6 +218,8 @@ definitions remain commented in Compose for reference and are not deployed.
 The backend also owns the durable schedule runner. Operators can create,
 preview, pause, resume, update, and delete schedules at `/schedules`; weekly,
 monthly, daily, and five-field cron schedules use explicit IANA time zones.
+Each schedule also has shared multiline notes displayed beneath its owner;
+existing schedules receive a blank note when the database migration runs.
 Missed occurrences are coalesced after downtime, and the configured overlap
 policy prevents a scheduled workflow from exceeding its catalog-defined active
 run limit. The data-lifecycle workflow is catalog-limited to one active run.
