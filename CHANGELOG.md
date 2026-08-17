@@ -1,3 +1,4 @@
+2026-08-17 16:34 | workflows service | pin backend/frontend to data-lifecycle backup permission-fix release 20260817-f774602cb102
 2026-08-16 15:06 | workflows service | pin non-failing low-activity Ephys outcome release
 2026-08-13 17:22 | workflows service | pin the user-focused workflow start copy release
 2026-07-24 11:27 | data-explorer | allow long unbuffered file and generated ZIP downloads through the service proxy
