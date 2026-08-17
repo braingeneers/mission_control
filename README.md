@@ -74,16 +74,40 @@ docker compose ps
 
 ## Scheduled data lifecycle backup
 
-The `data-lifecycle-backup` service runs the scheduler baked into the
-registry-published `braingeneers/data-lifecycle:latest` backup image. Mission
-Control does not build this image on the server and does not mount
-project-specific scheduler code from the host.
+The AWS/Glacier backup pipeline has been onboarded as the
+`braingeneers-data-lifecycle-backup` Nextflow workflow in the `workflows`
+repository. Workflows launches each pipeline stage as a Kubernetes Job, keeps
+at most one backup run active, and publishes durable run artifacts under
+`s3://braingeneers/services/data-lifecycle/runs/`.
 
-The image runs `./src/run_data_lifecycle.sh` at 9:00 PM Pacific time on Monday,
-Tuesday, and Friday. It also runs a daily replicated-volume sync at 2:00 AM
-Pacific time, copying new and changed files from the shared read-only
-`replicated` volume to `s3://braingeneersdev/services/replicated/` without
-deleting remote objects.
+The intended production schedule is 9:00 PM America/Los_Angeles on Monday,
+Tuesday, and Friday with overlap handling set to `skip`. Create this schedule
+from the Workflows **Schedules** page with **Enabled** cleared during the
+initial rollout. Do not enable it while the legacy service below is still
+running its backup schedule.
+
+The legacy `data-lifecycle-backup` service remains temporarily deployed. Its
+container currently owns two independent schedules: the backup being migrated
+and a daily replicated-volume sync at 2:00 AM Pacific time. That sync copies
+new and changed files from the shared read-only `replicated` volume to
+`s3://braingeneersdev/services/replicated/` without deleting remote objects.
+Stopping or removing the service before that second duty has a replacement
+would silently stop the replicated-volume backup.
+
+Cut over only after a separately deployed replicated-volume sync is healthy:
+
+1. Stop `data-lifecycle-backup` and confirm it is stopped.
+2. Enable the prepared schedule on the Workflows **Schedules** page.
+3. Confirm the schedule runner is healthy and observe the first run before
+   considering the migration complete.
+
+Server commands for step 1 are intentionally not part of the initial Workflows
+deployment:
+
+```bash
+docker compose stop data-lifecycle-backup
+docker compose ps data-lifecycle-backup
+```
 
 The service uses `secret-fetcher` and expects the `prp-s3-credentials`
 Kubernetes secret to include:
@@ -96,7 +120,8 @@ static service artifacts to NRP/S3. The destination is intentionally
 `braingeneersdev` for now and can be switched to `braingeneers` through the
 backup image's `REPLICATED_SYNC_DESTINATION` default or deployment environment.
 
-Deploy or refresh only this service on `braingeneers.gi.ucsc.edu`:
+Until cutover, deploy or refresh only the legacy service on
+`braingeneers.gi.ucsc.edu` with:
 
 ```bash
 docker compose pull data-lifecycle-backup
@@ -190,13 +215,26 @@ Kubernetes launch path used by the web API. The retired standalone
 The retired `mqtt-job-listener`, `job-scanner`, and `maxwell-dashboard`
 definitions remain commented in Compose for reference and are not deployed.
 
+The backend also owns the durable schedule runner. Operators can create,
+preview, pause, resume, update, and delete schedules at `/schedules`; weekly,
+monthly, daily, and five-field cron schedules use explicit IANA time zones.
+Missed occurrences are coalesced after downtime, and the configured overlap
+policy prevents a scheduled workflow from exceeding its catalog-defined active
+run limit. The data-lifecycle workflow is catalog-limited to one active run.
+
 Deploy or refresh the workflows service group on `braingeneers.gi.ucsc.edu`:
 
 ```bash
 docker compose pull workflows workflows-backend
 docker compose up -d --force-recreate workflows-backend workflows
-docker compose logs -f workflows-backend workflows
+docker compose ps workflows-backend workflows
+docker compose logs --tail=200 workflows-backend workflows
 ```
+
+After deployment, open `/schedules`, create the disabled data-lifecycle
+schedule described above, and check `/api/admin/system-status` for scheduler
+health. Leave the schedule disabled until the replicated-volume cutover gate
+has been cleared.
 
 The uploader publishes selected Ephys workflow requests to the same internal
 MQTT broker. Refresh it alongside Workflows when the launch contract or

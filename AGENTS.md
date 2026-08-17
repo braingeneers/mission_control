@@ -34,3 +34,7 @@
   `make verify-uploader-deployment SERVICE=uploader` or
   `make verify-uploader-deployment SERVICE=uploader-dev` on the server. A pull plus restart does not
   replace an existing container; the verifier compares the configured and running image IDs.
+- Do not stop or remove `data-lifecycle-backup`, or enable its replacement
+  Workflows schedule, until the same container's daily `/replicated` sync has a
+  separately deployed replacement. The Nextflow backup schedule should remain
+  paused during the initial Workflows rollout.
