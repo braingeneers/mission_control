@@ -127,10 +127,10 @@ production URL is:
 postgresql+psycopg://services:services@sql-db:5432/services?options=-csearch_path%3Dnotification_gateway
 ```
 
-Its repository owns the guarded one-time migration from the former `public`
-layout. Stop the backend, take and verify a full database backup, run that
-migration, compare row counts, and confirm `public` is empty before enabling
-the default-schema guardrail described below.
+The Workflows repository owns the guarded one-time migration of its former
+`public` layout. Stop the backend, take and verify a full database backup, run
+that migration, compare row counts, and confirm `public` is empty before
+enabling the default-schema guardrail described below.
 
 ## Enable the guardrail on the existing database
 
