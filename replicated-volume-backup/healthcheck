@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+state_dir="${REPLICATED_SYNC_STATE_DIR:-/local/replicated-volume-backup}"
+max_age_seconds="${REPLICATED_SYNC_MAX_SUCCESS_AGE_SECONDS:-129600}"
+success_epoch_file="${state_dir}/last-success.epoch"
+
+if [ ! -r "$success_epoch_file" ]; then
+    echo "replicated-volume-backup: no successful sync has been recorded" >&2
+    exit 1
+fi
+
+success_epoch="$(cat "$success_epoch_file")"
+case "$success_epoch" in
+    ''|*[!0-9]*)
+        echo "replicated-volume-backup: invalid success timestamp" >&2
+        exit 1
+        ;;
+esac
+
+now_epoch="$(date -u +%s)"
+age_seconds=$((now_epoch - success_epoch))
+if [ "$age_seconds" -lt 0 ] || [ "$age_seconds" -gt "$max_age_seconds" ]; then
+    echo "replicated-volume-backup: last successful sync is ${age_seconds}s old" >&2
+    exit 1
+fi
+
+echo "replicated-volume-backup: last successful sync is ${age_seconds}s old"

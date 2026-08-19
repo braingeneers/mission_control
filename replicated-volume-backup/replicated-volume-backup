@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+
+state_dir="${REPLICATED_SYNC_STATE_DIR:-/local/replicated-volume-backup}"
+
+prepare_state_dir() {
+    install -d -o backup -g backup "$state_dir"
+}
+
+command="${1:-schedule}"
+case "$command" in
+    schedule)
+        prepare_state_dir
+        exec su-exec backup:backup \
+            supercronic /etc/replicated-volume-backup/crontab
+        ;;
+    sync)
+        prepare_state_dir
+        exec su-exec backup:backup sync-replicated-volume
+        ;;
+    healthcheck)
+        exec replicated-volume-backup-healthcheck
+        ;;
+    validate)
+        exec supercronic -test /etc/replicated-volume-backup/crontab
+        ;;
+    *)
+        echo "Usage: replicated-volume-backup [schedule|sync|healthcheck|validate]" >&2
+        exit 2
+        ;;
+esac

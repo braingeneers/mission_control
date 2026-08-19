@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+state_dir="${REPLICATED_SYNC_STATE_DIR:-/local/replicated-volume-backup}"
+lock_file="${state_dir}/sync.lock"
+sync_once="${REPLICATED_SYNC_ONCE_COMMAND:-/usr/local/libexec/sync-replicated-volume-once}"
+
+source_candidate="$(dirname "$0")/sync-replicated-volume-once"
+if [ ! -x "$sync_once" ] && [ -x "$source_candidate" ]; then
+    sync_once="$source_candidate"
+fi
+
+exec flock -n -E 75 "$lock_file" "$sync_once"

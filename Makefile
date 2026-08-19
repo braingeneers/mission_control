@@ -4,8 +4,10 @@ IMAGE_DATE ?= $(shell date +%Y%m%d)
 IMAGE_SHA ?= $(shell git rev-parse --short=12 HEAD)
 SQL_DB_IMAGE ?= braingeneers/sql-db
 SQL_DB_TAG ?= $(IMAGE_DATE)-$(IMAGE_SHA)
+REPLICATED_VOLUME_BACKUP_IMAGE ?= braingeneers/replicated-volume-backup
+REPLICATED_VOLUME_BACKUP_TAG ?= $(IMAGE_DATE)-$(IMAGE_SHA)
 
-.PHONY: help test compose-validate service-proxy-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test verify-uploader-deployment sql-db-build sql-db-push sql-db-shell sql-db-test-backup
+.PHONY: help test compose-validate service-proxy-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test verify-uploader-deployment sql-db-build sql-db-push sql-db-shell sql-db-test-backup replicated-volume-backup-build replicated-volume-backup-push replicated-volume-backup-shell replicated-volume-backup-test
 
 help:
 	@printf '%s\n' \
@@ -20,7 +22,11 @@ help:
 		'  make sql-db-build' \
 		'  make sql-db-push' \
 		'  make sql-db-shell' \
-		'  make sql-db-test-backup'
+		'  make sql-db-test-backup' \
+		'  make replicated-volume-backup-build' \
+		'  make replicated-volume-backup-push' \
+		'  make replicated-volume-backup-shell' \
+		'  make replicated-volume-backup-test'
 
 compose-validate:
 	docker compose -f docker-compose.yaml config -q
@@ -55,3 +61,22 @@ sql-db-shell:
 
 sql-db-test-backup: sql-db-build
 	./sql-db/test-sql-db.sh $(SQL_DB_IMAGE):$(SQL_DB_TAG)
+
+replicated-volume-backup-build:
+	docker build \
+		-t $(REPLICATED_VOLUME_BACKUP_IMAGE):$(REPLICATED_VOLUME_BACKUP_TAG) \
+		-t $(REPLICATED_VOLUME_BACKUP_IMAGE):latest \
+		replicated-volume-backup
+
+replicated-volume-backup-push: replicated-volume-backup-build
+	docker push $(REPLICATED_VOLUME_BACKUP_IMAGE):$(REPLICATED_VOLUME_BACKUP_TAG)
+	docker push $(REPLICATED_VOLUME_BACKUP_IMAGE):latest
+
+replicated-volume-backup-shell:
+	docker run --rm -it --entrypoint /bin/sh \
+		$(REPLICATED_VOLUME_BACKUP_IMAGE):$(REPLICATED_VOLUME_BACKUP_TAG)
+
+replicated-volume-backup-test: replicated-volume-backup-build
+	./replicated-volume-backup/test-replicated-volume-backup.sh
+	docker run --rm \
+		$(REPLICATED_VOLUME_BACKUP_IMAGE):$(REPLICATED_VOLUME_BACKUP_TAG) validate

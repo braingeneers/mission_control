@@ -1,0 +1,76 @@
+#!/bin/sh
+set -eu
+
+default_nrp_endpoint="https://s3.braingeneers.gi.ucsc.edu"
+source_dir="${REPLICATED_SYNC_SOURCE:-/replicated}"
+destination="${REPLICATED_SYNC_DESTINATION:-s3://braingeneersdev/services/replicated/}"
+nrp_endpoint="${NRP_ENDPOINT:-${ENDPOINT:-$default_nrp_endpoint}}"
+state_dir="${REPLICATED_SYNC_STATE_DIR:-/local/replicated-volume-backup}"
+aws_cli="${AWS_CLI:-aws}"
+
+if [ ! -d "$source_dir" ]; then
+    echo "ERROR: Replicated sync source does not exist or is not a directory: $source_dir" >&2
+    exit 1
+fi
+
+case "$destination" in
+    s3://*/)
+        ;;
+    s3://*)
+        destination="${destination}/"
+        ;;
+    *)
+        echo "ERROR: REPLICATED_SYNC_DESTINATION must be an s3:// URI: $destination" >&2
+        exit 1
+        ;;
+esac
+
+mkdir -p "$state_dir"
+started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+write_attempt() {
+    status="$1"
+    finished_at="$2"
+    exit_code="$3"
+    attempt_tmp="${state_dir}/.last-attempt.$$"
+    {
+        printf 'status=%s\n' "$status"
+        printf 'started_at=%s\n' "$started_at"
+        printf 'finished_at=%s\n' "$finished_at"
+        printf 'exit_code=%s\n' "$exit_code"
+        printf 'source=%s\n' "$source_dir"
+        printf 'destination=%s\n' "$destination"
+        printf 'endpoint=%s\n' "$nrp_endpoint"
+    } > "$attempt_tmp"
+    mv "$attempt_tmp" "${state_dir}/last-attempt.env"
+}
+
+write_attempt running "" ""
+echo "Starting replicated volume sync from ${source_dir}/ to ${destination}"
+echo "Using NRP endpoint: ${nrp_endpoint}"
+
+set +e
+"$aws_cli" --endpoint-url "$nrp_endpoint" s3 sync "${source_dir}/" "$destination" \
+    --exclude ".*" \
+    --exclude "*/.*" \
+    --exclude "*.tmp" \
+    --exclude "*/*.tmp"
+sync_status=$?
+set -e
+
+finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+if [ "$sync_status" -ne 0 ]; then
+    write_attempt failed "$finished_at" "$sync_status"
+    echo "ERROR: Replicated volume sync failed with status ${sync_status}" >&2
+    exit "$sync_status"
+fi
+
+write_attempt succeeded "$finished_at" 0
+success_tmp="${state_dir}/.last-success.$$"
+cp "${state_dir}/last-attempt.env" "$success_tmp"
+mv "$success_tmp" "${state_dir}/last-success.env"
+epoch_tmp="${state_dir}/.last-success-epoch.$$"
+date -u +%s > "$epoch_tmp"
+mv "$epoch_tmp" "${state_dir}/last-success.epoch"
+
+echo "Completed replicated volume sync to ${destination}"
