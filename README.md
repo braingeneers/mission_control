@@ -22,6 +22,7 @@ Use this skill for work involving:
 - intentionally public web services with host-specific `service-proxy` overrides
 - headless or direct-port services that should not be routed through the web proxy
 - MCP services that need bearer-token forwarding and backend token validation
+- outbound Slack notifications through the durable HTTP/MQTT notification gateway
 - Kubernetes secret wiring through `secret-fetcher` and `/secrets`
 - published container image workflows, including service `Makefile` build, push, local-test, and shell targets
 - targeted service pull, recreate, log, and status checks for conservative deploys
@@ -38,8 +39,8 @@ make test
 ```
 
 This validates the Compose model, nginx authentication and identity-header
-inheritance for both uploader hosts, and the production/development bucket and
-immutable-image contracts.
+inheritance, the notification gateway bearer-token route and security gate,
+and the production/development bucket and immutable-image contracts.
 
 ## Manage individual services
 
@@ -47,7 +48,7 @@ You can also start and stop a single services, this is the normal case so you do
 interfere with other running services, it's perfectly safe to do this while other services are running:
 
 The name `my_service` is defined in the `docker-compose.yaml` file under `services:`
-for example `mqtt`, `slack-bridge`, etc. are services in the `docker-compose.yaml` file 
+for example `mqtt`, `notification-gateway`, etc. are services in the `docker-compose.yaml` file
 
 ```bash
 # Restart a service (cleaner than using docker compose restart)
@@ -174,6 +175,73 @@ docker compose up -d --force-recreate sql-db
 docker compose logs -f sql-db
 ```
 
+## Notification gateway
+
+`notification-gateway` is the shared outbound Slack boundary for services,
+workflows, and devices. It accepts one versioned, idempotent notification
+contract, stores accepted requests in the shared PostgreSQL service, retries
+transient Slack failures, and exposes delivery state. Callers never receive the
+Slack bot token. The first release is outbound-only; Slack-to-MQTT mirroring and
+Slack commands remain out of scope.
+
+The public machine endpoint is
+`https://notifications.braingeneers.gi.ucsc.edu`, where the gateway validates a
+producer-specific bearer token. The proxy bypasses browser authentication,
+strips identity-looking headers, preserves `Authorization`, and caps request
+bodies at 64 KiB. Compose does not publish port 8000 directly.
+
+The operator-owned Kubernetes Secret named `notification-gateway` must provide:
+
+- `slack-bot-token`: the `braingeneersbot` token installed in the `ucsc-gi`
+  Slack workspace.
+- `expected-team-id` and `expected-bot-id`: values verified with Slack
+  `auth.test`; readiness fails if either is absent or mismatched.
+- `producers.json`: each producer's independent HTTP token and explicit Slack
+  channel-ID allowlist.
+- `workflows-http-token`: the Workflows producer token, matching the `workflows`
+  entry in `producers.json`.
+- `mqtt-username` and `mqtt-password`: reserved for the gateway broker identity
+  after the MQTT security gate is complete.
+
+Do not reuse the legacy Slack bridge token. Before first deployment, an
+operator should verify that the new token reports workspace `ucsc-gi`, bot
+`braingeneersbot`, and the stable channel ID for `#braingeneers-test`, then add
+that ID to the intended producer allowlist. The app needs `chat:write` and must
+be invited to the test channel unless operators intentionally grant
+`chat:write.public`. Secret creation and replacement are
+operator-owned; no secret values belong in this checkout, Compose, logs, or
+shell history.
+
+Provision the database schema once on `braingeneers.gi.ucsc.edu` before the
+gateway starts:
+
+```bash
+docker compose exec sql-db psql -U services -d services \
+  -c 'CREATE SCHEMA IF NOT EXISTS notification_gateway AUTHORIZATION services;'
+docker compose exec sql-db psql -U services -d services \
+  -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'notification_gateway';"
+```
+
+The image refuses to migrate unless `current_schema()` is exactly
+`notification_gateway`. After the schema and operator-owned secret are ready,
+deploy only the new path:
+
+```bash
+docker compose pull notification-gateway workflows-backend workflows
+docker compose up -d --force-recreate notification-gateway workflows-backend workflows
+docker compose up -d --force-recreate service-proxy
+docker compose ps notification-gateway workflows-backend workflows service-proxy
+docker compose logs --tail=200 notification-gateway workflows-backend service-proxy
+```
+
+Production MQTT intake remains disabled while the current broker permits broad
+topic access. Complete and verify
+[`mqtt/notification-gateway-security.md`](mqtt/notification-gateway-security.md)
+before enabling it. The legacy `slack-bridge` remains deployed only for an
+observation window; migrate producers to the new versioned contract, compare
+delivery results for 30 days, and remove the legacy service in a separate
+operator-approved change after no publishers or inbound consumers remain.
+
 ## Workflows web service
 
 The `workflows` service serves https://workflows.braingeneers.gi.ucsc.edu as a
@@ -217,6 +285,15 @@ Kubernetes launch path used by the web API. The retired standalone
 `nextflow-launcher` service and arbitrary-Git-URL protocol are not deployed.
 The retired `mqtt-job-listener`, `job-scanner`, and `maxwell-dashboard`
 definitions remain commented in Compose for reference and are not deployed.
+
+Workflow definitions may opt into terminal Slack events using stable channel
+IDs. The backend persists deterministic requests in its own database outbox and
+submits them to the notification gateway over the internal HTTP endpoint. A
+gateway or Slack failure never changes the workflow run outcome, and first
+activation does not replay historical terminal runs. Workflows reads only its
+producer token from
+`/secrets/notification-gateway/workflows-http-token`; it never reads the Slack
+bot token.
 
 The backend also owns the durable schedule runner. Operators can create,
 preview, pause, resume, update, and delete schedules at `/schedules`; weekly,

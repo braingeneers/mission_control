@@ -7,7 +7,7 @@ SQL_DB_TAG ?= $(IMAGE_DATE)-$(IMAGE_SHA)
 REPLICATED_VOLUME_BACKUP_IMAGE ?= braingeneers/replicated-volume-backup
 REPLICATED_VOLUME_BACKUP_TAG ?= $(IMAGE_DATE)-$(IMAGE_SHA)
 
-.PHONY: help test compose-validate service-proxy-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test replicated-volume-backup-compose-test verify-uploader-deployment sql-db-build sql-db-push sql-db-shell sql-db-test-backup replicated-volume-backup-build replicated-volume-backup-push replicated-volume-backup-shell replicated-volume-backup-test
+.PHONY: help test compose-validate service-proxy-test notification-gateway-compose-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test replicated-volume-backup-compose-test verify-uploader-deployment sql-db-build sql-db-push sql-db-shell sql-db-test-backup replicated-volume-backup-build replicated-volume-backup-push replicated-volume-backup-shell replicated-volume-backup-test
 
 help:
 	@printf '%s\n' \
@@ -15,6 +15,7 @@ help:
 		'  make test' \
 		'  make compose-validate' \
 		'  make service-proxy-test' \
+		'  make notification-gateway-compose-test' \
 		'  make uploader-compose-test' \
 		'  make uploader-deployment-verifier-test' \
 		'  make workflows-compose-test' \
@@ -32,10 +33,13 @@ help:
 compose-validate:
 	docker compose -f docker-compose.yaml config -q
 
-test: compose-validate service-proxy-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test replicated-volume-backup-compose-test
+test: compose-validate service-proxy-test notification-gateway-compose-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test replicated-volume-backup-compose-test
 
 service-proxy-test:
 	./service-proxy/test-default-auth-config.sh
+
+notification-gateway-compose-test:
+	./scripts/test-notification-gateway-compose-contract.sh
 
 uploader-compose-test:
 	./scripts/test-uploader-compose-contract.sh

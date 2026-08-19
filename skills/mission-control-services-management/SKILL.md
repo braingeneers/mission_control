@@ -1,6 +1,6 @@
 ---
 name: mission-control-services-management
-description: Build, deploy, update, or troubleshoot Braingeneers lab services managed by mission_control on braingeneers.gi.ucsc.edu. Use when Codex is helping create a new Docker Compose service, choose between proxied web, public web, headless port-published, or MCP service patterns, connect services to NRP-hosted open-weight LLMs, connect a client to the shared sql-db PostgreSQL service, configure service-proxy overrides, handle Braingeneers Kubernetes secrets and secret-fetcher, choose NRP kubeconfig authentication, package images for Docker Hub or another registry, add Makefile build/push/local-test workflows, or operate existing services with docker compose.
+description: Build, deploy, update, or troubleshoot Braingeneers lab services managed by mission_control on braingeneers.gi.ucsc.edu. Use when Codex is helping create a new Docker Compose service, choose between proxied web, public web, bearer-authenticated machine API, headless port-published, or MCP service patterns, submit durable Slack notifications through notification-gateway, connect services to NRP-hosted open-weight LLMs, connect a client to the shared sql-db PostgreSQL service, configure service-proxy overrides, handle Braingeneers Kubernetes secrets and secret-fetcher, choose NRP kubeconfig authentication, package images for Docker Hub or another registry, add Makefile build/push/local-test workflows, or operate existing services with docker compose.
 ---
 
 # Mission Control Services Management
@@ -13,6 +13,7 @@ Use this skill for Braingeneers services managed by `mission_control` on `braing
 2. Route the service into one branch before proposing changes:
    - `private-web`: browser-authenticated service behind `service-proxy/default`.
    - `public-web`: web service intentionally bypassing browser auth with a host-specific `service-proxy` override.
+   - `machine-api`: HTTP API that bypasses browser auth, preserves `Authorization`, strips identity-looking headers, and authenticates callers in the backend.
    - `headless`: non-HTTP or direct-port service such as MQTT or RustDesk; do not route this through `VIRTUAL_HOST` or host-specific nginx vhost files.
    - `mcp`: MCP resource server; keep shared edge TLS, bypass browser auth for MCP traffic, preserve `Authorization`, and make the backend validate bearer tokens and IAM.
 3. Check access prerequisites early. Users need GI server access to `braingeneers.gi.ucsc.edu`, Braingeneers GitHub access, and Braingeneers NRP namespace access for secret-related operations.
@@ -23,6 +24,7 @@ Use this skill for Braingeneers services managed by `mission_control` on `braing
 8. Use shared local volumes for persistent service state. `local` is restart-persistent disposable state; `replicated` is backed-up static state. Each service owns a service-named subdirectory under the volume root.
 9. Keep service topology manageable. Package tightly coupled helper behavior inside the owning service image; add sidecar services only when they are independently operated, scaled, or reused.
 10. When a service needs PostgreSQL, prefer the shared internal `sql-db` service. Give each client its own schema; do not add another production Postgres container by default.
+11. When a service, workflow, or device needs to notify Slack, use `notification-gateway`; do not distribute Slack tokens or add another Slack SDK integration by default.
 
 ## Production Server Boundary
 
@@ -42,6 +44,7 @@ Load only the reference files needed for the current task:
 - `references/hosted-llms.md`: NRP-hosted LLM API access, model selection, secret-file wiring, reliability, and service operations.
 - `references/sql-db.md`: shared PostgreSQL client contract, schema provisioning, connection wiring, migrations, backups, and troubleshooting.
 - `references/operations.md`: deployment, update, verification, troubleshooting, and escalation.
+- `references/notifications.md`: notification-gateway request contract, HTTP/MQTT transport choice, producer policy, Slack identity preflight, Workflows integration, and rollout.
 
 ## Workflow
 
@@ -72,12 +75,18 @@ database configuration from another client.
 
 For services that call the NRP-hosted LLM API, also read `references/hosted-llms.md` before designing application behavior or Compose secret wiring. Treat hosted LLM access as a cross-cutting capability after selecting the normal private-web, public-web, headless, or MCP branch.
 
+For services, workflows, or devices that send Slack messages, also read
+`references/notifications.md`, the notification gateway repository README, and
+the wiki notification-gateway page. Treat notifications as a shared capability
+after selecting the caller's normal service branch.
+
 ### 2. Choose The Service Branch
 
 Use the branch to determine which details matter:
 
 - `private-web`: add or update a Compose service with `VIRTUAL_HOST`, `VIRTUAL_PORT`, `LETSENCRYPT_HOST`, `LETSENCRYPT_EMAIL`, and `braingeneers-net`. Default browser auth comes from `service-proxy/default`.
 - `public-web`: use the same Compose service discovery, plus a host-specific `service-proxy/<hostname>` override with `auth_request off`; add the matching bind mount under the `service-proxy` service.
+- `machine-api`: use normal Compose HTTP discovery plus a host-specific proxy override that disables browser auth, strips proxy-trusted identity headers, preserves `Authorization`, and applies bounded request/time limits. The backend must validate its bearer token.
 - `headless`: use explicit `ports:` and network settings as needed. Do not add `VIRTUAL_HOST`, `LETSENCRYPT_HOST`, or service-proxy vhost files unless the service also has an HTTP UI.
 - `mcp`: follow the MCP onboarding contract. Preserve bearer tokens, strip proxy identity headers, mount IAM read-only, and configure issuer, JWKS, audience, and resource-server URL explicitly.
 
@@ -127,6 +136,12 @@ When a service needs secrets:
 - Use `--env` for secret-backed env files.
 
 For the NRP-hosted LLM token, follow `references/hosted-llms.md`. Prefer an application-owned API-key file setting pointed at the exact fetched key. The key is a raw token file, not an env file for `--env`.
+
+For outbound Slack, follow `references/notifications.md`. Mount the shared
+secret volume, but give callers only their own notification-gateway producer
+credential. Only the gateway reads the Slack bot token. Verify the token's
+expected Slack team and bot IDs without printing it, and never reuse the legacy
+Slack bridge credential as a fallback.
 
 For unattended `braingeneerspy` services, prefer the daily refreshed `/secrets/braingeneers-jwt-service-account-token/config.json` mounted to the expected `braingeneers/iot/service_account/config.json` location. Do not recommend stale raw `service-accounts/config.json` patterns unless the local code specifically requires it and the risk is acknowledged.
 

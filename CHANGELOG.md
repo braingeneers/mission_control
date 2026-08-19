@@ -1,3 +1,4 @@
+2026-08-19 18:20 | notification gateway | add durable bearer-authenticated Slack delivery service, Workflows outbox wiring, and fail-closed MQTT security gate
 2026-08-17 16:34 | workflows service | pin backend/frontend to data-lifecycle backup permission-fix release 20260817-b7aaaece951b
 2026-08-16 15:06 | workflows service | pin non-failing low-activity Ephys outcome release
 2026-08-13 17:22 | workflows service | pin the user-focused workflow start copy release

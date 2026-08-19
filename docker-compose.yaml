@@ -135,6 +135,7 @@ services:
       - ./service-proxy/spikelab.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/spikelab.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/neuroview.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/neuroview.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/integrated-system-mcp.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/integrated-system-mcp.braingeneers.gi.ucsc.edu:ro
+      - ./service-proxy/notifications.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/notifications.braingeneers.gi.ucsc.edu:ro
     networks:
       - braingeneers-net
 
@@ -1096,10 +1097,48 @@ services:
       - local:/local
       - replicated:/replicated
 
+  # Durable outbound notification gateway. The bearer-authenticated HTTP API
+  # and authenticated MQTT adapter share one versioned request contract.
+  notification-gateway:
+    image: braingeneers/notification-gateway:0.1.0
+    container_name: notification-gateway
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      VIRTUAL_HOST: "notifications.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8000"
+      LETSENCRYPT_HOST: "notifications.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+      # Enable only after the broker enforces producer-specific topic ACLs.
+      MQTT_ENABLED: "false"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - braingeneers-net
+    volumes:
+      - secrets:/secrets
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+      sql-db:
+        condition: service_healthy
+      mqtt:
+        condition: service_started
+
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20260819-6f57c3d17edb
+    image: braingeneers/workflows-backend:20260819-b264a76cae8b
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1124,6 +1163,7 @@ services:
       MQTT_TOPICS: "workflows/launch"
       MQTT_QOS: "1"
       COLLECTED_RUNS_ROOT: "/local/workflows/runs"
+      NOTIFICATION_DISPATCH_ENABLED: "true"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/readyz"]
       interval: 10s
@@ -1141,9 +1181,11 @@ services:
         condition: service_healthy
       mqtt:
         condition: service_started
+      notification-gateway:
+        condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20260819-6f57c3d17edb
+    image: braingeneers/workflows-frontend:20260819-b264a76cae8b
     container_name: workflows
     restart: unless-stopped
     expose:

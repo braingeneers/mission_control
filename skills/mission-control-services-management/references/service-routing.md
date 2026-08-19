@@ -8,6 +8,7 @@ Classify the service first:
 
 - `private-web`: HTTP service for lab users; default browser auth through `service-proxy/default`.
 - `public-web`: HTTP service intentionally public; host-specific `service-proxy` file with `auth_request off`.
+- `machine-api`: HTTP service with backend bearer authentication; bypass browser auth, preserve `Authorization`, and strip proxy identity headers.
 - `headless`: direct TCP/UDP or non-HTTP service, for example MQTT or RustDesk; exposed with `ports:` and not routed by nginx vhost discovery.
 - `mcp`: HTTP MCP resource server; shared edge and TLS, no browser auth on MCP traffic, backend validates bearer tokens and IAM.
 
@@ -105,6 +106,25 @@ Relevant sources. Use a local checkout of `github.com/braingeneers/wiki` when av
 - `docker-compose.yaml`
 - `shared/mqtt.md`: https://github.com/braingeneers/wiki/blob/main/shared/mqtt.md
 - `shared/rustdesk.md`: https://github.com/braingeneers/wiki/blob/main/shared/rustdesk.md
+
+## Machine APIs
+
+Use this branch when software rather than a browser calls an HTTP API and the
+backend owns bearer-token validation. Required behavior:
+
+- Keep shared edge routing and TLS through normal `VIRTUAL_HOST` discovery.
+- Add a host-specific vhost file and bind mount.
+- Set `auth_request off` so a machine request is not redirected to browser login.
+- Preserve `Authorization` with `proxy_set_header Authorization $http_authorization`.
+- Clear every proxy-trusted `X-User`, `X-Email`, `X-Groups`, `X-Name`,
+  `X-Given-Name`, `X-Family-Name`, `X-Preferred-Username`, and `X-Subject`
+  header unless the backend has a separately verified need for one.
+- Bound body size and timeouts to the API contract.
+- Require backend authentication and authorization on every non-health route.
+
+The notification gateway is the reference implementation:
+`service-proxy/notifications.braingeneers.gi.ucsc.edu`. Its body cap is 64 KiB
+and producer credentials authorize explicit Slack channel IDs.
 
 ## MCP Services
 

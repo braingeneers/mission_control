@@ -25,6 +25,10 @@
 - Run `make test` after changing Compose or proxy configuration. It validates Compose, authenticated
   uploader proxy inheritance, production/acceptance uploader bucket and image contracts, and the
   stale-container deployment verifier.
+- Keep `notification-gateway` as the only new outbound Slack boundary. Callers use stable channel IDs and producer-specific credentials; they never receive the Slack bot token. Keep its public machine route out of browser auth, strip identity-looking headers, preserve `Authorization`, and retain the 64 KiB body limit.
+- Keep notification-gateway MQTT intake disabled until the broker is pinned, authenticated, deny-by-default, and verified with producer-specific request/result topic ACLs. The current allow-all broker cannot authenticate producer identity from a topic name.
+- Treat `/secrets/notification-gateway` as operator-owned. Verify the Slack token against the expected `ucsc-gi` team and `braingeneersbot` bot IDs without printing it; never fall back to the legacy Slack bridge credential.
+- Keep Workflows notifications catalog-opt-in and terminal-only. Its durable outbox may retry notification submission, but notification failures must never change a workflow run outcome. Evaluate each terminal run's notification policy exactly once and mark pre-migration terminal runs as already evaluated so deployment and later policy changes cannot replay old runs.
 - Leave `uploader` without `container_name` so Compose manages production naming. Set
   `uploader-dev` to `container_name: uploader-dev` so its operator log prefix matches the service
   name; keep contract tests for both choices.
