@@ -34,7 +34,10 @@
   `make verify-uploader-deployment SERVICE=uploader` or
   `make verify-uploader-deployment SERVICE=uploader-dev` on the server. A pull plus restart does not
   replace an existing container; the verifier compares the configured and running image IDs.
-- Do not stop or remove `data-lifecycle-backup`, or enable its replacement
-  Workflows schedule, until the same container's daily `/replicated` sync has a
-  separately deployed replacement. The Nextflow backup schedule should remain
-  paused during the initial Workflows rollout.
+- Keep `replicated-volume-backup` additive: it copies new and changed files to
+  `s3://braingeneersdev/services/replicated/` and must not delete remote
+  objects. Keep its `replicated` mount read-only and exclude dot-prefixed and
+  `*.tmp` incomplete files.
+- During the legacy cutover, keep the Data Lifecycle Nextflow schedule paused
+  until `replicated-volume-backup` has completed a scheduled sync successfully
+  and the old `data-lifecycle-backup` container is stopped.

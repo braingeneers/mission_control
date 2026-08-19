@@ -83,50 +83,53 @@ at most one backup run active, and publishes durable run artifacts under
 The intended production schedule is 9:00 PM America/Los_Angeles on Monday,
 Tuesday, and Friday with overlap handling set to `skip`. Create this schedule
 from the Workflows **Schedules** page with **Enabled** cleared during the
-initial rollout. Do not enable it while the legacy service below is still
-running its backup schedule.
+initial rollout. During the legacy cutover, enable it only after the new
+replicated-volume backup has completed a scheduled run and the old combined
+container is stopped.
 
-The legacy `data-lifecycle-backup` service remains temporarily deployed. Its
-container currently owns two independent schedules: the backup being migrated
-and a daily replicated-volume sync at 2:00 AM Pacific time. That sync copies
-new and changed files from the shared read-only `replicated` volume to
-`s3://braingeneersdev/services/replicated/` without deleting remote objects.
-Stopping or removing the service before that second duty has a replacement
-would silently stop the replicated-volume backup.
+## Replicated volume backup
 
-Cut over only after a separately deployed replicated-volume sync is healthy:
+`replicated-volume-backup` is a headless Mission Control infrastructure
+service. Every day at 2:00 AM America/Los_Angeles it copies new and changed
+files from the shared read-only `replicated` volume to
+`s3://braingeneersdev/services/replicated/`. It never deletes destination
+objects and excludes dot-prefixed and `*.tmp` incomplete files.
 
-1. Stop `data-lifecycle-backup` and confirm it is stopped.
-2. Enable the prepared schedule on the Workflows **Schedules** page.
-3. Confirm the schedule runner is healthy and observe the first run before
-   considering the migration complete.
+The registry-published image and its scripts live in
+[`replicated-volume-backup/`](replicated-volume-backup/). It reads the existing
+`prp-s3-credentials/credentials` file from `secret-fetcher`; no additional
+Kubernetes Secret is required. Lock and status files live under
+`local:/local/replicated-volume-backup`, and the service is unhealthy when no
+successful sync has been recorded in the last 36 hours.
 
-Server commands for step 1 are intentionally not part of the initial Workflows
-deployment:
+Build, test, and publish the image from this repository:
 
 ```bash
-docker compose stop data-lifecycle-backup
-docker compose ps data-lifecycle-backup
+make replicated-volume-backup-test
+make replicated-volume-backup-push
 ```
 
-The service uses `secret-fetcher` and expects the `prp-s3-credentials`
-Kubernetes secret to include:
-
-- `credentials`
-- `rclone.conf`
-
-The service mounts `replicated:/replicated:ro` so it can publish backed-up
-static service artifacts to NRP/S3. The destination is intentionally
-`braingeneersdev` for now and can be switched to `braingeneers` through the
-backup image's `REPLICATED_SYNC_DESTINATION` default or deployment environment.
-
-Until cutover, deploy or refresh only the legacy service on
-`braingeneers.gi.ucsc.edu` with:
+For the initial cutover on `braingeneers.gi.ucsc.edu`, keep the Nextflow
+schedule paused and run:
 
 ```bash
-docker compose pull data-lifecycle-backup
-docker compose up -d --force-recreate data-lifecycle-backup
-docker compose logs -f data-lifecycle-backup
+docker compose pull replicated-volume-backup
+docker compose run --rm replicated-volume-backup sync
+docker compose up -d --force-recreate replicated-volume-backup
+docker compose ps replicated-volume-backup
+docker compose logs --tail=200 replicated-volume-backup
+docker container stop data-lifecycle-backup
+docker container rm data-lifecycle-backup
+```
+
+Confirm the first scheduled 2:00 AM sync succeeds before enabling the Data
+Lifecycle schedule in Workflows. Routine updates target only the replacement:
+
+```bash
+docker compose pull replicated-volume-backup
+docker compose up -d --force-recreate replicated-volume-backup
+docker compose ps replicated-volume-backup
+docker compose logs --tail=200 replicated-volume-backup
 ```
 
 ## Shared SQL database service
