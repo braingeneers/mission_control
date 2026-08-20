@@ -41,8 +41,10 @@ done
 [[ "$(service_value notification-service '.environment.SLACK_BOT_TOKEN_FILE')" \
     == "/secrets/slack-token-braingeneersbot-gi/slack-token-braingeneersbot-gi" ]] \
     || fail "notification-service must read the operator-owned braingeneersbot token path"
-[[ "$(service_value notification-mail-relay '.networks | keys | sort | join(",")')" == "notification-mail-net" ]] \
-    || fail "notification-mail-relay must be isolated from shared service networks"
+for service in notification-service notification-mail-relay; do
+    [[ "$(service_value "${service}" '.networks | keys | sort | join(",")')" == "braingeneers-net" ]] \
+        || fail "${service} must use only the shared trusted service network"
+done
 [[ "$(service_value notification-mail-relay '.volumes[] | select(.target == "/local") | .source')" == "local" ]] \
     || fail "notification-mail-relay must persist its Postfix queue under local"
 [[ "$(service_value notification-mail-relay '.environment.POSTFIX_QUEUE_DIR')" == "/local/notification-service/postfix" ]] \

@@ -200,6 +200,10 @@ The outbound identity is:
 
 The relay is outbound-only and has no published SMTP port, inboxes, IMAP, or
 webmail. It does not need an MX record. Delayed bounce ingestion is out of scope.
+It shares the trusted `braingeneers-net` with other Mission Control services;
+`notification-service` remains the supported caller interface, while the relay
+uses Docker subnet trust and does not add separate SMTP credentials or network
+topology.
 Before deployment, have the operator verify outbound TCP 25 from the server;
 if institutional filtering blocks it, stop and choose an approved institutional
 or hosted relay rather than bypassing policy.

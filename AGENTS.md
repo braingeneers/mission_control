@@ -27,7 +27,7 @@
   stale-container deployment verifier.
 - Keep `notification-service` as the shared boundary for new outbound Slack and email integrations. Compose peers call it directly; external clients use the standard authenticated proxy and existing service-account JWTs. The application has no producer tokens, database, or MQTT adapter.
 - Treat `/secrets/slack-token-braingeneersbot-gi` and `/secrets/notification-service` as operator-owned. Only the notification components read the `ucsc-gi` `braingeneersbot` token and DKIM private key; consumers never receive either credential.
-- Keep `notification-mail-relay` outbound-only, unexposed, isolated on `notification-mail-net`, and fixed to the aligned `notifications@braingeneers.gi.ucsc.edu` sender. Email durability belongs to the persisted Postfix queue.
+- Keep `notification-mail-relay` outbound-only, unexposed, on the trusted `braingeneers-net`, and fixed to the aligned `notifications@braingeneers.gi.ucsc.edu` sender. Internal services are trusted, but callers should use `notification-service` rather than connect to Postfix directly. Email durability belongs to the persisted Postfix queue.
 - Do not add notification-service wiring or Compose dependencies to Workflows—or any other consumer—until that consumer deliberately adopts notifications. Notification failure must not affect unrelated startup or primary outcomes.
 - Keep Workflows independently startable when the optional MQTT launch broker is unavailable. More generally, use Compose `depends_on` only for genuine startup prerequisites, not to document optional integrations; add dependencies later when the runtime contract actually requires them.
 - Leave `uploader` without `container_name` so Compose manages production naming. Set
