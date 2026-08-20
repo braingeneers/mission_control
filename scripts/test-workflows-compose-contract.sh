@@ -54,5 +54,13 @@ assert_equal \
     "$(service_value workflows-backend '.depends_on["mqtt"] // empty')" \
     "" \
     "Workflows optional MQTT startup dependency"
+assert_equal \
+    "$(service_value workflows-backend '.depends_on["notification-service"] // empty')" \
+    "" \
+    "Workflows optional notification startup dependency"
+assert_equal \
+    "$(service_value workflows-backend '.environment.NOTIFICATION_SERVICE_URL')" \
+    "http://notification-service:8000" \
+    "Workflows notification service URL"
 
 echo "Workflows Compose contracts are valid."

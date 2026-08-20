@@ -50,11 +50,13 @@ done
 [[ "$(service_value notification-mail-relay '.environment.POSTFIX_QUEUE_DIR')" == "/local/notification-service/postfix" ]] \
     || fail "notification-mail-relay must store its Postfix queue in the shared local volume"
 [[ "$(service_value workflows-backend '.depends_on["notification-service"] // empty')" == "" ]] \
-    || fail "Workflows must not depend on notification-service before adoption"
+    || fail "Workflows notification delivery must remain an optional runtime integration, not a startup dependency"
 [[ "$(service_value workflows-backend '.depends_on["mqtt"] // empty')" == "" ]] \
     || fail "Workflows optional MQTT ingress must not be a startup dependency"
-[[ "$(service_value workflows-backend '.environment.NOTIFICATION_DISPATCH_ENABLED // empty')" == "" ]] \
-    || fail "Workflows must not carry speculative notification configuration"
+[[ "$(service_value workflows-backend '.environment.NOTIFICATION_DISPATCH_ENABLED')" == "true" ]] \
+    || fail "Workflows must enable the adopted durable completion-notification dispatcher"
+[[ "$(service_value workflows-backend '.environment.NOTIFICATION_SERVICE_URL')" == "http://notification-service:8000" ]] \
+    || fail "Workflows must call notification-service over the trusted Compose network"
 
 grep -Eq '^[[:space:]]*include[[:space:]]+/etc/nginx/vhost.d/default;' "${proxy_file}" \
     || fail "notification proxy must include standard authenticated proxy behavior"

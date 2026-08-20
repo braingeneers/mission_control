@@ -88,6 +88,21 @@ initial rollout. During the legacy cutover, enable it only after the new
 replicated-volume backup has completed a scheduled run and the old combined
 container is stopped.
 
+Each successful backup advances the small
+`s3://braingeneers/services/data-lifecycle/latest-backup-state.json` manifest
+only after its immutable run bundle is complete. Data Explorer rebuilds a local
+SQLite status projection from that evidence, and the separate monthly Data
+Retention Policy Report consumes the same pointer. Neither consumer performs a
+live Glacier inventory query.
+
+Data Explorer keeps storage protection subordinate to normal browsing. Its
+collapsed panel can renew an atomic dataset or individual file with a zero-byte
+`DATA_LIFECYCLE_RETENTION` marker and can create or reverse a folder
+`NOBACKUP`. The marker's Ceph `LastModified` is authoritative; user data is
+never self-copied, and automatic deletion is disabled. The `local` volume holds
+only a disposable, restart-persistent index; immutable request/result audits
+remain in S3.
+
 ## Replicated volume backup
 
 `replicated-volume-backup` is a headless Mission Control infrastructure
@@ -271,9 +286,17 @@ definitions remain commented in Compose for reference and are not deployed.
 MQTT is an optional ingress path, so Workflows has no Compose startup dependency
 on the broker; broker availability must not block the web app or API.
 
-Workflows does not currently integrate with `notification-service` and has no
-Compose dependency on it. Add that integration only when a concrete Workflows
-notification use case is deliberately adopted.
+Workflows now integrates with `notification-service` for workflow-owned
+`completion-notification.json` manifests. The backend records a durable SQL
+outbox, deduplicates candidate entities by workflow/channel/key, and calls
+`http://notification-service:8000` over `braingeneers-net`. A report run always
+posts, including an explicit no-new-candidates message; only candidate ids not
+previously delivered are listed. Definite temporary `503` responses are
+retried, definite validation/provider rejections are terminal, and ambiguous
+timeouts are recorded for manual review instead of being blindly replayed.
+Notification failure does not change a workflow run's success status, and
+Workflows intentionally has no Compose startup dependency on the notification
+service.
 
 The backend also owns the durable schedule runner. Operators can create,
 preview, pause, resume, update, and delete schedules at `/schedules`; weekly,
@@ -297,6 +320,30 @@ After deployment, open `/schedules`, create the disabled data-lifecycle
 schedule described above, and check `/api/admin/system-status` for scheduler
 health. Leave the schedule disabled until the replicated-volume cutover gate
 has been cleared.
+
+After the backup cutover is validated, create the **Data Retention Policy
+Report** schedule for the 15th of each month at 09:00 in
+`America/Los_Angeles`, with overlap set to `skip`. Run acceptance against the
+stable channel id for `#braingeneers-test`; only after the report links,
+candidate deduplication, and no-new message are verified should the schedule be
+updated to the stable `#braingeneers-helpdesk` channel id.
+
+For the initial Data Explorer/report rollout, refresh the complete consumer
+group together while retaining the legacy review app as a fallback:
+
+```bash
+docker compose pull data-lifecycle data-explorer workflows-backend workflows
+docker compose up -d --force-recreate data-lifecycle data-explorer workflows-backend workflows
+docker compose ps data-lifecycle data-explorer workflows-backend workflows
+docker compose logs --tail=200 data-lifecycle data-explorer workflows-backend workflows
+```
+
+Validate a completed backup-state index, an atomic renewal, a file renewal, a
+`NOBACKUP` create/reversal, immutable request/result audits, report artifacts,
+and both the new-candidate and no-new Slack paths. Keep `data-lifecycle` running
+until those production checks pass. Removing its Compose service and the wiki
+legacy tile is a separate follow-up change after acceptance, not part of the
+initial rollout.
 
 The uploader publishes selected Ephys workflow requests to the same internal
 MQTT broker. Refresh it alongside Workflows when the launch contract or
