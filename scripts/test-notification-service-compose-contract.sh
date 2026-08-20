@@ -38,6 +38,9 @@ done
     || fail "notification-service must not depend on MQTT"
 [[ "$(service_value notification-service '.depends_on["notification-mail-relay"].condition')" == "service_started" ]] \
     || fail "notification-service must start its mail component without coupling readiness"
+[[ "$(service_value notification-service '.environment.SLACK_BOT_TOKEN_FILE')" \
+    == "/secrets/slack-token-braingeneersbot-gi/slack-token-braingeneersbot-gi" ]] \
+    || fail "notification-service must read the operator-owned braingeneersbot token path"
 [[ "$(service_value notification-mail-relay '.networks | keys | sort | join(",")')" == "notification-mail-net" ]] \
     || fail "notification-mail-relay must be isolated from shared service networks"
 [[ "$(service_value notification-mail-relay '.volumes[] | select(.target == "/local") | .source')" == "local" ]] \

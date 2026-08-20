@@ -191,12 +191,14 @@ uses `notifications@braingeneers.gi.ucsc.edu`. See the service README and
 [`skills/mission-control-services-management/references/notifications.md`](skills/mission-control-services-management/references/notifications.md)
 for the complete contracts and examples.
 
-The operator-owned Kubernetes Secret named `notification-service` provides:
+Two operator-owned Kubernetes Secrets provide the notification credentials:
 
-- `slack-bot-token`: the `braingeneersbot` token installed in the `ucsc-gi`
-  Slack workspace.
-- `dkim-private-key`: the private key for selector `notifications` and domain
-  `braingeneers.gi.ucsc.edu`.
+- `slack-token-braingeneersbot-gi`, key
+  `slack-token-braingeneersbot-gi`: the `braingeneersbot` token installed in
+  the `ucsc-gi` Slack workspace. Mission Control configures the API to read
+  `/secrets/slack-token-braingeneersbot-gi/slack-token-braingeneersbot-gi`.
+- `notification-service`, key `dkim-private-key`: the private key for selector
+  `notifications` and domain `braingeneers.gi.ucsc.edu`.
 
 The Slack endpoint alone returns `503` while its token is absent. The mail relay
 waits without sending unsigned mail while its DKIM key is absent; the API and

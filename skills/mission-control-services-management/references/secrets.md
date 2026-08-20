@@ -48,9 +48,10 @@ Use `--env` for services with genuinely secret-backed environment files such as 
 
 Prefer image-baked defaults over Compose environment variables. Use `--env` only for secret-backed env files, and use Compose `environment:` only when the value is deployment-specific rather than a stable application default. Be explicit about trust boundaries: while many services share the broad `/secrets` volume, secret-mounted credentials do not strongly isolate one compromised secret-mounted service from another. Keep secrets out of images and Git, but do not overstate isolation that the current shared secret-fetcher model does not provide.
 
-For notifications, the operator-owned `/secrets/notification-service`
-directory contains `slack-bot-token` for `braingeneersbot` in `ucsc-gi` and
-`dkim-private-key` for the outbound Postfix relay. Only the notification
+For notifications, the operator-owned Slack token is at
+`/secrets/slack-token-braingeneersbot-gi/slack-token-braingeneersbot-gi` and
+belongs to `braingeneersbot` in `ucsc-gi`. The outbound Postfix relay reads
+`/secrets/notification-service/dkim-private-key`. Only the notification
 components read these files. Consumers use internal HTTP or the existing
 service-account JWT and never receive either credential. A missing provider
 secret makes only that channel unavailable; it must not crash the API or expose

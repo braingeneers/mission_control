@@ -1110,6 +1110,7 @@ services:
       VIRTUAL_PORT: "8000"
       LETSENCRYPT_HOST: "notifications.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+      SLACK_BOT_TOKEN_FILE: "/secrets/slack-token-braingeneersbot-gi/slack-token-braingeneersbot-gi"
     healthcheck:
       test:
         [

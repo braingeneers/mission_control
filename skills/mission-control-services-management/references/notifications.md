@@ -176,11 +176,14 @@ durability; do not make it a platform-wide default.
 
 ## Secrets, Postfix, And DNS
 
-The operator-owned Kubernetes Secret `notification-service` contains:
+The operator-owned Kubernetes credentials are:
 
-- `slack-bot-token`: `braingeneersbot` in workspace `ucsc-gi`.
-- `dkim-private-key`: a 2048-bit private key for selector `notifications` and
-  domain `braingeneers.gi.ucsc.edu`.
+- Secret `slack-token-braingeneersbot-gi`, key
+  `slack-token-braingeneersbot-gi`: `braingeneersbot` in workspace `ucsc-gi`.
+  Mission Control reads it from
+  `/secrets/slack-token-braingeneersbot-gi/slack-token-braingeneersbot-gi`.
+- Secret `notification-service`, key `dkim-private-key`: a 2048-bit private key
+  for selector `notifications` and domain `braingeneers.gi.ucsc.edu`.
 
 Kubernetes Secret creation and replacement are operator-owned. The API remains
 healthy without the Slack token and returns `503` only from `/v1/slack`. The
@@ -203,8 +206,9 @@ or hosted relay rather than bypassing policy.
 
 ## Troubleshooting
 
-- Slack `503`: confirm `/secrets/notification-service/slack-bot-token` exists,
-  then recreate only the API after `secret-fetcher` refreshes.
+- Slack `503`: confirm
+  `/secrets/slack-token-braingeneersbot-gi/slack-token-braingeneersbot-gi`
+  exists, then recreate only the API after `secret-fetcher` refreshes.
 - Slack `502`: verify the stable channel ID, bot membership, and Slack app scope.
 - External `302`: follow `access-and-auth.md`, check the embedded JWT `exp`, and
   confirm the bearer header was sent. Never print the token.
