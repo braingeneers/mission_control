@@ -22,7 +22,7 @@ Use this skill for work involving:
 - intentionally public web services with host-specific `service-proxy` overrides
 - headless or direct-port services that should not be routed through the web proxy
 - MCP services that need bearer-token forwarding and backend token validation
-- outbound Slack notifications through the durable HTTP/MQTT notification gateway
+- outbound Slack and email notifications through the shared notification service
 - Kubernetes secret wiring through `secret-fetcher` and `/secrets`
 - published container image workflows, including service `Makefile` build, push, local-test, and shell targets
 - targeted service pull, recreate, log, and status checks for conservative deploys
@@ -39,7 +39,7 @@ make test
 ```
 
 This validates the Compose model, nginx authentication and identity-header
-inheritance, the notification gateway bearer-token route and security gate,
+inheritance, the notification-service routing and mail isolation contracts,
 and the production/development bucket and immutable-image contracts.
 
 ## Manage individual services
@@ -48,7 +48,7 @@ You can also start and stop a single services, this is the normal case so you do
 interfere with other running services, it's perfectly safe to do this while other services are running:
 
 The name `my_service` is defined in the `docker-compose.yaml` file under `services:`
-for example `mqtt`, `notification-gateway`, etc. are services in the `docker-compose.yaml` file
+for example `mqtt`, `notification-service`, etc. are services in the `docker-compose.yaml` file
 
 ```bash
 # Restart a service (cleaner than using docker compose restart)
@@ -175,74 +175,53 @@ docker compose up -d --force-recreate sql-db
 docker compose logs -f sql-db
 ```
 
-## Notification gateway
+## Notification service
 
-`notification-gateway` is the shared outbound Slack boundary for services,
-workflows, and devices. It accepts one versioned, idempotent notification
-contract, stores accepted requests in the shared PostgreSQL service, retries
-transient Slack failures, and exposes delivery state. Callers never receive the
-Slack bot token. The first release is outbound-only; Slack-to-MQTT mirroring and
-Slack commands remain out of scope.
+`notification-service` is the shared outbound Slack and email boundary for new
+integrations. Compose peers call `http://notification-service:8000` directly.
+External callers use `https://notifications.braingeneers.gi.ucsc.edu` through
+the normal authenticated proxy, which accepts existing service-account JWTs and
+signed-in browser sessions. The application does not implement another bearer
+token scheme and does not use PostgreSQL or MQTT.
 
-The public machine endpoint is
-`https://notifications.braingeneers.gi.ucsc.edu`, where the gateway validates a
-producer-specific bearer token. The proxy bypasses browser authentication,
-strips identity-looking headers, preserves `Authorization`, and caps request
-bodies at 64 KiB. Compose does not publish port 8000 directly.
+Slack delivery is synchronous through `POST /v1/slack`. Email is accepted with
+`POST /v1/email` into the persisted outbound Postfix queue. The email endpoint
+supports plain text, an optional HTML alternative, and bounded uploads; all mail
+uses `notifications@braingeneers.gi.ucsc.edu`. See the service README and
+[`skills/mission-control-services-management/references/notifications.md`](skills/mission-control-services-management/references/notifications.md)
+for the complete contracts and examples.
 
-The operator-owned Kubernetes Secret named `notification-gateway` must provide:
+The operator-owned Kubernetes Secret named `notification-service` provides:
 
 - `slack-bot-token`: the `braingeneersbot` token installed in the `ucsc-gi`
   Slack workspace.
-- `expected-team-id` and `expected-bot-id`: values verified with Slack
-  `auth.test`; readiness fails if either is absent or mismatched.
-- `producers.json`: each producer's independent HTTP token and explicit Slack
-  channel-ID allowlist.
-- `mqtt-username` and `mqtt-password`: reserved for the gateway broker identity
-  after the MQTT security gate is complete.
+- `dkim-private-key`: the private key for selector `notifications` and domain
+  `braingeneers.gi.ucsc.edu`.
 
-Producer-specific token files are added only when that producer deliberately
-adopts the gateway. Workflows notification dispatch is currently disabled and
-does not require a `workflows-http-token`.
+The Slack endpoint alone returns `503` while its token is absent. The mail relay
+waits without sending unsigned mail while its DKIM key is absent; the API and
+Slack channel remain independently healthy. Secret creation and replacement
+are operator-owned, and secret values must not enter this checkout or logs.
 
-Do not reuse the legacy Slack bridge token. Before first deployment, an
-operator should verify that the new token reports workspace `ucsc-gi`, bot
-`braingeneersbot`, and the stable channel ID for `#braingeneers-test`, then add
-that ID to the intended producer allowlist. The app needs `chat:write` and must
-be invited to the test channel unless operators intentionally grant
-`chat:write.public`. Secret creation and replacement are
-operator-owned; no secret values belong in this checkout, Compose, logs, or
-shell history.
+Before email deployment, verify outbound TCP 25 from the server and publish
+aligned SPF, DKIM, and DMARC DNS records. The host already has matching A and
+PTR records. No inbound SMTP port, inbox, or MX record is required; delayed
+bounce processing is out of scope.
 
-Provision the database schema once on `braingeneers.gi.ucsc.edu` before the
-gateway starts:
+After the images, DNS, and operator-owned secrets are ready, deploy only the
+notification components and reload the proxy configuration:
 
 ```bash
-docker compose exec sql-db psql -U services -d services \
-  -c 'CREATE SCHEMA IF NOT EXISTS notification_gateway AUTHORIZATION services;'
-docker compose exec sql-db psql -U services -d services \
-  -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'notification_gateway';"
-```
-
-The image refuses to migrate unless `current_schema()` is exactly
-`notification_gateway`. After the schema and operator-owned secret are ready,
-deploy only the new path:
-
-```bash
-docker compose pull notification-gateway
-docker compose up -d --force-recreate notification-gateway
+docker compose pull notification-mail-relay notification-service
+docker compose up -d --force-recreate notification-mail-relay notification-service
 docker compose up -d --force-recreate service-proxy
-docker compose ps notification-gateway service-proxy
-docker compose logs --tail=200 notification-gateway service-proxy
+docker compose ps notification-mail-relay notification-service service-proxy
+docker compose logs --tail=200 notification-mail-relay notification-service service-proxy
 ```
 
-Production MQTT intake remains disabled while the current broker permits broad
-topic access. Complete and verify
-[`mqtt/notification-gateway-security.md`](mqtt/notification-gateway-security.md)
-before enabling it. The legacy `slack-bridge` remains deployed only for an
-observation window; migrate producers to the new versioned contract, compare
-delivery results for 30 days, and remove the legacy service in a separate
-operator-approved change after no publishers or inbound consumers remain.
+The existing MQTT↔Slack `slack-bridge` remains a separate integration for its
+current publishers and inbound consumers. It has no scheduled retirement and is
+not the default interface for new direct notification callers.
 
 ## Workflows web service
 
@@ -290,12 +269,9 @@ definitions remain commented in Compose for reference and are not deployed.
 MQTT is an optional ingress path, so Workflows has no Compose startup dependency
 on the broker; broker availability must not block the web app or API.
 
-Workflows contains dormant support for terminal Slack events, but production
-notification dispatch is currently disabled. Workflows has no Compose
-dependency on `notification-gateway` and starts independently of it. If a
-future rollout deliberately activates this capability, the backend will use
-its database outbox and a producer-specific token; notification availability
-must never affect workflow execution or startup.
+Workflows does not currently integrate with `notification-service` and has no
+Compose dependency on it. Add that integration only when a concrete Workflows
+notification use case is deliberately adopted.
 
 The backend also owns the durable schedule runner. Operators can create,
 preview, pause, resume, update, and delete schedules at `/schedules`; weekly,

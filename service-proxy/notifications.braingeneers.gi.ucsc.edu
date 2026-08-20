@@ -1,25 +1,11 @@
-# The notification gateway is a machine API. It authenticates each producer's
-# bearer token itself and must not enter the browser-oriented oauth2-proxy flow.
-auth_request off;
-
-# Identity-looking headers are untrusted on this route; remove them explicitly.
-proxy_set_header X-User "";
-proxy_set_header X-Email "";
-proxy_set_header X-Groups "";
-proxy_set_header X-Name "";
-proxy_set_header X-Given-Name "";
-proxy_set_header X-Family-Name "";
-proxy_set_header X-Preferred-Username "";
-proxy_set_header X-Subject "";
-
-# Preserve producer bearer authentication end to end.
-proxy_set_header Authorization $http_authorization;
+# Keep the normal oauth2-proxy/session-or-service-account-JWT authentication,
+# trusted identity headers, and downstream Authorization stripping.
+include /etc/nginx/vhost.d/default;
 
 access_log /var/log/nginx/notifications.access.log vhost;
 error_log /var/log/nginx/notifications.error.log info;
-proxy_http_version 1.1;
-client_max_body_size 64k;
-client_body_buffer_size 64k;
+client_max_body_size 12m;
+client_body_buffer_size 128k;
 client_body_timeout 30s;
-proxy_read_timeout 30s;
-proxy_send_timeout 30s;
+proxy_read_timeout 45s;
+proxy_send_timeout 45s;

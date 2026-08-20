@@ -1,6 +1,6 @@
 ---
 name: mission-control-services-management
-description: Build, deploy, update, or troubleshoot Braingeneers lab services managed by mission_control on braingeneers.gi.ucsc.edu. Use when Codex is helping create a new Docker Compose service, choose between proxied web, public web, bearer-authenticated machine API, headless port-published, or MCP service patterns, submit durable Slack notifications through notification-gateway, connect services to NRP-hosted open-weight LLMs, connect a client to the shared sql-db PostgreSQL service, configure service-proxy overrides, handle Braingeneers Kubernetes secrets and secret-fetcher, choose NRP kubeconfig authentication, package images for Docker Hub or another registry, add Makefile build/push/local-test workflows, or operate existing services with docker compose.
+description: Build, deploy, update, or troubleshoot Braingeneers lab services managed by mission_control on braingeneers.gi.ucsc.edu. Use when Codex is helping create a Docker Compose service, choose a proxy/auth pattern, submit Slack or email through notification-service, use hosted LLMs or shared PostgreSQL, configure secrets and service-proxy, package images, or operate services with docker compose.
 ---
 
 # Mission Control Services Management
@@ -24,7 +24,7 @@ Use this skill for Braingeneers services managed by `mission_control` on `braing
 8. Use shared local volumes for persistent service state. `local` is restart-persistent disposable state; `replicated` is backed-up static state. Each service owns a service-named subdirectory under the volume root.
 9. Keep service topology manageable. Package tightly coupled helper behavior inside the owning service image; add sidecar services only when they are independently operated, scaled, or reused.
 10. When a service needs PostgreSQL, prefer the shared internal `sql-db` service. Give each client its own schema; do not add another production Postgres container by default.
-11. When a service, workflow, or device needs to notify Slack, use `notification-gateway`; do not distribute Slack tokens or add another Slack SDK integration by default.
+11. When a concrete service, workflow, or device use case needs outbound Slack or email, use `notification-service`; do not distribute the Slack token or DKIM key to callers, and do not add speculative consumer wiring.
 12. Treat Compose `depends_on` as a real startup prerequisite, not integration documentation. Optional consumers should start in a degraded state and reconnect or retry independently; add a dependency only when the current runtime contract genuinely cannot start without it.
 
 ## Production Server Boundary
@@ -45,7 +45,7 @@ Load only the reference files needed for the current task:
 - `references/hosted-llms.md`: NRP-hosted LLM API access, model selection, secret-file wiring, reliability, and service operations.
 - `references/sql-db.md`: shared PostgreSQL client contract, schema provisioning, connection wiring, migrations, backups, and troubleshooting.
 - `references/operations.md`: deployment, update, verification, troubleshooting, and escalation.
-- `references/notifications.md`: notification-gateway request contract, HTTP/MQTT transport choice, producer policy, Slack identity preflight, Workflows integration, and rollout.
+- `references/notifications.md`: notification-service Slack/email contracts, internal and JWT-authenticated access, Postfix semantics, secrets, DNS, and troubleshooting.
 
 ## Workflow
 
@@ -76,10 +76,10 @@ database configuration from another client.
 
 For services that call the NRP-hosted LLM API, also read `references/hosted-llms.md` before designing application behavior or Compose secret wiring. Treat hosted LLM access as a cross-cutting capability after selecting the normal private-web, public-web, headless, or MCP branch.
 
-For services, workflows, or devices that send Slack messages, also read
-`references/notifications.md`, the notification gateway repository README, and
-the wiki notification-gateway page. Treat notifications as a shared capability
-after selecting the caller's normal service branch.
+For services, workflows, or devices that send Slack messages or email, also
+read `references/notifications.md`, the notification-service repository README,
+and the wiki notification-service page. Treat notifications as a shared
+capability after selecting the caller's normal service branch.
 
 ### 2. Choose The Service Branch
 
@@ -138,11 +138,11 @@ When a service needs secrets:
 
 For the NRP-hosted LLM token, follow `references/hosted-llms.md`. Prefer an application-owned API-key file setting pointed at the exact fetched key. The key is a raw token file, not an env file for `--env`.
 
-For outbound Slack, follow `references/notifications.md`. Mount the shared
-secret volume, but give callers only their own notification-gateway producer
-credential. Only the gateway reads the Slack bot token. Verify the token's
-expected Slack team and bot IDs without printing it, and never reuse the legacy
-Slack bridge credential as a fallback.
+For outbound Slack or email, follow `references/notifications.md`. Consumers do
+not mount notification credentials: internal callers use the trusted Compose
+network, and external callers use the existing service-account JWT at the
+standard proxy. Only `notification-service` reads the Slack token and only its
+mail relay reads the DKIM key.
 
 For unattended `braingeneerspy` services, prefer the daily refreshed `/secrets/braingeneers-jwt-service-account-token/config.json` mounted to the expected `braingeneers/iot/service_account/config.json` location. Do not recommend stale raw `service-accounts/config.json` patterns unless the local code specifically requires it and the risk is acknowledged.
 

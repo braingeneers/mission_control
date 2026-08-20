@@ -1097,11 +1097,11 @@ services:
       - local:/local
       - replicated:/replicated
 
-  # Durable outbound notification gateway. The bearer-authenticated HTTP API
-  # and authenticated MQTT adapter share one versioned request contract.
-  notification-gateway:
-    image: braingeneers/notification-gateway:0.1.0
-    container_name: notification-gateway
+  # Shared stateless Slack and email API. Internal callers use Docker service
+  # discovery; external callers use the standard JWT-capable authenticated proxy.
+  notification-service:
+    image: braingeneers/notification-service:1.0.0
+    container_name: notification-service
     restart: unless-stopped
     expose:
       - "8000"
@@ -1110,8 +1110,6 @@ services:
       VIRTUAL_PORT: "8000"
       LETSENCRYPT_HOST: "notifications.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
-      # Enable only after the broker enforces producer-specific topic ACLs.
-      MQTT_ENABLED: "false"
     healthcheck:
       test:
         [
@@ -1125,18 +1123,36 @@ services:
       retries: 12
     networks:
       - braingeneers-net
+      - notification-mail-net
     volumes:
       - secrets:/secrets
     depends_on:
       secret-fetcher:
         condition: service_healthy
-      sql-db:
+      notification-mail-relay:
+        condition: service_started
+
+  # Outbound-only Postfix/OpenDKIM component. It has internet egress for direct
+  # recipient MX delivery but is reachable only from notification-service.
+  notification-mail-relay:
+    image: braingeneers/notification-mail-relay:1.0.0
+    container_name: notification-mail-relay
+    restart: unless-stopped
+    environment:
+      POSTFIX_QUEUE_DIR: /local/notification-service/postfix
+    networks:
+      - notification-mail-net
+    volumes:
+      - secrets:/secrets:ro
+      - local:/local
+    depends_on:
+      secret-fetcher:
         condition: service_healthy
 
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20260819-cd3db750ae24
+    image: braingeneers/workflows-backend:20260819-c41c316196ac
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1178,7 +1194,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20260819-cd3db750ae24
+    image: braingeneers/workflows-frontend:20260819-c41c316196ac
     container_name: workflows
     restart: unless-stopped
     expose:
@@ -1197,6 +1213,9 @@ services:
 # The braingeneers-net network is used to connect the containers together.
 networks:
   braingeneers-net:
+    driver: bridge
+  # Membership isolates SMTP while retaining outbound internet access for MX delivery.
+  notification-mail-net:
     driver: bridge
 
 # Volumes are persisted on the host machine. New services should use shared

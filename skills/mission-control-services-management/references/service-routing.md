@@ -43,6 +43,15 @@ The current protected Workflows production route has been inspected end to end. 
 
 This is authoritative only on the protected private-web route, where nginx overwrites the header from the authentication subrequest. Prod-local and direct local requests do not necessarily have proxy identity headers, so Workflows falls back to the friendly initiator `User`. Do not log identity headers now that the contract has been validated. This finding is specific to the current Workflows deployment; validate the populated fields separately before another service depends on them.
 
+### Standard-Auth Machine Clients
+
+An HTTP API does not need the `machine-api` branch merely because software calls
+it. When the existing broad Braingeneers service-account JWT is the intended
+credential, use the normal authenticated route: `oauth2-proxy` validates the
+JWT and nginx strips it before forwarding. `notification-service` follows this
+pattern. Its host-specific vhost includes `service-proxy/default` only to retain
+standard authentication while adding a 12 MiB body limit.
+
 ## Public Web
 
 Use only when the service is intentionally public.
@@ -122,9 +131,8 @@ backend owns bearer-token validation. Required behavior:
 - Bound body size and timeouts to the API contract.
 - Require backend authentication and authorization on every non-health route.
 
-The notification gateway is the reference implementation:
-`service-proxy/notifications.braingeneers.gi.ucsc.edu`. Its body cap is 64 KiB
-and producer credentials authorize explicit Slack channel IDs.
+Do not copy the notification-service route for this branch: it intentionally
+uses standard proxy JWT validation and has no backend bearer-token validator.
 
 ## MCP Services
 

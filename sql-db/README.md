@@ -34,7 +34,6 @@ Current application mappings are:
 | Database client | Application | Owned schema |
 | --- | --- | --- |
 | `workflows-backend` | Workflows | `workflows` |
-| `notification-gateway` | Notification Gateway | `notification_gateway` |
 
 ## Default schema guardrail
 
@@ -117,14 +116,6 @@ startup or Alembic migrations. Its connection URL is:
 
 ```text
 postgresql+psycopg://services:services@sql-db:5432/services?options=-csearch_path%3Dworkflows
-```
-
-The Notification Gateway image applies the same fail-closed check for its
-`notification_gateway` schema before Alembic can create or update tables. Its
-production URL is:
-
-```text
-postgresql+psycopg://services:services@sql-db:5432/services?options=-csearch_path%3Dnotification_gateway
 ```
 
 The Workflows repository owns the guarded one-time migration of its former

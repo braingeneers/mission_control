@@ -1,3 +1,5 @@
+2026-08-20 05:30 | workflows service | pin the release removing the unadopted notification integration while retaining the progress-tab fix
+2026-08-20 05:00 | notification service | replace the speculative durable Slack gateway with a stateless Slack/email API and isolated Postfix relay
 2026-08-19 19:10 | workflows service | remove the optional MQTT broker startup dependency so the web and API service remain independently startable
 2026-08-19 19:00 | notification gateway | keep Workflows and other optional consumers independently startable; leave Workflows dispatch disabled until adoption
 2026-08-19 18:20 | notification gateway | add durable bearer-authenticated Slack delivery service, Workflows outbox wiring, and fail-closed MQTT security gate

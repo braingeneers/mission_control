@@ -25,10 +25,10 @@
 - Run `make test` after changing Compose or proxy configuration. It validates Compose, authenticated
   uploader proxy inheritance, production/acceptance uploader bucket and image contracts, and the
   stale-container deployment verifier.
-- Keep `notification-gateway` as the only new outbound Slack boundary. Callers use stable channel IDs and producer-specific credentials; they never receive the Slack bot token. Keep its public machine route out of browser auth, strip identity-looking headers, preserve `Authorization`, and retain the 64 KiB body limit.
-- Keep notification-gateway MQTT intake disabled until the broker is pinned, authenticated, deny-by-default, and verified with producer-specific request/result topic ACLs. The current allow-all broker cannot authenticate producer identity from a topic name.
-- Treat `/secrets/notification-gateway` as operator-owned. Verify the Slack token against the expected `ucsc-gi` team and `braingeneersbot` bot IDs without printing it; never fall back to the legacy Slack bridge credential.
-- Keep Workflows notification dispatch disabled until it is deliberately adopted. Do not make Workflows—or any other optional consumer—depend on `notification-gateway` for Compose startup; add dependencies only for genuine hard runtime requirements. Notification failures must never affect consumer startup or primary outcomes.
+- Keep `notification-service` as the shared boundary for new outbound Slack and email integrations. Compose peers call it directly; external clients use the standard authenticated proxy and existing service-account JWTs. The application has no producer tokens, database, or MQTT adapter.
+- Treat `/secrets/notification-service` as operator-owned. Only the notification components read the `ucsc-gi` `braingeneersbot` token and DKIM private key; consumers never receive either credential.
+- Keep `notification-mail-relay` outbound-only, unexposed, isolated on `notification-mail-net`, and fixed to the aligned `notifications@braingeneers.gi.ucsc.edu` sender. Email durability belongs to the persisted Postfix queue.
+- Do not add notification-service wiring or Compose dependencies to Workflows—or any other consumer—until that consumer deliberately adopts notifications. Notification failure must not affect unrelated startup or primary outcomes.
 - Keep Workflows independently startable when the optional MQTT launch broker is unavailable. More generally, use Compose `depends_on` only for genuine startup prerequisites, not to document optional integrations; add dependencies later when the runtime contract actually requires them.
 - Leave `uploader` without `container_name` so Compose manages production naming. Set
   `uploader-dev` to `container_name: uploader-dev` so its operator log prefix matches the service
