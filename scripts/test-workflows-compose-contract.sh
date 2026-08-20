@@ -50,5 +50,9 @@ assert_equal \
     "$(service_value workflows-backend '.volumes | map(select(.source == "replicated")) | length')" \
     "0" \
     "Workflows replicated volume mount count"
+assert_equal \
+    "$(service_value workflows-backend '.depends_on["mqtt"] // empty')" \
+    "" \
+    "Workflows optional MQTT startup dependency"
 
 echo "Workflows Compose contracts are valid."

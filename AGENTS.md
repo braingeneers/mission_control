@@ -29,6 +29,7 @@
 - Keep notification-gateway MQTT intake disabled until the broker is pinned, authenticated, deny-by-default, and verified with producer-specific request/result topic ACLs. The current allow-all broker cannot authenticate producer identity from a topic name.
 - Treat `/secrets/notification-gateway` as operator-owned. Verify the Slack token against the expected `ucsc-gi` team and `braingeneersbot` bot IDs without printing it; never fall back to the legacy Slack bridge credential.
 - Keep Workflows notification dispatch disabled until it is deliberately adopted. Do not make Workflows—or any other optional consumer—depend on `notification-gateway` for Compose startup; add dependencies only for genuine hard runtime requirements. Notification failures must never affect consumer startup or primary outcomes.
+- Keep Workflows independently startable when the optional MQTT launch broker is unavailable. More generally, use Compose `depends_on` only for genuine startup prerequisites, not to document optional integrations; add dependencies later when the runtime contract actually requires them.
 - Leave `uploader` without `container_name` so Compose manages production naming. Set
   `uploader-dev` to `container_name: uploader-dev` so its operator log prefix matches the service
   name; keep contract tests for both choices.

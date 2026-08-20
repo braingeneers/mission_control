@@ -25,6 +25,7 @@ Use this skill for Braingeneers services managed by `mission_control` on `braing
 9. Keep service topology manageable. Package tightly coupled helper behavior inside the owning service image; add sidecar services only when they are independently operated, scaled, or reused.
 10. When a service needs PostgreSQL, prefer the shared internal `sql-db` service. Give each client its own schema; do not add another production Postgres container by default.
 11. When a service, workflow, or device needs to notify Slack, use `notification-gateway`; do not distribute Slack tokens or add another Slack SDK integration by default.
+12. Treat Compose `depends_on` as a real startup prerequisite, not integration documentation. Optional consumers should start in a degraded state and reconnect or retry independently; add a dependency only when the current runtime contract genuinely cannot start without it.
 
 ## Production Server Boundary
 

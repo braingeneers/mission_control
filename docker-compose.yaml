@@ -1176,8 +1176,6 @@ services:
         condition: service_healthy
       sql-db:
         condition: service_healthy
-      mqtt:
-        condition: service_started
 
   workflows:
     image: braingeneers/workflows-frontend:20260819-cd3db750ae24

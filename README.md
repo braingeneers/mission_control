@@ -287,6 +287,8 @@ Kubernetes launch path used by the web API. The retired standalone
 `nextflow-launcher` service and arbitrary-Git-URL protocol are not deployed.
 The retired `mqtt-job-listener`, `job-scanner`, and `maxwell-dashboard`
 definitions remain commented in Compose for reference and are not deployed.
+MQTT is an optional ingress path, so Workflows has no Compose startup dependency
+on the broker; broker availability must not block the web app or API.
 
 Workflows contains dormant support for terminal Slack events, but production
 notification dispatch is currently disabled. Workflows has no Compose
