@@ -198,10 +198,12 @@ The operator-owned Kubernetes Secret named `notification-gateway` must provide:
   `auth.test`; readiness fails if either is absent or mismatched.
 - `producers.json`: each producer's independent HTTP token and explicit Slack
   channel-ID allowlist.
-- `workflows-http-token`: the Workflows producer token, matching the `workflows`
-  entry in `producers.json`.
 - `mqtt-username` and `mqtt-password`: reserved for the gateway broker identity
   after the MQTT security gate is complete.
+
+Producer-specific token files are added only when that producer deliberately
+adopts the gateway. Workflows notification dispatch is currently disabled and
+does not require a `workflows-http-token`.
 
 Do not reuse the legacy Slack bridge token. Before first deployment, an
 operator should verify that the new token reports workspace `ucsc-gi`, bot
@@ -227,11 +229,11 @@ The image refuses to migrate unless `current_schema()` is exactly
 deploy only the new path:
 
 ```bash
-docker compose pull notification-gateway workflows-backend workflows
-docker compose up -d --force-recreate notification-gateway workflows-backend workflows
+docker compose pull notification-gateway
+docker compose up -d --force-recreate notification-gateway
 docker compose up -d --force-recreate service-proxy
-docker compose ps notification-gateway workflows-backend workflows service-proxy
-docker compose logs --tail=200 notification-gateway workflows-backend service-proxy
+docker compose ps notification-gateway service-proxy
+docker compose logs --tail=200 notification-gateway service-proxy
 ```
 
 Production MQTT intake remains disabled while the current broker permits broad
@@ -286,14 +288,12 @@ Kubernetes launch path used by the web API. The retired standalone
 The retired `mqtt-job-listener`, `job-scanner`, and `maxwell-dashboard`
 definitions remain commented in Compose for reference and are not deployed.
 
-Workflow definitions may opt into terminal Slack events using stable channel
-IDs. The backend persists deterministic requests in its own database outbox and
-submits them to the notification gateway over the internal HTTP endpoint. A
-gateway or Slack failure never changes the workflow run outcome, and first
-activation does not replay historical terminal runs. Workflows reads only its
-producer token from
-`/secrets/notification-gateway/workflows-http-token`; it never reads the Slack
-bot token.
+Workflows contains dormant support for terminal Slack events, but production
+notification dispatch is currently disabled. Workflows has no Compose
+dependency on `notification-gateway` and starts independently of it. If a
+future rollout deliberately activates this capability, the backend will use
+its database outbox and a producer-specific token; notification availability
+must never affect workflow execution or startup.
 
 The backend also owns the durable schedule runner. Operators can create,
 preview, pause, resume, update, and delete schedules at `/schedules`; weekly,

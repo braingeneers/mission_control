@@ -45,6 +45,12 @@ perform browser login. Treat `202 Accepted` as durable gateway ownership, not
 as proof that Slack delivery is already complete. Query the matching GET route
 when the caller needs final delivery state.
 
+Do not add a Compose `depends_on` edge merely because a service can submit
+notifications. Optional consumers must start and perform their primary work
+when the gateway is unavailable; use an outbox or retry path where delivery
+must survive an outage. Add a startup dependency only for a deliberately
+adopted, genuine hard runtime requirement.
+
 Use MQTT only for devices or broker-native services that materially benefit
 from it. Requests use QoS 1, non-retained messages on
 `notifications/v1/requests/<producer-id>`; state changes use QoS 1,
@@ -69,8 +75,9 @@ only `/secrets/notification-gateway`:
 - `producers.json`
 - `mqtt-username` and `mqtt-password` after broker hardening
 
-Callers read only their dedicated producer token file. Workflows uses
-`workflows-http-token`. Kubernetes Secret mutation is operator-owned.
+Callers read only their dedicated producer token file. A future Workflows
+activation would use `workflows-http-token`; it is not currently required.
+Kubernetes Secret mutation is operator-owned.
 
 Before launch, verify the new token with Slack `auth.test` and compare its team
 and bot IDs to the expected files without logging either token or response
@@ -83,7 +90,10 @@ to each allowlisted channel unless operators intentionally grant
 
 ## Workflows
 
-Workflow catalog notifications are opt-in:
+Production Workflows notification dispatch is currently disabled, and
+Workflows has no Compose dependency on the gateway. The following catalog
+capability remains dormant until a deliberate rollout provisions its producer
+policy and token and explicitly enables dispatch:
 
 ```yaml
 notifications:

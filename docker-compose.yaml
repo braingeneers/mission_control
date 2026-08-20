@@ -1132,8 +1132,6 @@ services:
         condition: service_healthy
       sql-db:
         condition: service_healthy
-      mqtt:
-        condition: service_started
 
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
@@ -1163,7 +1161,6 @@ services:
       MQTT_TOPICS: "workflows/launch"
       MQTT_QOS: "1"
       COLLECTED_RUNS_ROOT: "/local/workflows/runs"
-      NOTIFICATION_DISPATCH_ENABLED: "true"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/readyz"]
       interval: 10s
@@ -1181,8 +1178,6 @@ services:
         condition: service_healthy
       mqtt:
         condition: service_started
-      notification-gateway:
-        condition: service_healthy
 
   workflows:
     image: braingeneers/workflows-frontend:20260819-cd3db750ae24

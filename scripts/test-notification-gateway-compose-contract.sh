@@ -29,10 +29,12 @@ gateway_image="$(service_value notification-gateway '.image')"
     || fail "notification-gateway must wait for sql-db health"
 [[ "$(service_value notification-gateway '.environment.MQTT_ENABLED')" == "false" ]] \
     || fail "notification-gateway MQTT must stay disabled until producer topic ACLs are enforced"
-[[ "$(service_value workflows-backend '.environment.NOTIFICATION_DISPATCH_ENABLED')" == "true" ]] \
-    || fail "Workflows notification dispatch must be explicitly enabled"
-[[ "$(service_value workflows-backend '.depends_on["notification-gateway"].condition')" == "service_healthy" ]] \
-    || fail "Workflows must wait for notification-gateway readiness"
+[[ "$(service_value notification-gateway '.depends_on["mqtt"] // empty')" == "" ]] \
+    || fail "notification-gateway must not depend on MQTT while its MQTT adapter is disabled"
+[[ "$(service_value workflows-backend '.environment.NOTIFICATION_DISPATCH_ENABLED // empty')" == "" ]] \
+    || fail "Workflows notification dispatch must remain disabled until explicitly adopted"
+[[ "$(service_value workflows-backend '.depends_on["notification-gateway"] // empty')" == "" ]] \
+    || fail "Workflows must start independently of the optional notification gateway"
 
 grep -Eq '^[[:space:]]*auth_request[[:space:]]+off;' "${proxy_file}" \
     || fail "notification gateway proxy must bypass browser authentication"
