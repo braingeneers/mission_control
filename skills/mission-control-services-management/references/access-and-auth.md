@@ -59,11 +59,26 @@ separate backend-validation contract and must not assume this pattern.
 
 ### Local HTTPS API Diagnosis
 
-Discover the token file through the active Python environment rather than assuming a
-fixed checkout, Conda environment, or site-packages path:
+Prefer the operator-managed local token when it exists:
 
 ```bash
-token_file="$(python - <<'PY'
+operator_token_file="${HOME}/.ssh/braingeneers_jwt_token.json"
+if [ -s "${operator_token_file}" ]; then
+    token_file="${operator_token_file}"
+fi
+```
+
+This JSON file contains `access_token` and `expires_at`. Require owner-only file
+permissions, never print its contents, and validate the JWT's embedded `exp` below
+before every use.
+
+If the operator-managed file is absent, discover the token through the active Python
+environment rather than assuming a fixed checkout, Conda environment, or
+site-packages path:
+
+```bash
+if [ -z "${token_file:-}" ]; then
+    token_file="$(python - <<'PY'
 from pathlib import Path
 import braingeneers.iot
 
@@ -74,6 +89,7 @@ candidates = [
 print(next((path for path in candidates if path.is_file()), candidates[0]))
 PY
 )"
+fi
 ```
 
 Run these commands from a Python environment that has `braingeneerspy` installed.
@@ -115,9 +131,13 @@ import base64
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import stat
 import sys
 
-token_data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+token_path = Path(sys.argv[1])
+if stat.S_IMODE(token_path.stat().st_mode) & 0o077:
+    raise SystemExit("JWT file must have owner-only permissions.")
+token_data = json.loads(token_path.read_text(encoding="utf-8"))
 token = token_data["access_token"]
 payload_part = token.split(".")[1]
 payload_part += "=" * (-len(payload_part) % 4)

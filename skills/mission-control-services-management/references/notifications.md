@@ -63,7 +63,7 @@ message.
 Internal curl:
 
 ```bash
-curl --fail-with-body \
+curl --fail \
   -H 'Content-Type: application/json' \
   -d '{"channel_id":"C0123456789","text":"Analysis completed"}' \
   http://notification-service:8000/v1/slack
@@ -86,7 +86,7 @@ For an external call, first load `bearer_token` using the dynamic workflow in
 `access-and-auth.md`, then use the same payload:
 
 ```bash
-curl --fail-with-body --location --max-redirs 0 \
+curl --fail --location --max-redirs 0 \
   -H "Authorization: Bearer ${bearer_token}" \
   -H 'Content-Type: application/json' \
   -d '{"channel_id":"C0123456789","text":"Analysis completed"}' \
@@ -114,7 +114,7 @@ attachments:
 Internal curl:
 
 ```bash
-curl --fail-with-body \
+curl --fail \
   -F to=researcher@ucsc.edu \
   -F to=collaborator@example.org \
   -F subject='Analysis completed' \

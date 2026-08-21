@@ -11,10 +11,12 @@
 - Services such as `mqtt-job-listener`, `maxwell-dashboard`, and other Docker Compose managed lab services are intended to run on `braingeneers.gi.ucsc.edu`.
 - When service restart, pull, recreate, or deployment operations are needed, instruct the user to handle them on the `braingeneers` server instead of running them from a local workstation.
 - Diagnose protected Braingeneers web-service APIs from the local workstation with the standard
-  service-account JWT and the dynamic token-discovery workflow in
-  `skills/mission-control-services-management/references/access-and-auth.md`; never hard-code a
-  workstation-specific path or print the token value, and treat the embedded JWT `exp` as
-  authoritative.
+  service-account JWT. Prefer the operator-managed
+  `~/.ssh/braingeneers_jwt_token.json` when present; it contains `access_token` and
+  `expires_at`, must have owner-only permissions, and must never be printed. Otherwise use the
+  dynamic token-discovery workflow in
+  `skills/mission-control-services-management/references/access-and-auth.md`. In either case,
+  treat the embedded JWT `exp` as authoritative.
 - Keep uploader `proxy_set_header` directives at vhost scope. Defining any in a
   generated `_location` prevents inheritance of the trusted identity-header
   overrides and downstream `Authorization` stripping from `service-proxy/default`.
