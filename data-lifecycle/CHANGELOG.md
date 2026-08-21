@@ -11,3 +11,4 @@
 2026-08-18 17:20 | backup service | move the replicated-volume scheduler and sync implementation to mission_control
 2026-08-20 | lifecycle | adopt zero-byte retention markers and monthly advisory report generator
 2026-08-21 | v36 | move active workflow runtime and policy into mission_control/data-lifecycle and retire the web image
+2026-08-21 | v38 | improve retention PDF layout and publish compact date-grouped Slack report text

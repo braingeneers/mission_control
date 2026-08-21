@@ -7,13 +7,13 @@ aws_s3_glacier:
   bucket: 'braingeneers-backups'
   inventory_file_path: 's3://braingeneers-backups-inventory/data/'
 
-# Data archival and advisory retention-policy parameters
+# Data archival and retention-policy parameters
 deletion:
-  # Age (in days) when current Ceph/S3 data becomes advisory-policy eligible
+  # Age (in days) when current Ceph/S3 data is scheduled for deletion
   s3_expire_days: 2160
-  # Age (in days) when Glacier-only data becomes advisory-policy eligible
+  # Age (in days) when Glacier-only data is scheduled for deletion
   cold_storage_expire_days: 3650
-  # Forward-looking advisory policy window included in reports
+  # Forward-looking scheduled deletion window included in reports
   notification_days: 90
 
 # Backup parameters

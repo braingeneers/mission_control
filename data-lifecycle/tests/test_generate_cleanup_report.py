@@ -15,6 +15,7 @@ sys.path.insert(0, str(SRC))
 
 from generate_cleanup_report import (  # noqa: E402
     MAX_SLACK_TEXT_CHARS,
+    compact_candidate_names,
     main,
     parse_args,
     render_slack_summary,
@@ -93,6 +94,7 @@ deletion:
 
             report = json.loads((output_dir / "cleanup-report.json").read_text(encoding="utf-8"))
             self.assertFalse(report["deletion_enabled"])
+            self.assertNotIn("advisory", report)
             self.assertEqual(report["candidate_count"], 3)
             atomic = [
                 item for item in report["candidates"] if item["target_type"] == "atomic_dataset"
@@ -108,10 +110,16 @@ deletion:
             slack_summary = (output_dir / "cleanup-report-slack.txt").read_text(
                 encoding="utf-8"
             )
-            self.assertIn("*Monthly data retention policy report*", slack_summary)
-            self.assertIn("Candidate entities: 3 (Ceph/S3: 2; Glacier-only: 1)", slack_summary)
-            self.assertIn("*Earliest policy candidates*", slack_summary)
-            self.assertIn("Full report:", slack_summary)
+            self.assertIn("*Data retention policy report*", slack_summary)
+            self.assertIn("Affected items: 3 (datasets: 1; files: 2; objects: 4)", slack_summary)
+            self.assertIn("*Scheduled deletions*", slack_summary)
+            self.assertIn("`run-a` · 2 objects", slack_summary)
+            self.assertIn("`file.bin`", slack_summary)
+            self.assertIn("`only.bin`", slack_summary)
+            self.assertNotIn("bucket/ephys", slack_summary)
+            self.assertIn("*Full PDF report:*", slack_summary)
+            self.assertEqual(slack_summary.count("https://"), 1)
+            self.assertNotIn("Automatic deletion", slack_summary)
             self.assertLessEqual(len(slack_summary.rstrip("\n")), MAX_SLACK_TEXT_CHARS)
             self.assertFalse((output_dir / "completion-notification.json").exists())
             completion = json.loads(
@@ -119,7 +127,9 @@ deletion:
             )
             self.assertIn("cleanup-report-slack.txt", completion["artifacts"])
             self.assertNotIn("completion-notification.json", completion["artifacts"])
-            self.assertGreater((output_dir / "cleanup-report.html").stat().st_size, 0)
+            html_report = (output_dir / "cleanup-report.html").read_text(encoding="utf-8")
+            self.assertIn("Scheduled deletions", html_report)
+            self.assertNotIn("Automatic deletion", html_report)
             self.assertGreater((output_dir / "cleanup-report.pdf").stat().st_size, 0)
 
     def test_slack_summary_handles_an_empty_report(self):
@@ -133,7 +143,49 @@ deletion:
             )
             summary = path.read_text(encoding="utf-8")
 
-            self.assertIn("Candidate entities: 0 (Ceph/S3: 0; Glacier-only: 0)", summary)
-            self.assertIn("No policy candidates were found", summary)
-            self.assertNotIn("*Earliest policy candidates*", summary)
+            self.assertIn("Affected items: 0 (datasets: 0; files: 0; objects: 0)", summary)
+            self.assertIn("No deletions are scheduled", summary)
+            self.assertNotIn("*Scheduled deletions*", summary)
+            self.assertEqual(summary.count("https://"), 1)
             self.assertLessEqual(len(summary.rstrip("\n")), MAX_SLACK_TEXT_CHARS)
+
+    def test_compact_candidate_names_adds_only_needed_parent_segments(self):
+        candidates = [
+            {"target": "braingeneers/ephys/project-a/shared", "phase": "s3"},
+            {"target": "braingeneers/ephys/project-b/shared", "phase": "s3"},
+            {"target": "braingeneers/ephys/unique", "phase": "s3"},
+        ]
+
+        self.assertEqual(
+            compact_candidate_names(candidates),
+            ["project-a/shared", "project-b/shared", "unique"],
+        )
+
+    def test_slack_summary_uses_limit_for_compact_items_not_item_links(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "cleanup-report-slack.txt"
+            candidates = [
+                {
+                    "phase": "s3",
+                    "target_type": "atomic_dataset",
+                    "target": f"braingeneers/ephys/project-{index:03d}/dataset-{index:03d}",
+                    "object_count": 20 + index,
+                    "policy_eligible_at": f"2026-01-{1 + (index % 28):02d}T00:00:00+00:00",
+                    "data_explorer_url": f"https://data-explorer.example/dataset-{index:03d}",
+                }
+                for index in range(200)
+            ]
+            candidates.sort(key=lambda item: (item["policy_eligible_at"], item["target"]))
+
+            render_slack_summary(
+                path,
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+                candidates,
+                "https://data-explorer.example/?file=cleanup-report.pdf",
+            )
+            summary = path.read_text(encoding="utf-8")
+
+            self.assertLessEqual(len(summary.rstrip("\n")), MAX_SLACK_TEXT_CHARS)
+            self.assertEqual(summary.count("https://"), 1)
+            self.assertNotIn("data-explorer.example/dataset-", summary)
+            self.assertIn("more item(s) in the full PDF", summary)

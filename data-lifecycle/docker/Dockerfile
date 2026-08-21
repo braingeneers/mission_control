@@ -1,7 +1,7 @@
 FROM braingeneers/braingeneers:latest
 
 LABEL org.opencontainers.image.source="https://github.com/braingeneers/mission_control/tree/main/data-lifecycle" \
-      org.opencontainers.image.description="Braingeneers data lifecycle backup and advisory report runtime"
+      org.opencontainers.image.description="Braingeneers data lifecycle backup and retention report runtime"
 
 # apt installs
 USER root

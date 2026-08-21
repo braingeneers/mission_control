@@ -8,8 +8,8 @@ repository.
 
 The former deletion-review website and standalone scheduler are retired.
 Data Explorer now provides the small user-facing storage-protection controls,
-and Workflows owns all backup and advisory-report execution. Automatic user
-data deletion is disabled.
+and Workflows owns all backup and report execution. Report generation remains
+independent from deletion execution.
 
 ## Runtime contract
 
@@ -23,7 +23,7 @@ stable because they are workflow parameters:
 ```
 
 The active policy is [`src/data-lifecycle.yaml`](src/data-lifecycle.yaml). It
-defines backup prefixes, atomic dataset patterns, and advisory retention
+defines backup prefixes, atomic dataset patterns, and scheduled retention
 windows. Repository documentation, defaults, tests, and workflow pins must be
 updated together when this policy or image behavior changes.
 
@@ -60,7 +60,7 @@ production Nextflow workflow launches the stages as separate Kubernetes tasks:
 3. `stage2_generate_nrp_inventory.sh` inventories configured Ceph prefixes with
    parallel `rclone` shards.
 4. `stage3_generate_puts_deletes.sh` compares canonicalized inventories and
-   produces advisory/report and pending-upload artifacts.
+   produces report and pending-upload artifacts.
 5. `stage4_process_puts_deletes.py` uploads missing objects to Glacier with a
    destination `HeadObject` precheck and append-only activity log.
 

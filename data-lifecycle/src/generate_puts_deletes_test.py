@@ -476,9 +476,9 @@ class TestCleanupWindowArtifacts(unittest.TestCase):
             max_groups_per_phase=5,
         )
 
-        self.assertTrue(slack_message.startswith('*Advisory data-retention report*:'))
+        self.assertTrue(slack_message.startswith('*Data-retention report*'))
         self.assertIn('Details: https://data-explorer.braingeneers.gi.ucsc.edu', slack_message)
-        self.assertIn('Files in this report become policy-eligible for review between', slack_message)
+        self.assertIn('Files in this report are scheduled for deletion between', slack_message)
         self.assertIn('Current Ceph/S3 candidates:', slack_message)
         self.assertIn('Glacier-only candidates:', slack_message)
         self.assertIn('NRP/S3 summary: atomic dataset candidates:', slack_message)

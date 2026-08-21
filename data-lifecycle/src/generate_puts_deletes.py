@@ -551,12 +551,12 @@ def build_cleanup_slack_message(cleanup_window_df: pd.DataFrame,
     s3_count = int((cleanup_window_df['CleanupPhase'] == 's3').sum()) if not cleanup_window_df.empty else 0
     glacier_count = int((cleanup_window_df['CleanupPhase'] == 'glacier').sum()) if not cleanup_window_df.empty else 0
     lines = [
-        '*Advisory data-retention report*: automatic deletion is disabled.',
+        '*Data-retention report*',
         'Details: https://data-explorer.braingeneers.gi.ucsc.edu',
-        f'Policy-eligibility window for the next {notification_days} days',
+        f'Scheduled deletion window for the next {notification_days} days',
         f'Generated at {now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")}',
         (
-            f'Files in this report become policy-eligible for review between '
+            f'Files in this report are scheduled for deletion between '
             f'{now_utc.strftime("%Y-%m-%d")} and {window_end.strftime("%Y-%m-%d")} (inclusive).'
         ),
         f'- Current Ceph/S3 candidates: {s3_count} file(s)',
@@ -564,7 +564,7 @@ def build_cleanup_slack_message(cleanup_window_df: pd.DataFrame,
     ]
 
     if total_count == 0:
-        lines.append('No files become policy-eligible in this date range.')
+        lines.append('No files are scheduled for deletion in this date range.')
         return '\n'.join(lines) + '\n'
 
     for phase, label in [('s3', 'NRP/S3'), ('glacier', 'AWS/Glacier')]:

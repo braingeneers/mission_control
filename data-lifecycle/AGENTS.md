@@ -78,8 +78,10 @@ failed across tested client families.
    renewal and `<folder>/NOBACKUP` for reversible exclusion.
 2. The current Ceph marker is authoritative. A Glacier marker is only a backup
    copy and must not extend retention after current-marker removal.
-3. Keep automatic user-data deletion disabled; all cleanup outputs are
-   advisory.
+3. Keep report presentation independent from deletion execution state. Reports
+   describe scheduled deletion dates without an enabled/disabled disclaimer;
+   preserve existing machine-readable deletion fields until an explicit
+   deletion-execution migration changes their contract.
 4. Keep atomic datasets grouped using the latest effective timestamp across
    their scientific objects and current marker.
 
@@ -88,4 +90,3 @@ failed across tested client families.
 Use the local AWS CLI profile `aws-braingeneers-backups` for Braingeneers
 backup inventory buckets. Default AWS credentials may be stale or invalid for
 `s3://braingeneers-backups-inventory/`.
-
