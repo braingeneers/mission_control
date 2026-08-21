@@ -1,3 +1,4 @@
+2026-08-21 12:10 | workflows service | pin the lifecycle v36 catalog release from the new Mission Control-owned runtime
 2026-08-21 12:00 | data lifecycle | move the active workflow image source into Mission Control and retire the legacy web service
 2026-08-20 12:30 | notification service | use the operator-created ucsc-gi braingeneersbot Slack token secret
 2026-08-20 05:30 | workflows service | pin the release removing the unadopted notification integration while retaining the progress-tab fix
