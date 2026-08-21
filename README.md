@@ -39,7 +39,7 @@ make test
 ```
 
 This validates the Compose model, nginx authentication and identity-header
-inheritance, the notification-service routing and mail isolation contracts,
+inheritance, the notification-service routing and outbound-mail contracts,
 and the production/development bucket and immutable-image contracts.
 
 ## Manage individual services
@@ -212,7 +212,10 @@ token scheme and does not use PostgreSQL or MQTT.
 Slack delivery is synchronous through `POST /v1/slack`. Email is accepted with
 `POST /v1/email` into the persisted outbound Postfix queue. The email endpoint
 supports plain text, an optional HTML alternative, and bounded uploads; all mail
-uses `notifications@braingeneers.gi.ucsc.edu`. See the service README and
+uses `notifications@braingeneers.gi.ucsc.edu`. See the
+[service README](https://github.com/braingeneers/notification-service#readme),
+[user documentation](https://github.com/braingeneers/wiki/blob/main/api_data/notification-service.md),
+and
 [`skills/mission-control-services-management/references/notifications.md`](skills/mission-control-services-management/references/notifications.md)
 for the complete contracts and examples.
 
@@ -230,21 +233,34 @@ waits without sending unsigned mail while its DKIM key is absent; the API and
 Slack channel remain independently healthy. Secret creation and replacement
 are operator-owned, and secret values must not enter this checkout or logs.
 
-Before email deployment, verify outbound TCP 25 from the server and publish
-aligned SPF, DKIM, and DMARC DNS records. The host already has matching A and
-PTR records. No inbound SMTP port, inbox, or MX record is required; delayed
-bounce processing is out of scope.
+The deployed outbound identity is:
 
-After the images, DNS, and operator-owned secrets are ready, deploy only the
-notification components and reload the proxy configuration:
+- A and PTR: `braingeneers.gi.ucsc.edu` / `128.114.198.51`
+- SPF: `v=spf1 ip4:128.114.198.51 -all`
+- DKIM selector: `notifications` at
+  `notifications._domainkey.braingeneers.gi.ucsc.edu`
+- DMARC: `v=DMARC1; p=none` at `_dmarc.braingeneers.gi.ucsc.edu`
+
+The server must retain outbound TCP 25 access. No inbound SMTP port, inbox, or
+MX record is required; delayed bounce processing is out of scope. The DKIM
+public record must match the operator-owned private key but is intentionally
+not copied into this repository so key rotation does not leave stale docs.
+
+Deploy or refresh only the notification components:
 
 ```bash
 docker compose pull notification-mail-relay notification-service
 docker compose up -d --force-recreate notification-mail-relay notification-service
-docker compose up -d --force-recreate service-proxy
-docker compose ps notification-mail-relay notification-service service-proxy
-docker compose logs --tail=200 notification-mail-relay notification-service service-proxy
+docker compose ps notification-mail-relay notification-service
+docker compose logs --tail=200 notification-mail-relay notification-service
+docker compose exec notification-mail-relay postqueue -p
 ```
+
+Recreate `service-proxy` only when its configuration changes. After initial
+deployment or credential/DNS rotation, use `#braingeneers-test` and a controlled
+email recipient for acceptance. Slack must return `200 delivered`; email must
+return `202 queued`, arrive, and show `spf=pass`, `dkim=pass`, and `dmarc=pass`
+in `Authentication-Results`.
 
 The existing MQTT↔Slack `slack-bridge` remains a separate integration for its
 current publishers and inbound consumers. It has no scheduled retirement and is

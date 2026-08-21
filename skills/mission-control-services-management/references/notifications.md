@@ -94,9 +94,9 @@ curl --fail --location --max-redirs 0 \
 unset bearer_token
 ```
 
-Use the stable ID for `#braingeneers-test` for operator-approved Slack smoke
-tests. `braingeneersbot` must be invited to a private target channel unless its
-Slack scopes deliberately allow otherwise.
+Use stable channel ID `C0BQXR5NQ5D` for operator-approved smoke tests in
+`#braingeneers-test`. `braingeneersbot` must be invited to a private target
+channel unless its Slack scopes deliberately allow otherwise.
 
 ## Email Contract
 
@@ -194,9 +194,11 @@ The outbound identity is:
 - A: `braingeneers.gi.ucsc.edu` → `128.114.198.51`
 - PTR: `128.114.198.51` → `braingeneers.gi.ucsc.edu`
 - SMTP HELO: `braingeneers.gi.ucsc.edu`
-- SPF at `braingeneers.gi.ucsc.edu` authorizing `128.114.198.51`
-- DKIM at `notifications._domainkey.braingeneers.gi.ucsc.edu`
-- DMARC at `_dmarc.braingeneers.gi.ucsc.edu`, initially `p=none`
+- SPF at `braingeneers.gi.ucsc.edu`:
+  `v=spf1 ip4:128.114.198.51 -all`
+- DKIM at `notifications._domainkey.braingeneers.gi.ucsc.edu`, containing the
+  public key matching the operator-owned private key
+- DMARC at `_dmarc.braingeneers.gi.ucsc.edu`: `v=DMARC1; p=none`
 
 The relay is outbound-only and has no published SMTP port, inboxes, IMAP, or
 webmail. It does not need an MX record. Delayed bounce ingestion is out of scope.
@@ -204,9 +206,23 @@ It shares the trusted `braingeneers-net` with other Mission Control services;
 `notification-service` remains the supported caller interface, while the relay
 uses Docker subnet trust and does not add separate SMTP credentials or network
 topology.
-Before deployment, have the operator verify outbound TCP 25 from the server;
-if institutional filtering blocks it, stop and choose an approved institutional
-or hosted relay rather than bypassing policy.
+Before initial deployment or after network changes, have the operator verify
+outbound TCP 25 from the server. If institutional filtering blocks it, stop and
+choose an approved institutional or hosted relay rather than bypassing policy.
+Verify the public identity without recording the rotatable DKIM key:
+
+```bash
+dig +noall +answer A braingeneers.gi.ucsc.edu
+dig +noall +answer -x 128.114.198.51
+dig +noall +answer TXT braingeneers.gi.ucsc.edu
+dig +noall +answer TXT notifications._domainkey.braingeneers.gi.ucsc.edu
+dig +noall +answer TXT _dmarc.braingeneers.gi.ucsc.edu
+```
+
+For production acceptance, send one operator-approved message to
+`C0BQXR5NQ5D` and one email to a controlled recipient. Slack must return
+`200 delivered`. Email must return `202 queued`, arrive, and show `spf=pass`,
+`dkim=pass`, and `dmarc=pass` in the received `Authentication-Results` header.
 
 ## Troubleshooting
 
