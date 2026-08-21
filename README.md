@@ -92,13 +92,16 @@ SQLite status projection from that evidence, and the separate monthly Data
 Retention Policy Report consumes the same pointer. Neither consumer performs a
 live Glacier inventory query.
 
-Data Explorer keeps storage protection subordinate to normal browsing. Its
-collapsed panel can renew an atomic dataset or individual file with a zero-byte
+Data Explorer keeps dataset management subordinate to normal browsing. One
+collapsed panel groups backup coverage, the active online cleanup date, and the
+default unpublished DANDI state. Plain-language controls can keep an atomic
+dataset or individual file online longer with a zero-byte
 `DATA_LIFECYCLE_RETENTION` marker and can create or reverse a folder
-`NOBACKUP`. The marker's Ceph `LastModified` is authoritative; user data is
-never self-copied, and automatic deletion is disabled. The `local` volume holds
-only a disposable, restart-persistent index; immutable request/result audits
-remain in S3.
+`NOBACKUP`. The marker's Ceph `LastModified` is authoritative and user data is
+never self-copied. Cleanup removes only the active S3 copy after its Glacier
+backup is confirmed; the Glacier archive remains restorable, and Data Explorer
+does not perform cleanup itself. The `local` volume holds only a disposable,
+restart-persistent index; immutable request/result audits remain in S3.
 
 Mission Control owns the registry image source and lifecycle policy in
 [`data-lifecycle/`](data-lifecycle/). The Nextflow source and catalog
