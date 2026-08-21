@@ -1,0 +1,34 @@
+#
+# See https://github.com/braingeneers/mission_control/tree/main/data-lifecycle for documentation.
+#
+
+# AWS S3 Glacier configuration
+aws_s3_glacier:
+  bucket: 'braingeneers-backups'
+  inventory_file_path: 's3://braingeneers-backups-inventory/data/'
+
+# Data archival and advisory retention-policy parameters
+deletion:
+  # Age (in days) when current Ceph/S3 data becomes advisory-policy eligible
+  s3_expire_days: 2160
+  # Age (in days) when Glacier-only data becomes advisory-policy eligible
+  cold_storage_expire_days: 3650
+  # Forward-looking advisory policy window included in reports
+  notification_days: 90
+
+# Backup parameters
+backup:
+  # Base paths to include in backup
+  include_paths:
+    - 's3://braingeneers/'
+    - 's3://braingeneersdev/asrobbin/'
+
+  # Directories whose files share one backup/retention decision
+  # the latest modification time of all files under the directory is used
+  atomic_directories:
+    - 'braingeneers/ephys/*'
+    - 'braingeneers/imaging/*'
+    - 'braingeneers/fluidics/*'
+    - 'braingeneers/integrated/*'
+    - 'braingeneers/braindance/*'
+    - 'braingeneersdev/asrobbin/cartpole/*'

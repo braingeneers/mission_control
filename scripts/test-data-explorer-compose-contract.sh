@@ -26,10 +26,10 @@ image="$(service_value '.image')"
 [[ "$(service_value '.environment.DATA_EXPLORER_LIFECYCLE_REPORT_POINTER_URI')" == "s3://braingeneers/services/data-lifecycle/latest-cleanup-report.json" ]] \
     || fail "data-explorer must validate report deep links against the completed report pointer"
 [[ "$(service_value '.depends_on["data-lifecycle"] // empty')" == "" ]] \
-    || fail "data-explorer must not depend on the legacy lifecycle website"
+    || fail "data-explorer must not depend on the retired lifecycle website"
 
-legacy_image="$(jq -r '.services["data-lifecycle"].image' <<<"${compose_json}")"
-[[ "${legacy_image}" =~ ^braingeneers/data-lifecycle-deletion-web:[0-9]{8}-[0-9a-f]{12}$ ]] \
-    || fail "legacy lifecycle cutover service must use an immutable date/SHA image, got ${legacy_image}"
+if jq -e '.services["data-lifecycle"]' <<<"${compose_json}" >/dev/null; then
+    fail "retired data-lifecycle web service must be absent"
+fi
 
 echo "Data Explorer Compose contracts are valid."

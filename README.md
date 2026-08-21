@@ -82,11 +82,8 @@ at most one backup run active, and publishes durable run artifacts under
 `s3://braingeneers/services/data-lifecycle/runs/`.
 
 The intended production schedule is 9:00 PM America/Los_Angeles on Monday,
-Tuesday, and Friday with overlap handling set to `skip`. Create this schedule
-from the Workflows **Schedules** page with **Enabled** cleared during the
-initial rollout. During the legacy cutover, enable it only after the new
-replicated-volume backup has completed a scheduled run and the old combined
-container is stopped.
+Tuesday, and Friday with overlap handling set to `skip`. Manage this schedule
+from the Workflows **Schedules** page.
 
 Each successful backup advances the small
 `s3://braingeneers/services/data-lifecycle/latest-backup-state.json` manifest
@@ -102,6 +99,20 @@ collapsed panel can renew an atomic dataset or individual file with a zero-byte
 never self-copied, and automatic deletion is disabled. The `local` volume holds
 only a disposable, restart-persistent index; immutable request/result audits
 remain in S3.
+
+Mission Control owns the registry image source and lifecycle policy in
+[`data-lifecycle/`](data-lifecycle/). The Nextflow source and catalog
+definitions remain in the sibling `workflows` repository. Build, test, and
+publish the task image from this repository:
+
+```bash
+make data-lifecycle-build
+make data-lifecycle-test
+make data-lifecycle-push
+```
+
+The retired Data Lifecycle review website is not a Compose service. Data
+Explorer is the sole user interface for retention renewal and `NOBACKUP`.
 
 ## Replicated volume backup
 
@@ -125,8 +136,7 @@ make replicated-volume-backup-test
 make replicated-volume-backup-push
 ```
 
-For the initial cutover on `braingeneers.gi.ucsc.edu`, keep the Nextflow
-schedule paused and run:
+Run a manual sync when validating or recovering this service:
 
 ```bash
 docker compose pull replicated-volume-backup
@@ -134,12 +144,9 @@ docker compose run --rm replicated-volume-backup sync
 docker compose up -d --force-recreate replicated-volume-backup
 docker compose ps replicated-volume-backup
 docker compose logs --tail=200 replicated-volume-backup
-docker container stop data-lifecycle-backup
-docker container rm data-lifecycle-backup
 ```
 
-Confirm the first scheduled 2:00 AM sync succeeds before enabling the Data
-Lifecycle schedule in Workflows. Routine updates target only the replacement:
+Routine updates target only this service:
 
 ```bash
 docker compose pull replicated-volume-backup
@@ -316,34 +323,32 @@ docker compose ps workflows-backend workflows
 docker compose logs --tail=200 workflows-backend workflows
 ```
 
-After deployment, open `/schedules`, create the disabled data-lifecycle
-schedule described above, and check `/api/admin/system-status` for scheduler
-health. Leave the schedule disabled until the replicated-volume cutover gate
-has been cleared.
+After deployment, check `/api/admin/system-status` for scheduler health and
+confirm the existing Data Lifecycle schedules retain their intended time zone,
+overlap policy, and enabled state.
 
-After the backup cutover is validated, create the **Data Retention Policy
-Report** schedule for the 15th of each month at 09:00 in
+The intended **Data Retention Policy Report** schedule runs on the 15th of each
+month at 09:00 in
 `America/Los_Angeles`, with overlap set to `skip`. Run acceptance against the
 stable channel id for `#braingeneers-test`; only after the report links,
 candidate deduplication, and no-new message are verified should the schedule be
 updated to the stable `#braingeneers-helpdesk` channel id.
 
-For the initial Data Explorer/report rollout, refresh the complete consumer
-group together while retaining the legacy review app as a fallback:
+The legacy Data Lifecycle review app is retired. If its stopped container
+still exists, remove it before pulling the Compose revision that deletes the
+service definition:
 
 ```bash
-docker compose pull data-lifecycle data-explorer workflows-backend workflows
-docker compose up -d --force-recreate data-lifecycle data-explorer workflows-backend workflows
-docker compose ps data-lifecycle data-explorer workflows-backend workflows
-docker compose logs --tail=200 data-lifecycle data-explorer workflows-backend workflows
+docker compose rm -f data-lifecycle
+git pull --ff-only
+docker compose pull workflows-backend workflows
+docker compose up -d --force-recreate workflows-backend workflows
+docker compose ps workflows-backend workflows
+docker compose logs --tail=200 workflows-backend workflows
 ```
 
-Validate a completed backup-state index, an atomic renewal, a file renewal, a
-`NOBACKUP` create/reversal, immutable request/result audits, report artifacts,
-and both the new-candidate and no-new Slack paths. Keep `data-lifecycle` running
-until those production checks pass. Removing its Compose service and the wiki
-legacy tile is a separate follow-up change after acceptance, not part of the
-initial rollout.
+The published `braingeneers/data-lifecycle` image remains required by the two
+Nextflow workflows even though no long-running Compose service has that name.
 
 The uploader publishes selected Ephys workflow requests to the same internal
 MQTT broker. Refresh it alongside Workflows when the launch contract or

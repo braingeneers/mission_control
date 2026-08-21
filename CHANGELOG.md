@@ -1,3 +1,4 @@
+2026-08-21 12:00 | data lifecycle | move the active workflow image source into Mission Control and retire the legacy web service
 2026-08-20 12:30 | notification service | use the operator-created ucsc-gi braingeneersbot Slack token secret
 2026-08-20 05:30 | workflows service | pin the release removing the unadopted notification integration while retaining the progress-tab fix
 2026-08-20 05:00 | notification service | replace the speculative durable Slack gateway with a stateless Slack/email API and isolated Postfix relay

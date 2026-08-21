@@ -1,0 +1,6 @@
+interface:
+  display_name: "Backup Reprocess Check"
+  short_description: "Validate backup steady-state behavior"
+  default_prompt: "Use $backup-reprocess-check to run the data-lifecycle two-run backup validation and report any steady-state issues."
+policy:
+  allow_implicit_invocation: true

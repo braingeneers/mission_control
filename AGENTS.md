@@ -28,7 +28,13 @@
 - Keep Data Explorer's storage-protection index on `local:/local`, pin its
   immutable date/SHA image, and derive backup status only from the completed
   backup-state pointer plus current Ceph control markers. It must not depend on
-  the legacy lifecycle website.
+  the retired lifecycle website. Do not restore the `data-lifecycle` Compose
+  service; its user controls now live in Data Explorer.
+- Mission Control owns the Data Lifecycle task image source under
+  `data-lifecycle/`, while the catalog and Nextflow source remain in the
+  sibling `workflows` repository. Keep the image's `/data_lifecycle/src`
+  layout stable and keep workflow image pins synchronized with
+  `data-lifecycle/VERSION`.
 - Keep `notification-service` as the shared boundary for new outbound Slack and email integrations. Compose peers call it directly; external clients use the standard authenticated proxy and existing service-account JWTs. The application has no producer tokens, database, or MQTT adapter.
 - Treat `/secrets/slack-token-braingeneersbot-gi` and `/secrets/notification-service` as operator-owned. Only the notification components read the `ucsc-gi` `braingeneersbot` token and DKIM private key; consumers never receive either credential.
 - Keep `notification-mail-relay` outbound-only, unexposed, on the trusted `braingeneers-net`, and fixed to the aligned `notifications@braingeneers.gi.ucsc.edu` sender. Internal services are trusted, but callers should use `notification-service` rather than connect to Postfix directly. Email durability belongs to the persisted Postfix queue.
@@ -47,6 +53,5 @@
   `s3://braingeneersdev/services/replicated/` and must not delete remote
   objects. Keep its `replicated` mount read-only and exclude dot-prefixed and
   `*.tmp` incomplete files.
-- During the legacy cutover, keep the Data Lifecycle Nextflow schedule paused
-  until `replicated-volume-backup` has completed a scheduled sync successfully
-  and the old `data-lifecycle-backup` container is stopped.
+- The legacy Data Lifecycle web and scheduler containers are retired. Backup
+  and advisory-report execution is owned exclusively by Workflows.

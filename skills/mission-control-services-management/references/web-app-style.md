@@ -6,7 +6,6 @@ Use this reference when a `mission_control` service includes a browser-facing UI
 
 Review these local sibling repos when available, or locate their equivalents in GitHub if the local paths differ:
 
-- `data-lifecycle`: deletion review and operational workflow UI.
 - `data_uploader`: staged upload workflow with metadata editing, progress, help, and admin views.
 - `data-explorer`: dataset search, summaries, details, and download actions.
 
@@ -45,7 +44,7 @@ If external font loading is not appropriate for a service, keep the same typogra
 
 Use one of these palettes as a starting point, then adjust only when the service has a clear domain reason.
 
-Data Explorer and Data Lifecycle:
+Data Explorer:
 
 ```css
 :root {

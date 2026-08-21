@@ -67,7 +67,9 @@ Read local sources before making claims. Minimum source set:
 
 For MCP services, also read `docs/mcp-onboarding.md`, Braingeneers wiki `shared/mcp_architecture.md`, and `oauth2-broker/README.md`.
 
-For browser-facing services with a new or refreshed UI, also read `references/web-app-style.md` and inspect nearby Braingeneers apps when available, especially `data-lifecycle`, `data_uploader`, and `data-explorer`.
+For browser-facing services with a new or refreshed UI, also read
+`references/web-app-style.md` and inspect nearby active Braingeneers apps when
+available, especially `data_uploader` and `data-explorer`.
 
 For services that need relational persistence, also read `sql-db/README.md` and
 `references/sql-db.md`. Inspect current client wiring in `docker-compose.yaml`

@@ -893,37 +893,6 @@ services:
       secret-fetcher:
         condition: service_healthy
 
-  # Legacy data-retention policy review app retained through cutover acceptance.
-  data-lifecycle:
-    image: braingeneers/data-lifecycle-deletion-web:20260820-cdaafb1094e5
-    container_name: data-lifecycle
-    restart: unless-stopped
-    entrypoint: /secrets/entrypoint-secrets-setup.sh
-    command:
-      - "--copy"
-      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
-      - "uvicorn"
-      - "deletion_webapp.app:app"
-      - "--host"
-      - "0.0.0.0"
-      - "--port"
-      - "8000"
-    expose:
-      - "8000"
-    environment:
-      VIRTUAL_HOST: "data-lifecycle.braingeneers.gi.ucsc.edu"
-      VIRTUAL_PORT: "8000"
-      LETSENCRYPT_HOST: "data-lifecycle.braingeneers.gi.ucsc.edu"
-      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
-      APP_VERSION: "20260820-cdaafb1094e5"
-    networks:
-      - braingeneers-net
-    volumes:
-      - secrets:/secrets
-    depends_on:
-      secret-fetcher:
-        condition: service_healthy
-
   # Daily backup of the shared replicated volume; headless infrastructure service.
   replicated-volume-backup:
     image: braingeneers/replicated-volume-backup:20260818-b1f8776fecc1
