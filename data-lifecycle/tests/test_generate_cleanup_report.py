@@ -5,6 +5,7 @@ import json
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,7 +13,12 @@ from unittest.mock import patch
 SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SRC))
 
-from generate_cleanup_report import main, parse_args  # noqa: E402
+from generate_cleanup_report import (  # noqa: E402
+    MAX_SLACK_TEXT_CHARS,
+    main,
+    parse_args,
+    render_slack_summary,
+)
 
 
 class CleanupReportTest(unittest.TestCase):
@@ -72,8 +78,6 @@ deletion:
                 str(output_dir),
                 "--run-id",
                 "report-1",
-                "--channel-id",
-                "C0123456789",
                 "--report-uri",
                 "s3://bucket/reports/report-1/",
                 "--report-url",
@@ -101,9 +105,35 @@ deletion:
                     for item in report["candidates"]
                 )
             )
-            notification = json.loads(
-                (output_dir / "completion-notification.json").read_text(encoding="utf-8")
+            slack_summary = (output_dir / "cleanup-report-slack.txt").read_text(
+                encoding="utf-8"
             )
-            self.assertEqual(len(notification["candidates"]), 3)
+            self.assertIn("*Monthly data retention policy report*", slack_summary)
+            self.assertIn("Candidate entities: 3 (Ceph/S3: 2; Glacier-only: 1)", slack_summary)
+            self.assertIn("*Earliest policy candidates*", slack_summary)
+            self.assertIn("Full report:", slack_summary)
+            self.assertLessEqual(len(slack_summary.rstrip("\n")), MAX_SLACK_TEXT_CHARS)
+            self.assertFalse((output_dir / "completion-notification.json").exists())
+            completion = json.loads(
+                (output_dir / "completion-manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertIn("cleanup-report-slack.txt", completion["artifacts"])
+            self.assertNotIn("completion-notification.json", completion["artifacts"])
             self.assertGreater((output_dir / "cleanup-report.html").stat().st_size, 0)
             self.assertGreater((output_dir / "cleanup-report.pdf").stat().st_size, 0)
+
+    def test_slack_summary_handles_an_empty_report(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "cleanup-report-slack.txt"
+            render_slack_summary(
+                path,
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+                [],
+                "https://data-explorer.example/report-1",
+            )
+            summary = path.read_text(encoding="utf-8")
+
+            self.assertIn("Candidate entities: 0 (Ceph/S3: 0; Glacier-only: 0)", summary)
+            self.assertIn("No policy candidates were found", summary)
+            self.assertNotIn("*Earliest policy candidates*", summary)
+            self.assertLessEqual(len(summary.rstrip("\n")), MAX_SLACK_TEXT_CHARS)

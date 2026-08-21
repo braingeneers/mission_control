@@ -8,7 +8,6 @@ import csv
 import hashlib
 import html
 import json
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode
@@ -45,7 +44,8 @@ SOURCE_IDS = {
     ("braingeneersdev", ""): "bucket-braingeneersdev",
     ("braingeneerscache", ""): "bucket-braingeneerscache",
 }
-MAX_NOTIFICATION_CANDIDATES = 5_000
+MAX_SLACK_TEXT_CHARS = 3_500
+MAX_SLACK_HIGHLIGHTS = 5
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,9 +57,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--backup-manifest", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--channel-id", required=True)
     parser.add_argument("--report-uri", required=True)
-    parser.add_argument("--report-url", help="Authenticated browser URL included in the Slack notification")
+    parser.add_argument("--report-url", help="Authenticated browser URL included in report summaries")
     parser.add_argument("--data-explorer-url", default="https://data-explorer.braingeneers.gi.ucsc.edu")
     parser.add_argument("--as-of", help="UTC date/time for reproducible reports")
     return parser.parse_args()
@@ -334,6 +333,69 @@ def render_pdf(
             plt.close(figure)
 
 
+def _slack_text(value: object) -> str:
+    return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _slack_link(url: str, label: str) -> str:
+    safe_label = _slack_text(label).replace("|", "¦")
+    return f"<{_slack_text(url)}|{safe_label}>"
+
+
+def render_slack_summary(
+    path: Path,
+    generated_at: datetime,
+    candidates: list[dict[str, object]],
+    report_url: str,
+) -> None:
+    phase_counts = pd.Series([item["phase"] for item in candidates]).value_counts().to_dict()
+    lines = [
+        "*Monthly data retention policy report*",
+        generated_at.strftime("Generated %Y-%m-%d %H:%M UTC"),
+        "_Advisory only:_ Automatic deletion is disabled. Eligibility dates are policy signals, not scheduled destructive operations.",
+        (
+            f"Candidate entities: {len(candidates):,} "
+            f"(Ceph/S3: {phase_counts.get('s3', 0):,}; "
+            f"Glacier-only: {phase_counts.get('glacier', 0):,})"
+        ),
+    ]
+    report_line = f"Full report: {_slack_link(report_url, 'Open the interactive HTML report')}"
+    if not candidates:
+        lines.append("No policy candidates were found in this reporting window.")
+    else:
+        lines.append("*Earliest policy candidates*")
+        included = 0
+        highlighted = candidates[:MAX_SLACK_HIGHLIGHTS]
+        for item in highlighted:
+            target = str(item["target"])
+            if len(target) > 160:
+                target = f"{target[:78]}…{target[-79:]}"
+            candidate_url = str(item["data_explorer_url"])
+            target_text = (
+                _slack_link(candidate_url, target)
+                if len(candidate_url) <= 500
+                else f"{_slack_text(target)} (open from the full report)"
+            )
+            candidate_line = (
+                f"• {str(item['phase']).upper()} · {target_text} · "
+                f"eligible {str(item['policy_eligible_at'])[:10]}"
+            )
+            suffix = [
+                f"…and {len(candidates) - included - 1:,} more candidate(s) in the full report."
+            ] if len(candidates) > included + 1 else []
+            if len("\n".join(lines + [candidate_line] + suffix + [report_line])) > MAX_SLACK_TEXT_CHARS:
+                break
+            lines.append(candidate_line)
+            included += 1
+        if included < len(candidates):
+            lines.append(f"…and {len(candidates) - included:,} more candidate(s) in the full report.")
+    lines.append(report_line)
+    rendered = "\n".join(lines)
+    if len(rendered) > MAX_SLACK_TEXT_CHARS:
+        raise ValueError("Slack-ready report summary exceeds its safe text limit.")
+    path.write_text(rendered + "\n", encoding="utf-8")
+
+
 def main(args: argparse.Namespace) -> None:
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -341,8 +403,6 @@ def main(args: argparse.Namespace) -> None:
     backup_manifest = json.loads(Path(args.backup_manifest).read_text(encoding="utf-8"))
     if backup_manifest.get("schema_version") != 1 or backup_manifest.get("status") != "complete":
         raise ValueError("Backup-state manifest is incomplete or unsupported.")
-    if not re.fullmatch(r"[A-Z0-9]{8,32}", args.channel_id):
-        raise ValueError("Channel id must be a stable Slack channel id.")
     if not args.report_uri.startswith("s3://") or not args.report_uri.endswith("/"):
         raise ValueError("Report URI must be an s3:// prefix ending in '/'.")
     if not Path(args.activity_log).is_file():
@@ -396,42 +456,11 @@ def main(args: argparse.Namespace) -> None:
     render_pdf(output / "cleanup-report.pdf", generated_at, candidates, cost_rows)
 
     report_url = args.report_url or f"{args.report_uri.rstrip('/')}/cleanup-report.html"
-    highlighted_candidates = candidates[:MAX_NOTIFICATION_CANDIDATES]
-
-    def notification_text(item: dict[str, object]) -> str:
-        target = str(item["target"])
-        if len(target) > 240:
-            target = f"{target[:117]}…{target[-118:]}"
-        link = str(item["data_explorer_url"])
-        link_text = f" · {link}" if len(link) <= 500 else " · open from the full report"
-        return (
-            f"{item['phase'].upper()} · {target} · "
-            f"policy eligible {str(item['policy_eligible_at'])[:10]}{link_text}"
-        )
-
-    notification = {
-        "schema_version": 1,
-        "channel_id": args.channel_id,
-        "header": "Monthly data retention policy report",
-        "intro": (
-            "Automatic deletion is disabled. "
-            f"The full report contains {len(candidates):,} advisory candidate(s); "
-            f"up to {MAX_NOTIFICATION_CANDIDATES:,} earliest candidates participate in Slack deduplication."
-        ),
-        "no_new_text": "No new highlighted data-retention candidates were found. The full monthly report is available below.",
-        "report_url": report_url,
-        "candidates": [
-            {
-                "dedupe_key": item["candidate_id"],
-                "text": notification_text(item),
-            }
-            for item in highlighted_candidates
-        ],
-        "report_candidate_count": len(candidates),
-        "notification_candidate_count": len(highlighted_candidates),
-    }
-    (output / "completion-notification.json").write_text(
-        json.dumps(notification, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    render_slack_summary(
+        output / "cleanup-report-slack.txt",
+        generated_at,
+        candidates,
+        report_url,
     )
     completion = {
         "schema_version": 1,
@@ -444,10 +473,10 @@ def main(args: argparse.Namespace) -> None:
             for name in (
                 "cleanup-report.html",
                 "cleanup-report.pdf",
+                "cleanup-report-slack.txt",
                 "cleanup-report.json",
                 "cleanup-candidates.csv",
                 "glacier-retention-cost.csv",
-                "completion-notification.json",
             )
         },
     }

@@ -312,17 +312,12 @@ definitions remain commented in Compose for reference and are not deployed.
 MQTT is an optional ingress path, so Workflows has no Compose startup dependency
 on the broker; broker availability must not block the web app or API.
 
-Workflows now integrates with `notification-service` for workflow-owned
-`completion-notification.json` manifests. The backend records a durable SQL
-outbox, deduplicates candidate entities by workflow/channel/key, and calls
-`http://notification-service:8000` over `braingeneers-net`. A report run always
-posts, including an explicit no-new-candidates message; only candidate ids not
-previously delivered are listed. Definite temporary `503` responses are
-retried, definite validation/provider rejections are terminal, and ambiguous
-timeouts are recorded for manual review instead of being blindly replayed.
-Notification failure does not change a workflow run's success status, and
-Workflows intentionally has no Compose startup dependency on the notification
-service.
+Report workflows publish channel-neutral artifacts and do not select Slack
+channels, email recipients, or delivery behavior. Scheduled notification and
+artifact-selection support belongs to the Workflows website backlog. The
+shared `notification-service` remains the delivery boundary when that feature
+is implemented, and Workflows intentionally has no Compose startup dependency
+on it.
 
 The backend also owns the durable schedule runner. Operators can create,
 preview, pause, resume, update, and delete schedules at `/schedules`; weekly,
@@ -348,10 +343,9 @@ overlap policy, and enabled state.
 
 The intended **Data Retention Policy Report** schedule runs on the 15th of each
 month at 09:00 in
-`America/Los_Angeles`, with overlap set to `skip`. Run acceptance against the
-stable channel id for `#braingeneers-test`; only after the report links,
-candidate deduplication, and no-new message are verified should the schedule be
-updated to the stable `#braingeneers-helpdesk` channel id.
+`America/Los_Angeles`, with overlap set to `skip`. Validate the interactive,
+printable, machine-readable, and Slack-ready report artifacts independently of
+future notification delivery.
 
 The legacy Data Lifecycle review app is retired. If its stopped container
 still exists, remove it before pulling the Compose revision that deletes the

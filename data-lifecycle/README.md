@@ -45,6 +45,11 @@ s3://braingeneers/services/data-lifecycle/latest-cleanup-report.json
 The latest pointers advance only after the corresponding immutable run bundle
 is complete.
 
+Each report bundle contains interactive HTML, printable PDF, machine-readable
+CSV and JSON, and a bounded Slack-mrkdwn text summary. The workflow only
+publishes these artifacts; selecting and delivering an artifact through Slack
+or email belongs to the Workflows website.
+
 ## Backup stages
 
 The image retains standalone stage entrypoints for local diagnosis, while the
@@ -114,4 +119,3 @@ an AWS inventory, runs the same pinned image twice, and reports duplicate or
 steady-state failure patterns. Use the local AWS CLI profile
 `aws-braingeneers-backups` when inspecting backup inventory buckets; default
 AWS credentials may not be valid for that account.
-
