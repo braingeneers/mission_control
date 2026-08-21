@@ -209,7 +209,9 @@ the normal authenticated proxy, which accepts existing service-account JWTs and
 signed-in browser sessions. The application does not implement another bearer
 token scheme and does not use PostgreSQL or MQTT.
 
-Slack delivery is synchronous through `POST /v1/slack`. Email is accepted with
+Slack delivery is synchronous through `POST /v1/slack`, supports channel IDs or
+direct delivery to stable user IDs, and exposes `GET /v1/slack/destinations`
+for friendly user and joined-channel pickers. Email is accepted with
 `POST /v1/email` into the persisted outbound Postfix queue. The email endpoint
 supports plain text, an optional HTML alternative, and bounded uploads; all mail
 uses `notifications@braingeneers.gi.ucsc.edu`. See the
@@ -313,11 +315,11 @@ MQTT is an optional ingress path, so Workflows has no Compose startup dependency
 on the broker; broker availability must not block the web app or API.
 
 Report workflows publish channel-neutral artifacts and do not select Slack
-channels, email recipients, or delivery behavior. Scheduled notification and
-artifact-selection support belongs to the Workflows website backlog. The
-shared `notification-service` remains the delivery boundary when that feature
-is implemented, and Workflows intentionally has no Compose startup dependency
-on it.
+channels, email recipients, or delivery behavior. Workflows schedules own any
+number of email and Slack recipients plus per-artifact link or inline delivery.
+Those settings are snapshotted when each scheduled run launches and delivered
+through the shared `notification-service` after terminal artifact collection.
+Workflows intentionally has no Compose startup dependency on it.
 
 The backend also owns the durable schedule runner. Operators can create,
 preview, pause, resume, update, and delete schedules at `/schedules`; weekly,

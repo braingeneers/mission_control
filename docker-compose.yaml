@@ -971,7 +971,7 @@ services:
   # Shared stateless Slack and email API. Internal callers use Docker service
   # discovery; external callers use the standard JWT-capable authenticated proxy.
   notification-service:
-    image: braingeneers/notification-service:1.0.0
+    image: braingeneers/notification-service:1.1.0
     container_name: notification-service
     restart: unless-stopped
     expose:
@@ -1023,7 +1023,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20260821-deedb6720855
+    image: braingeneers/workflows-backend:20260821-923afa788941
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1067,7 +1067,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20260821-deedb6720855
+    image: braingeneers/workflows-frontend:20260821-923afa788941
     container_name: workflows
     restart: unless-stopped
     expose:

@@ -50,6 +50,35 @@ receive the JWT.
 - `blocks` may contain up to 50 caller-supplied Block Kit objects.
 - `thread_ts` optionally posts in an existing thread.
 
+For a direct message, provide `user_id` instead of `channel_id`:
+
+```json
+{"user_id":"U0123456789","text":"Analysis completed"}
+```
+
+Exactly one destination is required. `user_id` is a stable Slack member ID;
+the service opens that member's direct-message conversation before posting.
+
+`GET /v1/slack/destinations` returns stable IDs and friendly labels for
+non-bot workspace users and public or private channels the bot has joined:
+
+```json
+{
+  "destinations": [
+    {"type":"user","id":"U0123456789","label":"Ada Lovelace"},
+    {"type":"channel","id":"C0123456789","label":"#workflow-results"}
+  ]
+}
+```
+
+The directory is a picker convenience, not an authorization or availability
+guarantee. Callers should retain manual stable-ID entry and handle a temporary
+directory failure without blocking unrelated email configuration. The Slack
+app requires `users:read` for users, `channels:read` and `groups:read` for the
+joined-channel directory, and `im:write` for direct messages, in addition to
+its posting scopes. Scope changes require reinstalling the app before the
+existing mounted bot token gains them.
+
 Success is synchronous:
 
 ```json
@@ -172,7 +201,11 @@ temporary SMTP failures and retains its queue under
 
 Notification failure must not roll back or replace a caller's primary result.
 Choose caller-side retry or an outbox only when that concrete use case requires
-durability; do not make it a platform-wide default.
+durability; do not make it a platform-wide default. Workflows scheduled runs
+are one adopted durable-outbox use case: the backend snapshots each schedule's
+recipients and artifact delivery modes into per-run rows, waits a bounded time
+for artifact collection, retries definite unavailability, and retains
+ambiguous submission outcomes without automatic replay.
 
 ## Secrets, Postfix, And DNS
 
@@ -229,7 +262,10 @@ For production acceptance, send one operator-approved message to
 - Slack `503`: confirm
   `/secrets/slack-token-braingeneersbot-gi/slack-token-braingeneersbot-gi`
   exists, then recreate only the API after `secret-fetcher` refreshes.
-- Slack `502`: verify the stable channel ID, bot membership, and Slack app scope.
+- Slack `502`: verify the stable user or channel ID, bot membership, and Slack
+  app scopes. Directory failures commonly indicate missing `users:read`,
+  `channels:read`, or `groups:read`; direct-message failures commonly indicate
+  missing `im:write` or a user who cannot receive the bot's message.
 - External `302`: follow `access-and-auth.md`, check the embedded JWT `exp`, and
   confirm the bearer header was sent. Never print the token.
 - Email `503`: inspect both notification containers; confirm the DKIM key exists
