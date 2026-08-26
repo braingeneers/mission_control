@@ -17,6 +17,11 @@
   dynamic token-discovery workflow in
   `skills/mission-control-services-management/references/access-and-auth.md`. In either case,
   treat the embedded JWT `exp` as authoritative.
+- For semantic Data Explorer checks such as finding paths, confirming recent
+  objects, searching, or downloading, use the `data-explorer-cli-access` skill
+  and the authenticated HTTPS API. Force a fresh listing when new objects may
+  be cached. Use browser control only when the requested evidence is visual or
+  interactive, and report API and UI verification separately when both matter.
 - Keep uploader `proxy_set_header` directives at vhost scope. Defining any in a
   generated `_location` prevents inheritance of the trusted identity-header
   overrides and downstream `Authorization` stripping from `service-proxy/default`.

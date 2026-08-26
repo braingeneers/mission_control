@@ -1,93 +1,98 @@
-# Packaging And Makefiles
+# Packaging, Images, And State
 
-Use this reference when a service needs a Docker image, registry choice, or local developer workflow.
+Use this reference when a service needs a container image, registry workflow,
+Compose ownership boundary, or local persistent storage.
 
-## Registry-First Policy
+## Keep Deployment Thin
 
-Prefer deploying registry-published images instead of building on `braingeneers.gi.ucsc.edu`.
+`mission_control` should select and wire deployable artifacts, not become a
+second application repository. Put service-owned code, entrypoints, schedulers,
+migrations, maintenance jobs, runtime defaults, and application configuration
+in the owning repository and image.
 
-Rationale:
+Compose should normally contain only:
 
-- The server may be rebuilt or migrated.
-- Upstream package versions can change and make a future rebuild fail.
-- A published image gives Compose a stable artifact to pull.
-- Operators can use `docker compose pull` and targeted recreates.
+- the published image and deployment-specific command;
+- proxy discovery, internal ports, and networks;
+- secret paths and required mounts;
+- genuine startup dependencies;
+- deployment-specific endpoints or rare operator-tuned values.
 
-Acceptable registries include Docker Hub, the PRP GitLab registry, Quay, GitHub Container Registry, or another registry the lab can access. For Braingeneers services, prefer a registry path that future maintainers can push to.
+Long embedded shell, scheduler loops, maintenance programs, large application
+environment blocks, and host-mounted service source indicate misplaced
+ownership. Mission Control-owned shared infrastructure images may keep their
+source and build targets in this repository.
 
-Before adding or updating a production Compose service, verify and state where the image is built and pushed from. If the service owns custom code, the owning repo should provide the build and push workflow; `mission_control` should consume the resulting image.
+## Registry And Tag Policy
 
-Do not add service-specific scripts, schedulers, worker code, backup logic, or application config files to `mission_control` just to mount them into a container. Put those files in the owning repo, bake them into the image, and keep Compose focused on selecting the image and wiring secrets, networks, ports, dependencies, and proxy settings. Treat long service-specific `environment:` blocks as a design smell unless each key is clearly deployment-specific.
+Prefer a registry-published image over `build:` on the production server. A
+published artifact survives host migration, supports targeted pulls, and avoids
+future rebuilds drifting with upstream dependencies.
 
-Do not embed long shell scripts, scheduler loops, or maintenance programs directly in `docker-compose.yaml`. Compose should describe service topology and deployment wiring; executable behavior belongs in the image. Add an extra sidecar service only when it is independently operated, independently scaled, or meaningfully reusable. If helper behavior is tightly coupled to a service, package it inside that service's image.
+Before changing production Compose, identify:
 
-## Compose Image Guidance
+- the owning repository and maintainer;
+- the registry path and who can push it;
+- the build, test, and push workflow;
+- the rollback artifact.
 
-For production services, prefer:
+Prefer immutable release or date/SHA tags for production. A moving tag such as
+`latest` is acceptable only when maintainers intentionally use pull-and-recreate
+semantics and retain a rollback reference. Do not rewrite an unrelated legacy
+`build:` service opportunistically.
 
-- `image: owner/service:version-or-managed-tag`
-- A clear owner or maintainer comment near the service.
-- Avoiding `build:` unless the user explicitly wants server-local builds and accepts the migration risk.
-- Minimal `environment:` entries for application services. Stable runtime defaults belong in the image or service repo config, not in `mission_control/docker-compose.yaml`.
-- Small public env blocks are acceptable for infrastructure images when they are the image's initialization API, for example `POSTGRES_DB`, `POSTGRES_USER`, and a non-secret internal-only `POSTGRES_PASSWORD`.
-- Minimal bind mounts. Mount mission_control-owned files only when they are genuinely deployment-owned, such as proxy overrides or IAM policy files.
-- Shared local state volumes. Prefer service-scoped directories under `local` and `replicated` over new service-specific top-level volumes.
-- Manageable service units. Avoid creating separate Compose services for tightly coupled helper tasks that can run inside the owning service image.
+## Makefile Contract
 
-If an existing service uses `build:`, avoid rewriting it opportunistically. For a new service or a substantive service cleanup, recommend moving to a published image.
+Custom-image repositories should expose predictable targets when useful:
 
-## Tags
+- `build`
+- `push`
+- `local-test` or `run-test`
+- `shell`
+- optional `release`
 
-Prefer one of these patterns:
+Shared infrastructure images owned by Mission Control expose equivalent named
+targets from the root `Makefile`. Client repositories document their connection
+contract; they do not own shared-infrastructure build targets.
 
-- Immutable release tags for production rollouts, such as `v1.2.3`.
-- A managed channel tag, such as `latest`, only when the owning team understands that `docker compose pull` changes what is deployed.
-- Both immutable release tags and a channel tag when maintainers need easy rollback plus a conventional default.
+## Service Boundaries
 
-## Makefile Pattern
+Package tightly coupled helpers with the owning service. Add a separate Compose
+service only when the component is independently operated, scaled, secured, or
+reused. Use `depends_on` only when the dependent process genuinely cannot start
+without the prerequisite; optional integrations should start degraded and
+reconnect or retry.
 
-For custom-image services, recommend a small `Makefile` with stable targets:
+Avoid host-level bind mounts. Narrow exceptions include Mission Control-owned
+proxy overrides, IAM policies, and compatibility files that are genuinely
+deployment-owned.
 
-- `build`: build the local image.
-- `push`: push the selected tag to the registry.
-- `local-test` or `run-test`: run the service locally with representative ports and mounts.
-- `shell`: open a shell in the image for debugging.
-- `release`: optional; tag and push a versioned release.
+## Shared State Volumes
 
-Keep target names boring and predictable. The point is to make repeated operations discoverable for future operators.
+Use the existing top-level volumes:
 
-Shared infrastructure images owned by `mission_control` should expose their build, push, shell, and smoke-test targets from the root `mission_control/Makefile`. Client repositories should not own targets for shared Mission Control services; they should document only the connection contract they require.
+- `local`: restart-persistent state that may be regenerated or restored; active
+  databases, caches, queues, and in-progress work belong here.
+- `replicated`: completed static artifacts that require additive backup.
 
-## Shared Local Volumes
+Each service owns a service-named subdirectory such as `/local/sql-db` or
+`/replicated/sql-db`. Do not add a top-level volume per service without a
+concrete compatibility or isolation requirement.
 
-New services that need local state should use the shared top-level Docker volumes:
+Stage changing files in `local` and atomically publish completed files into
+`replicated`. If an incomplete file must temporarily exist there, use a
+dot-prefixed name such as `.artifact.tmp`, then rename it to its final visible
+name. Do not use visible suffix-only temporary names such as `artifact.tmp` in
+`replicated`; backup tooling intentionally excludes dot-prefixed and `*.tmp`
+objects.
 
-- `local`: restart-persistent state that can be regenerated or recovered. Active file changes belong here.
-- `replicated`: backed-up static files. Services should stage work in `local` and publish completed artifacts into service-scoped folders under `replicated`.
+The replicated-volume backup is additive: it copies new and changed eligible
+files and never deletes destination objects. Mount `replicated` read-only in the
+backup service.
 
-Each service owns a service-named directory under the volume root, such as `/local/sql-db` and `/replicated/sql-db`. Do not add a new top-level volume for each service unless a legacy image or external compatibility requirement requires it. If incomplete files must briefly exist in `replicated`, write them with dot-prefixed names such as `.artifact.tmp`, then atomically rename to final non-dot-prefixed names. Do not use visible suffix-only names such as `artifact.tmp` in `replicated`; suffix temp names are acceptable in `local` staging. Backup tooling should ignore dot-prefixed temporary publish files in `replicated`.
+## Local Validation
 
-Existing local examples:
-
-- `mqtt/README.md` references `make mqtt-build`, `make mqtt-push`, and `make mqtt-shell`.
-- `plotly-dash-picroscope-control-console/Makefile` has `build`, `build-and-test`, `push`, `shell`, `run`, and release-oriented targets.
-- `strapi-shadows-db/Makefile` has simple `build` and test run targets.
-
-## Local Testing
-
-When proposing local tests:
-
-- Avoid using production secrets unless the existing service already requires them and the user has access.
-- Prefer read-only mounts for local credentials.
-- Map to non-conflicting local ports.
-- Make the expected health check or smoke test clear.
-
-## Registry Troubleshooting
-
-Common failures:
-
-- `ImagePullBackOff`: image not pushed, wrong tag, private registry auth missing, or wrong registry path.
-- Pull succeeds locally but not on server: server lacks registry auth or network access.
-- Compose keeps running an old image: the service was not pulled or recreated.
-
-Use targeted `docker compose pull <service>` and `docker compose up -d --force-recreate --pull always <service>` when operating production services.
+Do not run production-style Mission Control services locally unless requested.
+For an approved local test, avoid production credentials where possible, mount
+any required credentials read-only, use non-conflicting ports, and state the
+expected health or smoke-test evidence.

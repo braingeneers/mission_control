@@ -27,7 +27,14 @@ Use this skill for work involving:
 - published container image workflows, including service `Makefile` build, push, local-test, and shell targets
 - targeted service pull, recreate, log, and status checks for conservative deploys
 
-Before advising or editing, the skill directs Codex to inspect the current `README.md`, `docker-compose.yaml`, `service-proxy/`, `secret-fetcher/`, relevant Braingeneers wiki pages, and the focused references under [`skills/mission-control-services-management/`](skills/mission-control-services-management/). Developers should have GI server access, Braingeneers GitHub access, NRP namespace access for secret-related work, and registry credentials when publishing custom images.
+The skill first selects the required evidence or action surface: protected HTTPS
+API, Data Explorer content API, rendered browser UI, operator-run server command,
+or implementation change. It then inspects only the matching Compose, proxy,
+service, wiki, and focused reference sources under
+[`skills/mission-control-services-management/`](skills/mission-control-services-management/).
+Developers should have GI server access, Braingeneers GitHub access, NRP
+namespace access for secret-related work, and registry credentials when
+publishing custom images.
 
 The skill source is [`skills/mission-control-services-management/SKILL.md`](skills/mission-control-services-management/SKILL.md).
 

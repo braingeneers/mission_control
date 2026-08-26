@@ -1,87 +1,102 @@
 # Operations
 
-Use this reference for day-two service management and troubleshooting.
+Use this reference for day-two deployment, status checks, production
+verification, and troubleshooting. Read `access-and-auth.md` instead for local
+HTTPS API diagnosis.
 
 ## Operator Boundary
 
-Never SSH to, log in to, or run commands on the production server. Provide exact
-commands for the user or operator to run. Agent-side production diagnosis is
-limited to HTTPS application APIs with an approved local service-account JWT.
+Never SSH to or execute commands on `braingeneers.gi.ucsc.edu`. For every
+server-side action:
 
-## Normal Service Operations
+1. Give the user the smallest exact command sequence.
+2. Name the host and working repository when context could be ambiguous.
+3. State the expected evidence and any stopping condition.
+4. Wait for the operator's output before diagnosing the next step or claiming
+   success.
 
-Prefer targeted operations:
+Do not turn a diagnostic request into a restart, pull, recreate, migration, or
+notification without explicit authorization.
 
-- Pull one service image.
-- Recreate one service.
-- Inspect logs for one service.
-- Check status for the affected services.
+## Targeted Service Operations
 
-Avoid `docker compose down` for routine work. Whole-stack operations are for reboot recovery or planned broad maintenance.
+Prefer one-service operations:
 
-Useful local source: `README.md`.
+```bash
+docker compose pull SERVICE
+docker compose up -d --force-recreate SERVICE
+docker compose ps SERVICE
+docker compose logs --tail=200 SERVICE
+```
 
-## Deployment Review Checklist
+Use `--pull always` when the intended tag may have moved. A pull or restart by
+itself does not guarantee that an existing container was replaced. Use a
+service-specific deployment verifier when the repository provides one.
 
-Before proposing or applying changes, check:
+Avoid `docker compose down` and whole-stack restarts during routine work. Proxy
+changes may require targeted proxy recreation in addition to the application.
 
-- Service branch is clear: private web, public web, headless, or MCP.
-- Image is published to a registry or there is an explicit exception.
-- Any service-specific code, scheduler logic, runtime defaults, and application config live in the owning service repo and image rather than in `mission_control`.
-- Compose does not contain long embedded scripts, scheduler loops, backup logic, or maintenance programs.
-- Tightly coupled helper behavior is packaged in the owning service image; sidecars are reserved for independently operated, scaled, or reusable services.
-- Custom-image service has a repeatable `Makefile` or equivalent build notes.
-- Compose service has correct `image`, ports or expose, env vars, volumes, `depends_on`, and network settings, with env vars and mounts kept as small as practical.
-- Secrets are mounted through `/secrets`, not baked into images.
-- Proxy overrides have matching bind mounts.
-- Headless services do not accidentally receive web proxy settings.
-- MCP services preserve `Authorization` and do backend token validation.
-- New local state uses service-scoped directories under shared `local` or `replicated` volumes; active files stay in `local`, and only completed static files go in `replicated`.
-- The service can be operated after cloning `mission_control` and providing `~/.kube/config`, without extra host-level files unless explicitly justified.
+## Verification By Route
 
-## Verification
+- **Private web:** HTTPS route, authentication behavior, backend port, expected
+  identity fields when used, read-only API response, and relevant logs.
+- **Public web:** anonymous reachability only on intended paths and no trusted
+  identity assumptions.
+- **Machine API:** backend bearer validation, denial without credentials,
+  preserved `Authorization`, and cleared identity headers.
+- **Headless:** required TCP/UDP reachability, protocol authentication, logs,
+  and persistent-state or credential behavior.
+- **MCP:** protected-resource metadata, issuer/audience validation, IAM deny by
+  default, and an explicitly granted request.
+- **Scheduled or backup service:** current container health, most recent
+  attempt, most recent success, schedule continuity, destination evidence, and
+  object-level confirmation when logs only show an exit status.
 
-Choose verification by service branch:
+Distinguish evidence carefully: source inspection proves configuration, logs
+prove observed execution, a health check proves the service's defined health
+contract, and an API or destination listing proves resulting data.
 
-- Private web: confirm HTTPS route, browser auth, backend port, logs, and expected user identity headers if used.
-- Public web: confirm route is reachable without browser login and only intended paths are public.
-- Headless: confirm direct TCP or UDP ports, client auth, logs, and any persistent storage or secret-backed credentials.
-- MCP: confirm health, protected-resource metadata, bearer-token preservation, IAM denial by default, and allowed access for a granted principal.
+## Change Gates
 
-## Troubleshooting
+- Compose or proxy change: run `make test` locally.
+- Custom image change: run its owning build and smoke/contract tests before
+  publishing.
+- Production rollout: pull and recreate only the changed service, then inspect
+  status and logs.
+- Browser UI change: verify the deployed route as well as local behavior.
+- Secret-dependent change: have the operator confirm the expected mounted file
+  exists without printing it; never mutate the Kubernetes Secret.
 
-Access problems:
+## Troubleshooting Order
 
-- Missing GI server login: direct user to the wiki permissions page and cluster-admin request.
-- Missing GitHub access: direct user to the lab Slack access workflow.
-- Missing NRP namespace access: direct user to the wiki onboarding or PRP access workflow.
-- Missing `kubelogin`: distinguish interactive user kubeconfig setup from the service-account kubeconfig used on the server.
+Work from the boundary inward:
 
-Image problems:
+1. Confirm the configured image, networks, ports/expose, volumes, dependencies,
+   and proxy mounts.
+2. Confirm the running container and image match the intended deployment.
+3. Check service health and bounded recent logs.
+4. Check the edge route and authentication contract.
+5. Use a read-only application API or protocol client to verify behavior.
+6. Verify destination state when success depends on an external store or
+   provider.
 
-- Image not found: wrong registry path or tag.
-- Private image cannot pull: missing registry auth on the server.
-- Rebuild fails after package changes: use a previously published image or fix the build in the service repo and push a new tag.
+Common causes:
 
-Proxy problems:
-
-- Host does not route: missing `VIRTUAL_HOST`, wrong `VIRTUAL_PORT`, service not on `braingeneers-net`, or proxy not recreated.
-- Override ignored: missing bind mount under the `service-proxy` service.
-- Backend does not receive `Authorization`: default proxy strips it; use MCP-specific override only when backend is responsible for token validation.
-- Authenticated requests with bodies hang before reaching the backend: ensure the authentication subrequest sets `proxy_pass_request_body off` and clears `Content-Length`.
-
-Secret problems:
-
-- Secret file missing: verify Kubernetes secret name and key, then refresh `secret-fetcher`.
-- Service starts before secrets: missing `depends_on` condition.
-- Runtime token stale: verify `service-account-jwt-token-refresh` and use `braingeneers-jwt-service-account-token`.
+- Route missing: wrong host/port, service absent from `braingeneers-net`, or
+  proxy override not mounted/reloaded.
+- Authenticated request body hangs: auth subrequest forwards a non-empty
+  `Content-Length`; read `service-routing.md`.
+- Backend misses auth or identity: route classification or nginx header
+  inheritance is wrong.
+- Secret file missing: wrong secret/key path or stale `secret-fetcher`; read
+  `secrets.md` and hand mutation or refresh work to the operator.
+- Image appears unchanged: tag was not pulled or the container was not
+  recreated.
+- Successful sync has no expected data: inspect destination objects and source
+  eligibility rather than treating exit code zero as content proof.
 
 ## Escalation
 
-Escalate instead of guessing when the task requires:
-
-- Kubernetes namespace administration.
-- Auth0, CILogon, Keycloak, or MCP audience administration.
-- Shared credential rotation.
-- DNS changes outside wildcard `*.braingeneers.gi.ucsc.edu` routing.
-- Registry permission changes.
+Escalate missing GI server, GitHub, NRP namespace, registry, Auth0/CILogon,
+Keycloak, MCP audience, DNS, or secret-administration access. Do not work around
+an ownership or authorization boundary.

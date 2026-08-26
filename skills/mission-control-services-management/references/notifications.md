@@ -1,18 +1,22 @@
 # Outbound Slack And Email Notifications
 
-Use `notification-service` when a concrete Braingeneers service, workflow, or
-device needs to send Slack messages or email. It is a small shared outbound
-boundary, not a workflow engine: Slack is synchronous and email durability is
-provided by Postfix's normal queue.
+Use `notification-service` when an adopted Braingeneers use case must send Slack
+or email. It is a shared outbound API, not a workflow engine, database outbox,
+or MQTT adapter.
 
-Do not give callers the Slack bot token or DKIM key. Do not add a Compose
-dependency, catalog field, database outbox, or other consumer integration until
-that consumer has an adopted notification requirement.
+- [Access boundary](#access-boundary)
+- [Slack API](#slack-api)
+- [Email API](#email-api)
+- [Caller behavior](#caller-behavior)
+- [Credentials and mail infrastructure](#credentials-and-mail-infrastructure)
+- [Acceptance and troubleshooting](#acceptance-and-troubleshooting)
+
+Do not add a speculative notification integration, distribute provider
+credentials, or let notification failure replace a caller's primary result.
 
 ## Access Boundary
 
-Compose peers on `braingeneers-net` use trusted internal HTTP with no
-application bearer token:
+Compose peers on `braingeneers-net` use trusted internal HTTP:
 
 ```text
 http://notification-service:8000
@@ -24,17 +28,18 @@ External clients use:
 https://notifications.braingeneers.gi.ucsc.edu
 ```
 
-That hostname includes `service-proxy/default`. The existing `oauth2-proxy`
-validates a normal browser session or Braingeneers service-account JWT, and
-nginx removes `Authorization` before forwarding. The application must not add a
-second token scheme. For scripts, read `access-and-auth.md`, dynamically locate
-and validate the existing JWT, then send it as `Authorization: Bearer` without
-printing it. A `302` to the auth service means the proxy rejected or did not
-receive the JWT.
+The external route uses standard private-web authentication. `oauth2-proxy`
+accepts a browser session or standard Braingeneers service-account JWT and nginx
+strips `Authorization` before forwarding. The application has no second bearer
+scheme. For scripts, follow `access-and-auth.md`; a `302` means the proxy did
+not accept the JWT.
 
-## Slack Contract
+Consumers call `notification-service`, never Postfix directly. They do not
+mount the Slack token or DKIM key.
 
-`POST /v1/slack` uses JSON:
+## Slack API
+
+`POST /v1/slack` accepts JSON with exactly one destination:
 
 ```json
 {
@@ -45,39 +50,23 @@ receive the JWT.
 }
 ```
 
-- `channel_id` is a stable Slack channel, group, or DM ID, never a display name.
-- `text` is required and limited to 4,000 characters.
-- `blocks` may contain up to 50 caller-supplied Block Kit objects.
-- `thread_ts` optionally posts in an existing thread.
+Use `user_id` instead of `channel_id` for a direct message. Requirements:
 
-For a direct message, provide `user_id` instead of `channel_id`:
+- stable Slack IDs, never display names;
+- required `text`, at most 4,000 characters;
+- optional `blocks`, at most 50 Block Kit objects;
+- optional `thread_ts` for an existing thread.
 
-```json
-{"user_id":"U0123456789","text":"Analysis completed"}
-```
-
-Exactly one destination is required. `user_id` is a stable Slack member ID;
-the service opens that member's direct-message conversation before posting.
-
-`GET /v1/slack/destinations` returns stable IDs and friendly labels for
-non-bot workspace users and public or private channels the bot has joined:
+`GET /v1/slack/destinations` returns non-bot users and joined channels as
+friendly picker entries:
 
 ```json
-{
-  "destinations": [
-    {"type":"user","id":"U0123456789","label":"Ada Lovelace"},
-    {"type":"channel","id":"C0123456789","label":"#workflow-results"}
-  ]
-}
+{"destinations":[{"type":"channel","id":"C0123456789","label":"#results"}]}
 ```
 
-The directory is a picker convenience, not an authorization or availability
-guarantee. Callers should retain manual stable-ID entry and handle a temporary
-directory failure without blocking unrelated email configuration. The Slack
-app requires `users:read` for users, `channels:read` and `groups:read` for the
-joined-channel directory, and `im:write` for direct messages, in addition to
-its posting scopes. Scope changes require reinstalling the app before the
-existing mounted bot token gains them.
+The directory is a convenience, not an authorization or availability
+guarantee. Retain manual stable-ID entry and do not block unrelated email setup
+when the directory is unavailable.
 
 Success is synchronous:
 
@@ -85,11 +74,11 @@ Success is synchronous:
 {"status":"delivered","channel_id":"C0123456789","ts":"1750000000.000001"}
 ```
 
-The service does not store an idempotency key or retry Slack. The caller may
-retry a definite failure; retrying after an uncertain timeout can duplicate a
-message.
+The service does not store idempotency keys or retry Slack. Retrying a definite
+failure is reasonable; automatically replaying an ambiguous timeout can create
+a duplicate.
 
-Internal curl:
+Internal example:
 
 ```bash
 curl --fail \
@@ -98,89 +87,40 @@ curl --fail \
   http://notification-service:8000/v1/slack
 ```
 
-Internal Python:
+For an operator-approved production smoke test, use stable channel ID
+`C0BQXR5NQ5D` (`#braingeneers-test`). The bot must be invited to a private target
+channel.
 
-```python
-import httpx
+Required directory/direct-message scopes include `users:read`, `channels:read`,
+`groups:read`, and `im:write` in addition to posting scopes. Scope changes
+require reinstalling the Slack app before the mounted token gains them.
 
-response = httpx.post(
-    "http://notification-service:8000/v1/slack",
-    json={"channel_id": "C0123456789", "text": "Analysis completed"},
-    timeout=30,
-)
-response.raise_for_status()
-```
+## Email API
 
-For an external call, first load `bearer_token` using the dynamic workflow in
-`access-and-auth.md`, then use the same payload:
+`POST /v1/email` uses `multipart/form-data`:
 
-```bash
-curl --fail --location --max-redirs 0 \
-  -H "Authorization: Bearer ${bearer_token}" \
-  -H 'Content-Type: application/json' \
-  -d '{"channel_id":"C0123456789","text":"Analysis completed"}' \
-  https://notifications.braingeneers.gi.ucsc.edu/v1/slack
-unset bearer_token
-```
+- repeat required `to` for 1–25 recipients;
+- required `subject` and plain-text `text`;
+- optional `html`, `reply_to`, and `from_name`;
+- repeat `attachments` for at most 10 files totaling at most 10 MiB;
+- no Cc, Bcc, or remote attachment URLs.
 
-Use stable channel ID `C0BQXR5NQ5D` for operator-approved smoke tests in
-`#braingeneers-test`. `braingeneersbot` must be invited to a private target
-channel unless its Slack scopes deliberately allow otherwise.
-
-## Email Contract
-
-`POST /v1/email` uses `multipart/form-data` for both messages with and without
-attachments:
-
-- Repeat required `to` for 1–25 recipients. Cc and Bcc are not supported.
-- `subject` and plain-text `text` are required.
-- `html`, `reply_to`, and `from_name` are optional.
-- Repeat `attachments` for up to 10 uploaded files totaling at most 10 MiB.
-- Remote attachment URLs are not accepted.
-- The envelope and header sender are fixed to
-  `notifications@braingeneers.gi.ucsc.edu`.
-
-Internal curl:
+The envelope and header sender are fixed to
+`notifications@braingeneers.gi.ucsc.edu`.
 
 ```bash
 curl --fail \
   -F to=researcher@ucsc.edu \
-  -F to=collaborator@example.org \
   -F subject='Analysis completed' \
   -F text='The analysis completed successfully.' \
-  -F html='<p>The analysis completed <strong>successfully</strong>.</p>' \
-  -F reply_to=researcher@ucsc.edu \
   -F attachments=@results.pdf \
   http://notification-service:8000/v1/email
 ```
 
-Internal Python:
+The external proxy limit is 12 MiB, leaving multipart overhead above the
+application's 10 MiB attachment limit.
 
-```python
-from pathlib import Path
-import httpx
-
-with Path("results.pdf").open("rb") as attachment:
-    response = httpx.post(
-        "http://notification-service:8000/v1/email",
-        data=[
-            ("to", "researcher@ucsc.edu"),
-            ("subject", "Analysis completed"),
-            ("text", "The analysis completed successfully."),
-            ("html", "<p>The analysis completed <strong>successfully</strong>.</p>"),
-        ],
-        files={"attachments": ("results.pdf", attachment, "application/pdf")},
-        timeout=45,
-    )
-response.raise_for_status()
-```
-
-For external curl, use the same multipart fields and add the dynamically loaded
-`Authorization: Bearer ${bearer_token}` header. The proxy limit is 12 MiB; the
-application's raw attachment limit is 10 MiB, leaving room for multipart
-overhead.
-
-Email success is `202`:
+Success is `202`:
 
 ```json
 {"status":"queued","message_id":"<generated@braingeneers.gi.ucsc.edu>"}
@@ -188,103 +128,69 @@ Email success is `202`:
 
 Queued means Postfix accepted responsibility, not that the recipient received
 the message. There is no delivery-status or bounce API. Postfix retries
-temporary SMTP failures and retains its queue under
-`/local/notification-service/postfix` across container recreation.
+temporary failures and persists its queue under
+`/local/notification-service/postfix`.
 
-## Errors And Caller Behavior
+## Caller Behavior
 
-- `400`: invalid request, address, channel ID, or field.
-- `413`: email attachments exceed the count or combined-size limit.
-- `502`: provider permanently rejected the request.
-- `503`: Slack is unconfigured, the mail relay is unavailable, or a provider
-  reported a temporary failure.
+Expected errors:
 
-Notification failure must not roll back or replace a caller's primary result.
-Choose caller-side retry or an outbox only when that concrete use case requires
-durability; do not make it a platform-wide default. Workflows scheduled runs
-are one adopted durable-outbox use case: the backend snapshots each schedule's
-recipients and artifact delivery modes into per-run rows, waits a bounded time
-for artifact collection, retries definite unavailability, and retains
-ambiguous submission outcomes without automatic replay.
+- `400`: invalid request, address, field, or Slack destination;
+- `413`: attachment limit exceeded;
+- `502`: provider permanently rejected the request;
+- `503`: channel unconfigured, mail relay unavailable, or temporary provider
+  failure.
 
-## Secrets, Postfix, And DNS
+Notification failure must not roll back or replace the caller's primary result.
+Choose retries, an outbox, or stronger idempotency only for an adopted use case
+that needs those semantics. Do not add a platform-wide database, producer token,
+or Compose dependency merely to document an optional integration.
 
-The operator-owned Kubernetes credentials are:
+## Credentials And Mail Infrastructure
 
-- Secret `slack-token-braingeneersbot-gi`, key
-  `slack-token-braingeneersbot-gi`: `braingeneersbot` in workspace `ucsc-gi`.
-  Mission Control reads it from
-  `/secrets/slack-token-braingeneersbot-gi/slack-token-braingeneersbot-gi`.
-- Secret `notification-service`, key `dkim-private-key`: a 2048-bit private key
-  for selector `notifications` and domain `braingeneers.gi.ucsc.edu`.
+Operator-owned credentials:
 
-Kubernetes Secret creation and replacement are operator-owned. The API remains
-healthy without the Slack token and returns `503` only from `/v1/slack`. The
-mail relay waits for its DKIM key instead of sending unsigned mail.
+- Slack Secret `slack-token-braingeneersbot-gi`, key of the same name, for
+  `braingeneersbot` in `ucsc-gi`.
+- Mail Secret `notification-service`, key `dkim-private-key`, for selector
+  `notifications` and domain `braingeneers.gi.ucsc.edu`.
 
-The outbound identity is:
+Only notification components read these files. Secret creation and replacement
+remain operator-owned. A missing Slack token disables only `/v1/slack`; the mail
+relay waits for its DKIM key rather than sending unsigned mail.
 
-- A: `braingeneers.gi.ucsc.edu` → `128.114.198.51`
-- PTR: `128.114.198.51` → `braingeneers.gi.ucsc.edu`
-- SMTP HELO: `braingeneers.gi.ucsc.edu`
-- SPF at `braingeneers.gi.ucsc.edu`:
-  `v=spf1 ip4:128.114.198.51 -all`
-- DKIM at `notifications._domainkey.braingeneers.gi.ucsc.edu`, containing the
-  public key matching the operator-owned private key
-- DMARC at `_dmarc.braingeneers.gi.ucsc.edu`: `v=DMARC1; p=none`
+`notification-mail-relay` is outbound-only, unexposed, on
+`braingeneers-net`, and has no inbox, IMAP, webmail, or MX requirement. Its
+identity must remain aligned:
 
-The relay is outbound-only and has no published SMTP port, inboxes, IMAP, or
-webmail. It does not need an MX record. Delayed bounce ingestion is out of scope.
-It shares the trusted `braingeneers-net` with other Mission Control services;
-`notification-service` remains the supported caller interface, while the relay
-uses Docker subnet trust and does not add separate SMTP credentials or network
-topology.
-Before initial deployment or after network changes, have the operator verify
-outbound TCP 25 from the server. If institutional filtering blocks it, stop and
-choose an approved institutional or hosted relay rather than bypassing policy.
-Verify the public identity without recording the rotatable DKIM key:
+- A and PTR identify `braingeneers.gi.ucsc.edu` / `128.114.198.51`;
+- SMTP HELO is `braingeneers.gi.ucsc.edu`;
+- SPF authorizes that address;
+- DKIM uses `notifications._domainkey.braingeneers.gi.ucsc.edu`;
+- DMARC exists at `_dmarc.braingeneers.gi.ucsc.edu`.
 
-```bash
-dig +noall +answer A braingeneers.gi.ucsc.edu
-dig +noall +answer -x 128.114.198.51
-dig +noall +answer TXT braingeneers.gi.ucsc.edu
-dig +noall +answer TXT notifications._domainkey.braingeneers.gi.ucsc.edu
-dig +noall +answer TXT _dmarc.braingeneers.gi.ucsc.edu
-```
+Before first deployment or after network changes, an operator must verify
+outbound TCP 25. If institutional policy blocks it, choose an approved relay
+rather than bypassing policy.
 
-For production acceptance, send one operator-approved message to
-`C0BQXR5NQ5D` and one email to a controlled recipient. Slack must return
-`200 delivered`. Email must return `202 queued`, arrive, and show `spf=pass`,
-`dkim=pass`, and `dmarc=pass` in the received `Authentication-Results` header.
+## Acceptance And Troubleshooting
 
-## Troubleshooting
+Production acceptance requires operator approval for one Slack message to the
+test channel and one email to a controlled recipient. Slack must return
+`200 delivered`; email must return `202 queued`, arrive, and show SPF, DKIM, and
+DMARC pass results.
 
-- Slack `503`: confirm
-  `/secrets/slack-token-braingeneersbot-gi/slack-token-braingeneersbot-gi`
-  exists, then recreate only the API after `secret-fetcher` refreshes.
-- Slack `502`: verify the stable user or channel ID, bot membership, and Slack
-  app scopes. Directory failures commonly indicate missing `users:read`,
-  `channels:read`, or `groups:read`; direct-message failures commonly indicate
-  missing `im:write` or a user who cannot receive the bot's message.
-- External `302`: follow `access-and-auth.md`, check the embedded JWT `exp`, and
-  confirm the bearer header was sent. Never print the token.
-- Email `503`: inspect both notification containers; confirm the DKIM key exists
-  and the relay is healthy.
-- Email remains queued: have the operator run `postqueue -p` inside
-  `notification-mail-relay` and inspect its logs for DNS, TLS, or recipient MX
-  errors. Do not flush or delete queued mail without understanding the failure.
-- DKIM failure: verify the public selector record matches the operator-held
-  private key and that the From domain remains fixed and aligned.
-- Gmail spam or rejection: verify A/PTR, SPF, DKIM, DMARC, and TLS before
-  changing application behavior.
+- Slack `503`: have the operator confirm the mounted token file exists, refresh
+  `secret-fetcher` if needed, and recreate only the API.
+- Slack `502`: verify stable ID, bot membership, and relevant Slack scopes.
+- External `302`: validate the bearer header and embedded JWT expiry through
+  `access-and-auth.md`.
+- Email `503`: inspect both notification containers and confirm the DKIM file
+  exists without printing it.
+- Email remains queued: inspect `postqueue -p` and relay logs for DNS, TLS, or
+  recipient-MX errors; do not flush or delete mail without understanding it.
+- DKIM or deliverability failure: verify A/PTR, HELO, SPF, DKIM, DMARC, and TLS
+  before changing application behavior.
 
-The legacy MQTT↔Slack `slack-bridge` remains separate for existing MQTT
-publishers and inbound Slack consumers. New direct senders use
-`notification-service`; there is no scheduled bridge retirement.
-
-Primary sources:
-
-- Notification-service repository `README.md`
-- Mission Control `README.md`, `docker-compose.yaml`, and
-  `service-proxy/notifications.braingeneers.gi.ucsc.edu`
-- Wiki `api_data/notification-service.md` and `shared/mqtt.md`
+Primary sources are the notification-service README, Mission Control Compose
+and proxy files, and wiki page `api_data/notification-service.md`.

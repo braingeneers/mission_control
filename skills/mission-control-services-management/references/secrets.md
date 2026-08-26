@@ -1,91 +1,103 @@
-# Secrets
+# Secrets And Runtime Credentials
 
-Use this reference for Kubernetes secrets, `secret-fetcher`, runtime mounts, and token refresh.
+Use this reference for `secret-fetcher`, mounted secret files, entrypoint setup,
+and runtime token refresh. It does not authorize the agent to mutate a
+Kubernetes Secret.
 
-## Model
+## Ownership Boundary
 
-Credentials live in Kubernetes secrets in the Braingeneers namespace. `secret-fetcher` reads those secrets with `kubectl`, decodes every key, and writes files into a shared in-memory Docker volume mounted at `/secrets`.
+Kubernetes Secret creation, patching, replacement, and deletion are
+operator-owned. The agent may:
 
-Shape:
+- inspect tracked configuration and public secret-name/key contracts;
+- diagnose whether a mounted file is expected;
+- give an authorized operator exact mutation or refresh instructions;
+- wait for sanitized status or existence checks.
 
-- Kubernetes secret name becomes `/secrets/<secret-name>/`.
-- Each key becomes a file under that directory.
-- Services consume those files through the shared `secrets:/secrets` volume.
+The agent must not read, decode, print, modify, or submit secret values. Read the
+wiki administrator guidance before advising an operator on a mutation, and do
+not present administrator procedures as ordinary self-service.
 
-The kubeconfig visible to `secret-fetcher` must be able to list and get secrets in the Braingeneers namespace.
+## Materialization Model
 
-Relevant local sources:
+`secret-fetcher` uses its Kubernetes credentials to list and read Secrets in the
+Braingeneers namespace, decodes each key, and writes it into the shared in-memory
+`secrets` Docker volume:
+
+```text
+/secrets/<kubernetes-secret-name>/<key>
+```
+
+The kubeconfig visible to `secret-fetcher` must have the required namespace
+permissions. The shared volume keeps credentials out of images and Git, but it
+does not strongly isolate one secret-mounted service from another; do not
+overstate that trust boundary.
+
+Relevant sources:
 
 - `secret-fetcher/download-secrets.sh`
 - `secret-fetcher/Dockerfile`
-- `docker-compose.yaml`
-- `README.md`
+- `secret-fetcher/entrypoint-secrets-setup.sh`
+- the consuming service in `docker-compose.yaml`
 
-## Service Compose Pattern
+## Compose Contract
 
-When a service needs secrets:
+A service that needs fetched credentials normally has:
 
-- Mount `secrets:/secrets`.
-- Add `depends_on: secret-fetcher: condition: service_healthy`.
-- Read files from `/secrets/<secret-name>/<key>`.
+```yaml
+volumes:
+  - secrets:/secrets
+depends_on:
+  secret-fetcher:
+    condition: service_healthy
+```
 
-Do not put credentials in Docker images or Git-tracked service source.
+Read the exact file under `/secrets/<name>/<key>`. Do not bake credentials into
+the image, commit them, add service-specific host credential files, or convert a
+public configuration value into a pseudo-secret.
 
-Keep secret wiring portable. Apart from the shared `secrets:/secrets` volume and the required `~/.kube/config` used by `secret-fetcher`, avoid depending on host-level credential files or service-specific files checked out next to `mission_control`.
+## Entrypoint Setup
 
-## Entrypoint Wrapper
+Use `/secrets/entrypoint-secrets-setup.sh` only when the application cannot read
+the fetched location directly:
 
-Use `/secrets/entrypoint-secrets-setup.sh` when secrets must be moved or exported before the real process starts.
+- `--copy <source>:<destination>` copies a credentials file, kubeconfig, SSH
+  key, service-account token, or similar file to the path expected by the app.
+- `--env <file>` exports a genuinely secret-backed env file before executing the
+  application.
 
-Supported operations:
+Prefer an application setting that accepts an exact secret-file path. Stable
+runtime defaults belong in the image or owning repository, and deployment-only
+public values may remain normal Compose environment entries.
 
-- `--copy` takes a `from:to` path and copies a fetched secret file into the location the application expects.
-- `--env` reads a secret-backed env file and exports its key-value pairs before launching the final command.
+## Runtime Service-Account Token
 
-Use `--copy` for credentials files, kubeconfigs, SSH keys, RustDesk keys, or `braingeneerspy` runtime token files.
+Unattended `braingeneerspy` services should use the refreshed token at:
 
-Use `--env` for services with genuinely secret-backed environment files such as Auth0 and Keycloak variables. Do not create fake-sensitive env files for values that are public by design, such as internal-only default database credentials.
+```text
+/secrets/braingeneers-jwt-service-account-token/config.json
+```
 
-Prefer image-baked defaults over Compose environment variables. Use `--env` only for secret-backed env files, and use Compose `environment:` only when the value is deployment-specific rather than a stable application default. Be explicit about trust boundaries: while many services share the broad `/secrets` volume, secret-mounted credentials do not strongly isolate one compromised secret-mounted service from another. Keep secrets out of images and Git, but do not overstate isolation that the current shared secret-fetcher model does not provide.
+`service-account-jwt-token-refresh` refreshes the source Secret. Avoid the older
+raw `/secrets/service-accounts/config.json` runtime pattern unless an existing
+service deliberately depends on it and the tradeoff is documented.
 
-For notifications, the operator-owned Slack token is at
-`/secrets/slack-token-braingeneersbot-gi/slack-token-braingeneersbot-gi` and
-belongs to `braingeneersbot` in `ucsc-gi`. The outbound Postfix relay reads
-`/secrets/notification-service/dkim-private-key`. Only the notification
-components read these files. Consumers use internal HTTP or the existing
-service-account JWT and never receive either credential. A missing provider
-secret makes only that channel unavailable; it must not crash the API or expose
-unsigned email as a fallback.
+This runtime token is distinct from the NRP-hosted LLM API key and from MCP
+backend bearer tokens. Load `hosted-llms.md` or the MCP authentication guidance
+instead of substituting credentials.
 
-## Creating And Replacing Secrets
+## Diagnosis And Refresh Handoff
 
-Separate ordinary-user and admin workflows:
+Common causes of missing credentials:
 
-- Ordinary users should know where secrets come from and when to ask for help.
-- Admins can use the wiki-documented delete-then-create replacement pattern.
+- `secret-fetcher` cannot authenticate or lacks namespace permissions;
+- the Kubernetes Secret name or key differs from the mounted path;
+- `secret-fetcher` has not been recreated since an operator changed a Secret;
+- `--copy` or `--env` points to the wrong source or application destination;
+- the consuming service was not recreated after refreshed materialization.
 
-Docs to read before advising. Use a local checkout of `github.com/braingeneers/wiki` when available; otherwise use the GitHub links:
-
-- `shared/prp.md`: https://github.com/braingeneers/wiki/blob/main/shared/prp.md
-- `shared/administrators.md`: https://github.com/braingeneers/wiki/blob/main/shared/administrators.md
-
-After adding or replacing a Kubernetes secret, restart or recreate `secret-fetcher` and watch its logs to confirm the new secret and keys were fetched. Services that depend on the changed secret may also need a targeted recreate.
-
-## Service-Account Runtime Token
-
-For unattended services using `braingeneerspy`, prefer:
-
-- `/secrets/braingeneers-jwt-service-account-token/config.json`
-
-That secret is refreshed by the `service-account-jwt-token-refresh` service. It calls the internal `service-accounts` endpoint and updates the Kubernetes secret daily.
-
-Avoid recommending the older raw `/secrets/service-accounts/config.json` runtime pattern unless preserving existing service behavior is the explicit goal.
-
-## Secret Debugging
-
-Common symptoms:
-
-- `secret-fetcher` unhealthy: kubeconfig cannot authenticate, namespace access is missing, or Kubernetes API is unreachable.
-- File missing under `/secrets`: wrong Kubernetes secret name, wrong key name, or `secret-fetcher` has not refreshed since the secret changed.
-- Env missing in app: `--env` path is wrong, env file format is incompatible with the wrapper, or service was not recreated.
-- App cannot find credentials: `--copy` target path does not match what the app library expects.
+Ask the operator to check file existence or size without printing content, then
+refresh only `secret-fetcher` and the affected consumer when required. Inspect
+bounded logs for names and status, never values. Missing Slack, DKIM, LLM, or
+other provider credentials should follow the owning reference's documented
+degraded behavior rather than introducing an insecure fallback.

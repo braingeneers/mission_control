@@ -1,3 +1,4 @@
+2026-08-26 10:33 | skills | reorganize Mission Control guidance and route semantic Data Explorer checks through its authenticated API
 2026-08-21 12:10 | workflows service | pin the lifecycle v36 catalog release from the new Mission Control-owned runtime
 2026-08-21 12:00 | data lifecycle | move the active workflow image source into Mission Control and retire the legacy web service
 2026-08-20 12:30 | notification service | use the operator-created ucsc-gi braingeneersbot Slack token secret

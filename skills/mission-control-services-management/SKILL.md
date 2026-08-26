@@ -1,185 +1,124 @@
 ---
 name: mission-control-services-management
-description: Build, deploy, update, or troubleshoot Braingeneers lab services managed by mission_control on braingeneers.gi.ucsc.edu. Use when Codex is helping create a Docker Compose service, choose a proxy/auth pattern, submit Slack or email through notification-service, use hosted LLMs or shared PostgreSQL, configure secrets and service-proxy, package images, or operate services with docker compose.
+description: Design, deploy, operate, or diagnose Braingeneers services managed by mission_control on braingeneers.gi.ucsc.edu. Use for Compose service wiring, protected HTTPS API diagnosis, proxy and authentication patterns, shared infrastructure, secrets, packaging, and targeted production operations. Do not use for ordinary application development that does not involve Mission Control deployment or service contracts.
 ---
 
 # Mission Control Services Management
 
-Use this skill for Braingeneers services managed by `mission_control` on `braingeneers.gi.ucsc.edu`.
+Use this skill for services deployed through the `mission_control` repository on
+`braingeneers.gi.ucsc.edu`.
 
-## Start Here
+## Non-Negotiable Boundaries
 
-1. Confirm the user is working in or referencing the `mission_control` repo and read its current `README.md`, `docker-compose.yaml`, `service-proxy/`, `secret-fetcher/`, and relevant Braingeneers wiki pages before advising or editing. If the wiki repo is available locally, use it; otherwise use `https://github.com/braingeneers/wiki`.
-2. Route the service into one branch before proposing changes:
-   - `private-web`: browser-authenticated service behind `service-proxy/default`.
-   - `public-web`: web service intentionally bypassing browser auth with a host-specific `service-proxy` override.
-   - `machine-api`: HTTP API that bypasses browser auth, preserves `Authorization`, strips identity-looking headers, and authenticates callers in the backend.
-   - `headless`: non-HTTP or direct-port service such as MQTT or RustDesk; do not route this through `VIRTUAL_HOST` or host-specific nginx vhost files.
-   - `mcp`: MCP resource server; keep shared edge TLS, bypass browser auth for MCP traffic, preserve `Authorization`, and make the backend validate bearer tokens and IAM.
-3. Check access prerequisites early. Users need GI server access to `braingeneers.gi.ucsc.edu`, Braingeneers GitHub access, and Braingeneers NRP namespace access for secret-related operations.
-4. Prefer a published container image in Docker Hub, the PRP registry, or another registry over a server-local build. Use a small `Makefile` for repeatable `build`, `push`, `local-test` or `run-test`, and `shell` workflows when the service owns a custom image.
-5. Treat secrets as Kubernetes namespace resources materialized by `secret-fetcher` into the shared `/secrets` volume. Do not bake credentials into images.
-6. Keep `mission_control` as a thin deployment repo. Put project-specific code, scripts, scheduler logic, runtime defaults, and application config in the owning service repo and published image. Compose should not become a second application configuration file, shell script host, scheduler, or maintenance-job registry.
-7. Avoid host-level configuration and local bind mounts. The normal operator requirements should be only a `mission_control` checkout and a valid `~/.kube/config` for `secret-fetcher`.
-8. Use shared local volumes for persistent service state. `local` is restart-persistent disposable state; `replicated` is backed-up static state. Each service owns a service-named subdirectory under the volume root.
-9. Keep service topology manageable. Package tightly coupled helper behavior inside the owning service image; add sidecar services only when they are independently operated, scaled, or reused.
-10. When a service needs PostgreSQL, prefer the shared internal `sql-db` service. Give each client its own schema; do not add another production Postgres container by default.
-11. When a concrete service, workflow, or device use case needs outbound Slack or email, use `notification-service`; do not distribute the Slack token or DKIM key to callers, and do not add speculative consumer wiring.
-12. Treat Compose `depends_on` as a real startup prerequisite, not integration documentation. Optional consumers should start in a degraded state and reconnect or retry independently; add a dependency only when the current runtime contract genuinely cannot start without it.
+- Never SSH to, log in to, or execute commands on the production server or its
+  aliases. Run production diagnosis only through approved HTTPS APIs. Give the
+  user or operator exact commands for server-side work and wait for the result.
+- Never create, patch, replace, or delete Kubernetes Secrets. Secret mutations
+  are operator-owned; provide instructions without performing the mutation.
+- Do not run production-style Mission Control services locally unless the user
+  explicitly requests a local test.
+- Preserve user scope. Diagnosis does not authorize deployment, restart,
+  migration, notification delivery, or another external mutation.
+- After Compose or proxy changes, run `make test`.
 
-## Production Server Boundary
+## Choose The Evidence Or Action Surface First
 
-- Never SSH to, log in to, or execute commands on `braingeneers.gi.ucsc.edu` or any of its SSH aliases.
-- Limit agent-side production diagnosis to HTTPS application APIs using an approved local service-account JWT without exposing the token. Load `references/access-and-auth.md` and follow its local HTTPS API workflow; discover the active token dynamically instead of hard-coding a workstation path.
-- For every server-side pull, migration, Compose operation, proxy reload, restart, or diagnostic command, provide the exact commands for the user or operator to run and wait for their reported result.
+Classify what the user needs before selecting tools or deployment topology:
 
-## Reference Loading
+- **Hosted service data or status:** use the documented HTTPS API from the local
+  workstation with the standard service-account JWT. Read
+  [references/access-and-auth.md](references/access-and-auth.md).
+- **Data Explorer content:** for paths, searches, fresh listings, and downloads,
+  use the `data-explorer-cli-access` skill when available. A request to find or
+  verify objects is semantic data access even if the user says “on the website.”
+  Use `refresh=true` when newly written objects may be hidden by cache.
+- **Rendered or interactive UI behavior:** use browser control for layout,
+  visible state, navigation, screenshots, or interaction. If the user requests
+  both data verification and UI verification, perform and report them
+  separately; browser unavailability does not invalidate API evidence.
+- **Production host operation:** provide targeted commands for an operator to
+  run on `braingeneers.gi.ucsc.edu`; do not run them locally or over SSH.
+- **Implementation or configuration change:** inspect the relevant deployment
+  and owning-service sources, then choose the service route below.
 
-Load only the reference files needed for the current task:
+## Inspect Selectively
 
-- `references/access-and-auth.md`: server access, NRP kubeconfig, `kubelogin`, service-account kubeconfig, web auth, service-account JWTs.
-- `references/service-routing.md`: private web, proxy identity headers, public web, headless, and MCP routing patterns.
-- `references/packaging.md`: registry-published image policy and Makefile target conventions.
-- `references/web-app-style.md`: Braingeneers web app visual language, reusable UI patterns, and bundled image assets.
-- `references/secrets.md`: Kubernetes secret lifecycle, secret-fetcher, entrypoint secret setup, and token refresh.
-- `references/hosted-llms.md`: NRP-hosted LLM API access, model selection, secret-file wiring, reliability, and service operations.
-- `references/sql-db.md`: shared PostgreSQL client contract, schema provisioning, connection wiring, migrations, backups, and troubleshooting.
-- `references/operations.md`: deployment, update, verification, troubleshooting, and escalation.
-- `references/notifications.md`: notification-service Slack/email contracts, internal and JWT-authenticated access, Postfix semantics, secrets, DNS, and troubleshooting.
+Read only sources that can change the decision:
 
-## Workflow
+1. Read the applicable `AGENTS.md` files and relevant sections of the repository
+   `README.md`.
+2. Inspect the matching Compose service, proxy override, script, test, and
+   owning-service source. Do not load the entire Compose stack or every proxy
+   file when one service is in scope.
+3. Load only the references routed below. Use the local Braingeneers wiki when
+   available; otherwise use its GitHub source.
+4. Confirm access prerequisites only when the task needs them: GI server access,
+   Braingeneers GitHub access, NRP namespace access, or registry credentials.
 
-### 1. Build Context
+## Choose Deployment Topology When It Matters
 
-Read local sources before making claims. Minimum source set:
+Read [references/service-routing.md](references/service-routing.md) before adding
+or changing routing:
 
-- `README.md`
-- `docker-compose.yaml`
-- `service-proxy/default`
-- Any matching `service-proxy/<hostname>` or `<hostname>_location` files
-- `secret-fetcher/download-secrets.sh`
-- `secret-fetcher/entrypoint-secrets-setup.sh`
-- Braingeneers wiki `shared/permissions.md`
-- Braingeneers wiki `shared/onboarding.md`
-- Braingeneers wiki `shared/nrp_quickstart.md`
-- Braingeneers wiki `shared/prp.md`
-- Braingeneers wiki `shared/administrators.md` only when admin-only secret or Auth0 work is relevant
+- `private-web`: browser and standard service-JWT authentication at the shared
+  proxy; the backend receives trusted identity headers, not `Authorization`.
+- `public-web`: intentionally unauthenticated HTTP behind shared edge TLS.
+- `machine-api`: backend validates bearer tokens; proxy preserves
+  `Authorization` and clears identity-looking headers.
+- `headless`: direct-port or non-HTTP service; no nginx vhost discovery.
+- `mcp`: OAuth protected resource; backend validates bearer tokens and IAM.
 
-For MCP services, also read `docs/mcp-onboarding.md`, Braingeneers wiki `shared/mcp_architecture.md`, and `oauth2-broker/README.md`.
+Do not classify an API as `machine-api` merely because software calls it. The
+standard service-account JWT works through the normal `private-web` proxy when
+the proxy is intended to authenticate the client.
 
-For browser-facing services with a new or refreshed UI, also read
-`references/web-app-style.md` and inspect nearby active Braingeneers apps when
-available, especially `data_uploader` and `data-explorer`.
+## Load References By Need
 
-For services that need relational persistence, also read `sql-db/README.md` and
-`references/sql-db.md`. Inspect current client wiring in `docker-compose.yaml`
-when useful, but follow the documented schema contract rather than inferring
-database configuration from another client.
+- [access-and-auth.md](references/access-and-auth.md): web/API access, JWT
+  discovery and validation, kubeconfig modes, and MCP distinction.
+- [service-routing.md](references/service-routing.md): topology, proxy identity
+  and authorization behavior, and custom nginx directives.
+- [operations.md](references/operations.md): targeted deployment, status,
+  verification, troubleshooting, and escalation.
+- [packaging.md](references/packaging.md): image ownership, registries,
+  Makefiles, Compose boundaries, and shared state volumes.
+- [secrets.md](references/secrets.md): `secret-fetcher`, mounted files,
+  entrypoint setup, runtime tokens, and operator-owned secret changes.
+- [sql-db.md](references/sql-db.md): shared PostgreSQL client and backup
+  contract.
+- [hosted-llms.md](references/hosted-llms.md): NRP-hosted model access and its
+  distinct API-key contract.
+- [notifications.md](references/notifications.md): shared Slack and email API,
+  caller behavior, Postfix, and provider-specific operations.
+- [web-app-style.md](references/web-app-style.md): Braingeneers operations UI
+  style and bundled assets, only for new or materially refreshed web UIs.
 
-For services that call the NRP-hosted LLM API, also read `references/hosted-llms.md` before designing application behavior or Compose secret wiring. Treat hosted LLM access as a cross-cutting capability after selecting the normal private-web, public-web, headless, or MCP branch.
+For MCP services, also inspect `docs/mcp-onboarding.md`,
+`oauth2-broker/README.md`, the MCP proxy template, and the wiki MCP architecture.
 
-For services, workflows, or devices that send Slack messages or email, also
-read `references/notifications.md`, the notification-service repository README,
-and the wiki notification-service page. Treat notifications as a shared
-capability after selecting the caller's normal service branch.
+## Shared Design Defaults
 
-### 2. Choose The Service Branch
+- Keep `mission_control` a thin deployment repository. Service-owned code,
+  schedulers, migrations, runtime defaults, and application configuration
+  belong in the owning repository and published image.
+- Prefer registry-published images and targeted service operations over
+  server-local builds or whole-stack restarts.
+- Use Compose `depends_on` only for genuine startup prerequisites.
+- Use shared `local` for restart-persistent disposable state and `replicated`
+  for completed static artifacts that require additive backup. Give each
+  service its own subdirectory.
+- Use `notification-service` for new outbound Slack or email integrations and
+  shared `sql-db` for ordinary relational state; load their references before
+  designing either integration.
 
-Use the branch to determine which details matter:
+## Verify And Hand Off
 
-- `private-web`: add or update a Compose service with `VIRTUAL_HOST`, `VIRTUAL_PORT`, `LETSENCRYPT_HOST`, `LETSENCRYPT_EMAIL`, and `braingeneers-net`. Default browser auth comes from `service-proxy/default`.
-- `public-web`: use the same Compose service discovery, plus a host-specific `service-proxy/<hostname>` override with `auth_request off`; add the matching bind mount under the `service-proxy` service.
-- `machine-api`: use normal Compose HTTP discovery plus a host-specific proxy override that disables browser auth, strips proxy-trusted identity headers, preserves `Authorization`, and applies bounded request/time limits. The backend must validate its bearer token.
-- `headless`: use explicit `ports:` and network settings as needed. Do not add `VIRTUAL_HOST`, `LETSENCRYPT_HOST`, or service-proxy vhost files unless the service also has an HTTP UI.
-- `mcp`: follow the MCP onboarding contract. Preserve bearer tokens, strip proxy identity headers, mount IAM read-only, and configure issuer, JWKS, audience, and resource-server URL explicitly.
-
-For authenticated `private-web` routes, keep every `proxy_set_header` directive at vhost scope.
-Never add one to a generated `<hostname>_location`: nginx would stop inheriting the complete
-trusted identity-header overrides and `Authorization` stripping from `service-proxy/default`.
-After changing a custom location, inspect it explicitly for `proxy_set_header` directives. See
-`references/service-routing.md` for the safe pattern and the intentional public-web and MCP
-exceptions.
-
-When the branch includes a web UI, align the app with the existing Braingeneers operations-app style unless the user asks for a different design direction.
-
-### 3. Handle Auth And Access
-
-Use the wiki for access instructions rather than restating long onboarding text. For NRP auth, be precise:
-
-- For the private Workflows production route, the validated browser identity contract is `X-Email`: it contains the usable authenticated email and is authoritative because the protected proxy overwrites it. `X-User` is currently an opaque CILogon subject and the other configured identity headers are empty. Workflows must tolerate a missing or unusable `X-Email` for prod-local testing by using `User`, and must not log identity headers. Treat this finding as Workflows-specific; verify other routes independently.
-- User kubeconfigs downloaded from the NRP portal currently require `kubelogin`; verify current official NRP docs when the user is actively setting this up.
-- On `braingeneers.gi.ucsc.edu`, the practical pattern is often the service-account kubeconfig already used by `mission_control`, because operators may not have admin access to install `kubelogin` system-wide.
-- Secret access expects Kubernetes credentials with access to the Braingeneers namespace. This is the primary authentication challenge for `secret-fetcher`.
-
-### 4. Package Before Deploying
-
-Push custom images to a registry before adding them to production Compose. Prefer:
-
-- A versioned or intentionally managed tag.
-- A repeatable `Makefile` with `build`, `push`, `local-test` or `run-test`, and `shell` targets.
-- Compose `image:` references to registry images for production services.
-
-Avoid depending on `build:` in production service definitions unless there is a deliberate reason. Server-local builds make migration and future rebuilds fragile when upstream package versions change.
-
-Keep service-owned operational code in the owning repo before packaging. Examples include schedulers, entrypoint wrappers, maintenance scripts, backup scripts, worker defaults, and static application config. Bake stable runtime defaults into the image or service repo config rather than storing them as `environment:` entries in `mission_control/docker-compose.yaml`. For application services, Compose `environment:` should normally be limited to proxy discovery, ports/hostnames, secret paths, service endpoints that are truly deployment-specific, and rare operator-tuned values. Infrastructure images such as official Postgres may use small public env blocks required by the image initialization contract. Do not move a long list of app defaults into Compose just because the app reads environment variables.
-
-Keep Compose commands short and declarative. Do not embed long shell scripts, scheduler loops, backup logic, migrations, or operational programs directly in `docker-compose.yaml`; package that behavior in the owning image and expose a boring entrypoint or command. Shared infrastructure services owned by `mission_control`, such as a database image, should keep their build and push targets in the root `mission_control/Makefile`. Client repos should document dependency contracts and connection defaults, not own shared service packaging.
-
-When you add a production service, explicitly state whether the image is registry-published and how it is built and pushed from the owning repo. If a required image has not been published yet, update the owning repo workflow first or call out the blocker instead of adding a server-local `build:`.
-
-### 5. Wire Secrets Correctly
-
-When a service needs secrets:
-
-- Add `secrets:/secrets`.
-- Add `depends_on: secret-fetcher: condition: service_healthy`.
-- Use `/secrets/<kubernetes-secret-name>/<key>` paths.
-- Use `/secrets/entrypoint-secrets-setup.sh` only when the app needs copied files or exported env vars before launch.
-- Use `--copy` for files such as AWS credentials, kubeconfigs, SSH keys, or service-account token files.
-- Use `--env` for secret-backed env files.
-
-For the NRP-hosted LLM token, follow `references/hosted-llms.md`. Prefer an application-owned API-key file setting pointed at the exact fetched key. The key is a raw token file, not an env file for `--env`.
-
-For outbound Slack or email, follow `references/notifications.md`. Consumers do
-not mount notification credentials: internal callers use the trusted Compose
-network, and external callers use the existing service-account JWT at the
-standard proxy. Only `notification-service` reads the Slack token and only its
-mail relay reads the DKIM key.
-
-For unattended `braingeneerspy` services, prefer the daily refreshed `/secrets/braingeneers-jwt-service-account-token/config.json` mounted to the expected `braingeneers/iot/service_account/config.json` location. Do not recommend stale raw `service-accounts/config.json` patterns unless the local code specifically requires it and the risk is acknowledged.
-
-Avoid additional bind mounts for service files. Host-mounted files are acceptable for mission_control-owned proxy overrides, IAM policy files, and narrow legacy cases, but they should not be the default way to ship project-specific code or configuration.
-
-Use the shared `local` and `replicated` Docker volumes for local service state. Mount the volume root and have each service create a service-named subdirectory, for example `/local/sql-db` or `/replicated/sql-db`. Put active files, databases, mutable state, and restart-persistent disposable state in `local`. Put only completed static files that should be backed up in `replicated`; stage changing files in `local` and publish finished outputs into `replicated` with final names. If a service must write an incomplete publish file inside `replicated`, use a dot-prefixed temporary name such as `.artifact.tmp` and atomically rename it to the final non-dot-prefixed name. Do not use visible suffix-only temporary names such as `artifact.tmp` in `replicated`; ordinary suffix temp names are acceptable in `local` staging directories. Dot-prefixed temporary publish files in `replicated` are tolerated only as short-lived incomplete files and should be ignored by backup tooling. Do not add new service-specific top-level volumes unless a legacy image or external compatibility requirement makes it necessary.
-
-### 6. Reuse The Shared SQL Database
-
-When an application needs PostgreSQL, use `sql-db:5432` on `braingeneers-net`, the shared `services` database and role, and an application-specific schema. Normalize the stable application name by replacing hyphens with underscores and require the result to match `[a-z][a-z0-9_]*`. For a multi-container application, use the product or service-group name rather than a component name and record the mapping in `sql-db/README.md`.
-
-Have an operator provision the schema once before first deployment. Configure the client's driver and migration tool to select only its schema, and verify `current_schema()` before migrations run. Add a healthy `sql-db` dependency to the client, but do not publish the database port, mount database volumes into the client, or add another production Postgres service without a deliberate infrastructure exception.
-
-Keep client models, migrations, local-development database configuration, and startup behavior in the owning client repository and image. The shared image, backup implementation, and build/push workflow remain owned by `mission_control`. See `references/sql-db.md` for the exact contract and operational checks.
-
-### 7. Deploy Conservatively
-
-For existing services, prefer targeted operations:
-
-- Pull the target image.
-- Recreate only the target service.
-- Check logs and status for only the affected services.
-- Avoid whole-stack restarts except after reboot or when the user explicitly intends broad maintenance.
-
-If changes affect proxy overrides, restart or recreate the proxy path needed for the override to load.
-
-## Escalation Rules
-
-Tell the user to use Slack or an admin path when they lack:
-
-- GI server login.
-- Braingeneers GitHub access.
-- Braingeneers NRP namespace access.
-- Permission to view, create, replace, or delete Kubernetes secrets.
-- Registry credentials for the chosen image registry.
-- Auth0, CILogon, Keycloak, or MCP audience administration access.
-
-Never present admin-only secret rotation as ordinary self-service.
+- Match validation to the change and service route. Prefer existing contract
+  tests and read-only health/status endpoints.
+- For production operations, supply the smallest exact command sequence and
+  state the expected evidence. Wait for the operator’s output before claiming
+  success.
+- Report separately what was verified from source, API responses, browser UI,
+  and operator-provided production output.
+- Escalate missing GI, GitHub, NRP, registry, identity-provider, or secret-admin
+  permissions instead of working around them.

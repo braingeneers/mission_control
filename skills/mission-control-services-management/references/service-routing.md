@@ -1,28 +1,34 @@
 # Service Routing
 
-Use this reference when choosing how a service reaches users or clients.
+Use this reference only when adding, changing, or diagnosing how a service is
+reached. Accessing an existing service's data does not require redesigning its
+route; use `access-and-auth.md` for client access.
 
-## Branch Decision
+## Route Decision
 
-Classify the service first:
+| Route | Authentication owner | Proxy behavior | Typical client |
+| --- | --- | --- | --- |
+| `private-web` | `oauth2-proxy` | Overwrites identity headers and strips `Authorization` | Browser or standard service JWT |
+| `public-web` | None | Intentionally bypasses `auth_request` | Anonymous HTTP client |
+| `machine-api` | Backend | Preserves `Authorization` and clears identity headers | Software with backend-specific bearer token |
+| `headless` | Service protocol | No nginx vhost discovery | TCP/UDP or non-HTTP client |
+| `mcp` | MCP backend | Preserves bearer token and clears identity headers | OAuth MCP client |
 
-- `private-web`: HTTP service for lab users; default browser auth through `service-proxy/default`.
-- `public-web`: HTTP service intentionally public; host-specific `service-proxy` file with `auth_request off`.
-- `machine-api`: HTTP service with backend bearer authentication; bypass browser auth, preserve `Authorization`, and strip proxy identity headers.
-- `headless`: direct TCP/UDP or non-HTTP service, for example MQTT or RustDesk; exposed with `ports:` and not routed by nginx vhost discovery.
-- `mcp`: HTTP MCP resource server; shared edge and TLS, no browser auth on MCP traffic, backend validates bearer tokens and IAM.
+Classify by who authenticates the request, not by whether the caller is human or
+software. A scripted request using the standard Braingeneers service-account JWT
+normally remains `private-web` because `oauth2-proxy` validates that token.
 
 ## Private Web
 
-Expected Compose features:
+Expected Compose wiring:
 
-- `image:` points at a registry-published image.
-- `expose:` lists the internal app port.
-- `environment:` uses dictionary form, not list `KEY=value` form.
-- `VIRTUAL_HOST`, `VIRTUAL_PORT`, `LETSENCRYPT_HOST`, and `LETSENCRYPT_EMAIL` are set.
-- The service joins `braingeneers-net`.
+- Registry-published `image:` and internal `expose:` port.
+- `VIRTUAL_HOST`, `VIRTUAL_PORT`, `LETSENCRYPT_HOST`, and
+  `LETSENCRYPT_EMAIL` in dictionary-form `environment:`.
+- Membership in `braingeneers-net`.
+- Default authentication inherited from `service-proxy/default`.
 
-Default browser auth comes from `service-proxy/default`, which performs an internal auth request and configures these application-facing identity headers from the authentication response:
+The protected proxy may supply these application-facing headers:
 
 - `X-User`
 - `X-Email`
@@ -33,125 +39,92 @@ Default browser auth comes from `service-proxy/default`, which performs an inter
 - `X-Preferred-Username`
 - `X-Subject`
 
-Treat this as a description of the current proxy configuration, not a guarantee that every header is populated. Header values depend on the deployed oauth2-proxy version, identity-provider claims, and authentication method; missing source fields may produce empty or omitted headers. Verify the deployed route before advising an application to depend on a particular field.
+Header population depends on the deployed identity provider and route. Trust
+these names only when the application is reachable solely through the protected
+proxy, which overwrites them. Verify a route before depending on a specific
+field and do not log identity headers during diagnosis.
 
-On this authenticated path, service-proxy overwrites these names with values from the authentication subrequest and strips `Authorization` before forwarding the request. Trust the identity headers only when the application is reachable solely through this protected proxy path.
+The validated Workflows route supplies a usable `X-Email`; `X-User` is an
+opaque CILogon subject and the other configured fields are empty. This finding
+is Workflows-specific and must not be generalized to another application.
 
-### Validated Workflows Identity
+### Private-Web Proxy Invariants
 
-The current protected Workflows production route has been inspected end to end. It provides a usable authenticated email in `X-Email`; `X-User` contains an opaque CILogon subject, while `X-Groups`, `X-Name`, `X-Given-Name`, `X-Family-Name`, `X-Preferred-Username`, and `X-Subject` are empty. Workflows uses only `X-Email` for browser attribution and ignores `X-User` as a display identity.
-
-This is authoritative only on the protected private-web route, where nginx overwrites the header from the authentication subrequest. Prod-local and direct local requests do not necessarily have proxy identity headers, so Workflows falls back to the friendly initiator `User`. Do not log identity headers now that the contract has been validated. This finding is specific to the current Workflows deployment; validate the populated fields separately before another service depends on them.
-
-### Standard-Auth Machine Clients
-
-An HTTP API does not need the `machine-api` branch merely because software calls
-it. When the existing broad Braingeneers service-account JWT is the intended
-credential, use the normal authenticated route: `oauth2-proxy` validates the
-JWT and nginx strips it before forwarding. `notification-service` follows this
-pattern. Its host-specific vhost includes `service-proxy/default` only to retain
-standard authentication while adding a 12 MiB body limit.
+- Keep every `proxy_set_header` directive at vhost scope. Nginx inherits the
+  parent set only when the current location defines none. Adding one to a
+  generated `<hostname>_location` silently loses the trusted identity overrides
+  and downstream `Authorization` stripping.
+- Put service-specific headers such as websocket `Upgrade` and `Connection` at
+  vhost scope after including the default policy. Keep `_location` files for
+  buffering, timeouts, body limits, and similar non-header directives.
+- Inside `location = /_oauth2_proxy_auth`, retain
+  `proxy_pass_request_body off` and `proxy_set_header Content-Length ""`.
+  Authentication subrequests do not receive the original request body; keeping
+  its length makes authenticated POST, PUT, and PATCH requests hang.
+- After changing an authenticated vhost or `_location`, inspect it for
+  location-level `proxy_set_header` directives and run `make test`.
 
 ## Public Web
 
-Use only when the service is intentionally public.
+Use only when the service is intentionally public:
 
-Required shape:
+- Keep normal `VIRTUAL_HOST` discovery and shared TLS.
+- Add a host-specific `service-proxy/<hostname>` with `auth_request off`.
+- Mount that file into `service-proxy` from `docker-compose.yaml`.
+- Treat all identity-looking request headers as untrusted client input.
 
-- Normal `VIRTUAL_HOST` Compose discovery.
-- Host-specific file under `service-proxy/<hostname>`.
-- `auth_request off` in that vhost override.
-- Matching bind mount in the `service-proxy` service in `docker-compose.yaml`.
-- Treat identity-looking request headers as untrusted client input; this route does not provide proxy-authenticated identity.
-
-Example source: `service-proxy/spikelab.braingeneers.gi.ucsc.edu`.
+Example: `service-proxy/spikelab.braingeneers.gi.ucsc.edu`.
 
 ## Custom Proxy Directives
 
-Use host-specific or `_location` files for service-specific nginx needs such as:
-
-- Large body uploads.
-- Disabled request or response buffering.
-- Long timeouts.
-- Websocket upgrade headers.
-- Custom access or error logs.
+Use host-specific vhost or `_location` files for a concrete service need such
+as body limits, disabled buffering, long timeouts, websocket handling, or custom
+logs. Do not add a proxy override merely to document a service.
 
 Examples:
 
 - `service-proxy/uploader.braingeneers.gi.ucsc.edu`
 - `service-proxy/uploader.braingeneers.gi.ucsc.edu_location`
+- `service-proxy/data-explorer.braingeneers.gi.ucsc.edu_location`
 
-For authenticated private-web routes, keep `proxy_set_header` directives out of
-`<hostname>_location` files. Nginx inherits `proxy_set_header` directives from the parent only
-when none are defined at the current level. Adding even one location-level header therefore
-discards the complete parent set, including the trusted `X-Email` override and downstream
-`Authorization` stripping from `service-proxy/default`.
+## Machine API
 
-Put service-specific headers such as websocket `Upgrade` and `Connection` at vhost scope, after
-including `service-proxy/default`, and reserve the `_location` file for directives that do not
-break header inheritance. Inspect every new or changed authenticated `_location` file for
-`proxy_set_header` before finishing the change. Public-web and MCP routes intentionally use
-different identity and authorization policies; follow their explicit route patterns instead of
-applying the private-web inheritance rule to them.
+Use this route only when the backend owns bearer-token validation:
 
-## Headless Services
-
-Headless services do not use `VIRTUAL_HOST` or `LETSENCRYPT_HOST` unless they also expose a separate web UI.
-
-Expected Compose features:
-
-- Direct `ports:` mappings for the required TCP or UDP ports.
-- Service-specific credentials or persistent volumes if needed.
-- `braingeneers-net` when the service must talk to other Compose services.
-- Secret mounts and `secret-fetcher` dependency if the service needs shared credentials.
-
-Examples:
-
-- MQTT maps ports including `1883`, `8883`, and EMQX dashboard or websocket ports.
-- RustDesk maps relay and rendezvous ports and uses secret-mounted RustDesk keys.
-
-Relevant sources. Use a local checkout of `github.com/braingeneers/wiki` when available; otherwise use the GitHub links:
-
-- `docker-compose.yaml`
-- `shared/mqtt.md`: https://github.com/braingeneers/wiki/blob/main/shared/mqtt.md
-- `shared/rustdesk.md`: https://github.com/braingeneers/wiki/blob/main/shared/rustdesk.md
-
-## Machine APIs
-
-Use this branch when software rather than a browser calls an HTTP API and the
-backend owns bearer-token validation. Required behavior:
-
-- Keep shared edge routing and TLS through normal `VIRTUAL_HOST` discovery.
-- Add a host-specific vhost file and bind mount.
-- Set `auth_request off` so a machine request is not redirected to browser login.
-- Preserve `Authorization` with `proxy_set_header Authorization $http_authorization`.
-- Clear every proxy-trusted `X-User`, `X-Email`, `X-Groups`, `X-Name`,
-  `X-Given-Name`, `X-Family-Name`, `X-Preferred-Username`, and `X-Subject`
-  header unless the backend has a separately verified need for one.
+- Keep shared edge discovery and TLS.
+- Add a host-specific vhost file and matching Compose mount.
+- Set `auth_request off`.
+- Preserve `Authorization` with
+  `proxy_set_header Authorization $http_authorization`.
+- Clear every proxy-trusted identity-header name listed above.
 - Bound body size and timeouts to the API contract.
 - Require backend authentication and authorization on every non-health route.
 
-Do not copy the notification-service route for this branch: it intentionally
-uses standard proxy JWT validation and has no backend bearer-token validator.
+Do not copy the `notification-service` route: it intentionally uses standard
+proxy JWT validation and has no backend bearer-token validator.
 
-## MCP Services
+## Headless
 
-MCP services are a separate branch.
+Headless services use explicit `ports:` when external TCP or UDP access is
+required. Do not give them `VIRTUAL_HOST`, `LETSENCRYPT_HOST`, or vhost files
+unless they also expose a separate HTTP UI. Join `braingeneers-net` only when
+the service needs Compose peer communication, and load `secrets.md` when it
+needs shared credentials.
 
-Required behavior:
+Examples include MQTT and RustDesk. Consult their owning README and wiki page
+instead of copying historical Compose wiring.
 
-- Stay behind shared `service-proxy` edge and TLS.
+## MCP
+
+MCP services are OAuth protected resources:
+
+- Stay behind shared edge TLS.
 - Disable browser-style `oauth2-proxy` enforcement for MCP traffic.
-- Preserve the end-to-end `Authorization` header.
-- Strip proxy-trusted identity headers so backend authorization relies on token validation.
-- Mount `./iam` read-only and use one service-specific IAM policy file.
-- Set issuer, JWKS, audience, and resource-server URL explicitly.
+- Preserve `Authorization` end to end.
+- Clear proxy-trusted identity headers.
+- Validate issuer, JWKS, audience, and resource-server URL in the backend.
+- Mount `./iam` read-only and use a service-specific IAM policy.
 
-Use `service-proxy/mcp-resource-server.template` as the proxy override baseline.
-
-Relevant local sources:
-
-- `docs/mcp-onboarding.md`
-- `service-proxy/mcp-resource-server.template`
-- `service-proxy/integrated-system-mcp.braingeneers.gi.ucsc.edu`
-- Braingeneers wiki `shared/mcp_architecture.md`: https://github.com/braingeneers/wiki/blob/main/shared/mcp_architecture.md
+Use `service-proxy/mcp-resource-server.template` as the baseline and read
+`docs/mcp-onboarding.md`, `oauth2-broker/README.md`, and the wiki MCP
+architecture before implementation.
