@@ -27,6 +27,14 @@ defines backup prefixes, atomic dataset patterns, and scheduled retention
 windows. Repository documentation, defaults, tests, and workflow pins must be
 updated together when this policy or image behavior changes.
 
+The runtime is built from a digest-pinned Python slim image rather than the
+general-purpose Braingeneers/Anaconda image. It installs only the workflow's
+Python dependencies plus AWS CLI, `rclone`, `jq`, `yq`, and the small POSIX
+toolset used by the stage scripts. Stage 4 configures `smart_open` directly
+with the existing NRP boto3 client, so `braingeneerspy` is not a runtime
+dependency. The image retains the `jovyan` UID/GID `1000:100` contract used by
+the Nextflow driver and shared workspace.
+
 Backup evidence is stored under:
 
 ```text

@@ -9,6 +9,7 @@ import unittest
 import warnings
 from io import BytesIO, StringIO
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pandas as pd
 from botocore.exceptions import ClientError, SSLError
@@ -43,6 +44,7 @@ from stage4_process_puts_deletes import (  # noqa: E402
     ProgressStats,
     UploadFractionGuardError,
     copy_file,
+    open_source_object,
     validate_upload_fraction_guard,
 )
 from stage4_keys import (  # noqa: E402
@@ -858,6 +860,25 @@ class TestStage4UploadSeam(unittest.TestCase):
                 'ResponseMetadata': {'HTTPStatusCode': 404},
             },
             'GetObject',
+        )
+
+    def test_default_source_opener_uses_explicit_nrp_client(self):
+        source_client = object()
+        opened = object()
+        with patch(
+            'stage4_process_puts_deletes.get_source_s3_client',
+            return_value=source_client,
+        ), patch(
+            'stage4_process_puts_deletes.smart_open_aws.open',
+            return_value=opened,
+        ) as smart_open:
+            result = open_source_object('s3://bucket/object.bin', 'rb')
+
+        self.assertIs(result, opened)
+        smart_open.assert_called_once_with(
+            's3://bucket/object.bin',
+            'rb',
+            transport_params={'client': source_client},
         )
 
     def test_copy_file_uploads_successfully_with_injected_transport(self):

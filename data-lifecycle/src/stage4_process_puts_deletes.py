@@ -22,7 +22,6 @@ os.environ['NRP_ENDPOINT'] = NRP_ENDPOINT
 os.environ['ENDPOINT'] = NRP_ENDPOINT
 
 import boto3
-import braingeneers.utils.smart_open_braingeneers as smart_open_bgr
 import smart_open as smart_open_aws
 from botocore.config import Config as BotocoreConfig
 from botocore.exceptions import (
@@ -251,6 +250,14 @@ def get_source_s3_client():
     return _source_s3_client
 
 
+def open_source_object(source_url, mode):
+    return smart_open_aws.open(
+        source_url,
+        mode,
+        transport_params={'client': get_source_s3_client()},
+    )
+
+
 def head_object_exists(glacier_bucket, key, s3_client=None):
     client = s3_client or get_s3_client()
     return client.head_object(Bucket=glacier_bucket, Key=key)
@@ -293,7 +300,7 @@ def stream_upload(
     copy_chunk_bytes=None,
     progress_callback=None,
 ):
-    source_opener = source_opener or smart_open_bgr.open
+    source_opener = source_opener or open_source_object
     destination_opener = destination_opener or smart_open_aws.open
     s3_client = s3_client or get_s3_client()
     multipart_part_size_bytes = multipart_part_size_bytes or MULTIPART_PART_SIZE_BYTES

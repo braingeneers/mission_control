@@ -135,6 +135,10 @@ data-lifecycle-test: data-lifecycle-build
 		python -m unittest \
 			src.generate_puts_deletes_test \
 			tests.test_generate_cleanup_report
+	docker run --rm \
+		$(DATA_LIFECYCLE_IMAGE):$(DATA_LIFECYCLE_TAG) \
+		docker/test-runtime.sh
+	@test "$$(docker image inspect --format '{{.Size}}' $(DATA_LIFECYCLE_IMAGE):$(DATA_LIFECYCLE_TAG))" -lt 2147483648
 
 data-lifecycle-push: data-lifecycle-build
 	docker push $(DATA_LIFECYCLE_IMAGE):$(DATA_LIFECYCLE_TAG)
