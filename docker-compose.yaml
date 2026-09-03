@@ -910,19 +910,16 @@ services:
 
   # Data Explorer dataset browser
   data-explorer:
-    image: braingeneers/data-explorer:20260821-a0465aec6745
+    image: braingeneers/data-explorer:20260902-ff86d61f80ba
     container_name: data-explorer
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
       - "--copy"
       - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
-      - "uvicorn"
-      - "data_explorer.app:app"
-      - "--host"
-      - "0.0.0.0"
-      - "--port"
-      - "8000"
+      - "/bin/sh"
+      - "-lc"
+      - "alembic upgrade head && uvicorn data_explorer.app:app --host 0.0.0.0 --port 8000"
     expose:
       - "8000"
     environment:
@@ -933,6 +930,28 @@ services:
       DATA_EXPLORER_LIFECYCLE_INDEX_PATH: "/local/data-explorer/lifecycle-index.sqlite3"
       DATA_EXPLORER_LIFECYCLE_MANIFEST_URI: "s3://braingeneers/services/data-lifecycle/latest-backup-state.json"
       DATA_EXPLORER_LIFECYCLE_REPORT_POINTER_URI: "s3://braingeneers/services/data-lifecycle/latest-cleanup-report.json"
+      DATA_EXPLORER_PUBLICATION_ENABLED: "true"
+      DATA_EXPLORER_DATABASE_URL: "postgresql+psycopg://services:services@sql-db:5432/services?options=-csearch_path%3Ddata_explorer"
+      DATA_EXPLORER_DATABASE_SCHEMA: "data_explorer"
+      DATA_EXPLORER_AUTO_CREATE_TABLES: "false"
+      DATA_EXPLORER_DANDI_MANIFEST_PREFIX: "s3://braingeneers/services/data-explorer/dandi/sandbox/"
+      DATA_EXPLORER_DANDI_INSTANCE: "sandbox"
+      DATA_EXPLORER_DANDI_API_URL: "https://api.sandbox.dandiarchive.org/api"
+      DATA_EXPLORER_DANDI_WEB_URL: "https://sandbox.dandiarchive.org"
+      DATA_EXPLORER_DANDI_WORKFLOW_ID: "dandi-publication"
+      DATA_EXPLORER_DANDI_WORKFLOW_PROFILE: "k8s,k8s_credentials"
+      DATA_EXPLORER_WORKFLOWS_API_URL: "http://workflows-backend:8000"
+      DATA_EXPLORER_MQTT_BROKER_HOST: "mqtt"
+      DATA_EXPLORER_MQTT_BROKER_PORT: "1883"
+      DATA_EXPLORER_MQTT_TOPIC: "workflows/launch"
+      DATA_EXPLORER_MQTT_QOS: "1"
+      DATA_EXPLORER_DANDI_DISPATCH_GRACE_SECONDS: "300"
+      DATA_EXPLORER_UPLOADER_URL: "https://uploader.braingeneers.gi.ucsc.edu"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/config', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
     networks:
       - braingeneers-net
     volumes:
@@ -940,6 +959,8 @@ services:
       - local:/local
     depends_on:
       secret-fetcher:
+        condition: service_healthy
+      sql-db:
         condition: service_healthy
 
   # Shared internal SQL database service for Mission Control applications.
@@ -1023,7 +1044,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20260902-fd118dfb7d25
+    image: braingeneers/workflows-backend:20260902-46560b7910ad
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1067,7 +1088,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20260902-fd118dfb7d25
+    image: braingeneers/workflows-frontend:20260902-46560b7910ad
     container_name: workflows
     restart: unless-stopped
     expose:

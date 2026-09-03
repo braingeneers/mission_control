@@ -37,6 +37,11 @@
   backup-state pointer plus current Ceph control markers. It must not depend on
   the retired lifecycle website. Do not restore the `data-lifecycle` Compose
   service; its user controls now live in Data Explorer.
+- Keep Data Explorer DANDI publication state in its owned `data_explorer`
+  PostgreSQL schema, run Alembic before startup, and keep hosted table
+  auto-create disabled. Its MQTT and Workflows links are optional integrations,
+  not Compose startup dependencies; the DANDI API key belongs only in the
+  operator-owned NRP Secret consumed by the publication workflow.
 - Mission Control owns the Data Lifecycle task image source under
   `data-lifecycle/`, while the catalog and Nextflow source remain in the
   sibling `workflows` repository. Keep the image's `/data_lifecycle/src`

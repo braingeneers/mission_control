@@ -100,8 +100,8 @@ Retention Policy Report consumes the same pointer. Neither consumer performs a
 live Glacier inventory query.
 
 Data Explorer keeps dataset management subordinate to normal browsing. One
-collapsed panel groups backup coverage, the active online cleanup date, and the
-default unpublished DANDI state. Plain-language controls can keep an atomic
+collapsed panel groups backup coverage, the active online cleanup date, and
+live DANDI publication state. Plain-language controls can keep an atomic
 dataset or individual file online longer with a zero-byte
 `DATA_LIFECYCLE_RETENTION` marker and can create or reverse a folder
 `NOBACKUP`. The marker's Ceph `LastModified` is authoritative and user data is
@@ -123,6 +123,52 @@ make data-lifecycle-push
 
 The retired Data Lifecycle review website is not a Compose service. Data
 Explorer is the sole user interface for retention renewal and `NOBACKUP`.
+
+## Data Explorer DANDI publication
+
+Data Explorer provides push-button publication of an exact NWB selection to a
+new DANDI Sandbox Dandiset. The browser can separately select raw ephys and
+derived spike/telemetry NWBs, choose open or embargoed access at creation, sync
+the mutable draft, publish an OPEN Valid draft with release notes, and later start an
+irreversible unembargo. It displays the Dandiset, validation/access states,
+workflow outcome, every known DOI, and the source NWBs represented by each
+immutable version.
+
+The service owns a `data_explorer` schema in shared `sql-db`. Its entrypoint
+runs Alembic before FastAPI and keeps SQLAlchemy table auto-create disabled.
+Unique immutable request and result objects live beneath
+`s3://braingeneers/services/data-explorer/dandi/sandbox/`. Data Explorer sends
+schema-v2 launch messages to the optional Workflows MQTT ingress and reconciles
+request IDs through the internal Workflows API. It has no Compose dependency on
+MQTT or Workflows, so either integration can recover independently.
+
+The credential-bearing `dandi-publication` task runs on NRP from the sibling
+`workflows` catalog. Data Explorer itself never receives a DANDI API key. The
+workflow expects the existing `s3-credentials` Secret keys `access_key` and
+`secret_key`, plus the operator-owned `dandi-sandbox-api-key` Secret key
+`api_key`. Verify those exact names and keys before enabling a real test; Secret
+creation or changes remain operator-owned.
+
+Create the Sandbox token Secret from an operator-protected file, then verify
+only its key name (the command does not print the token):
+
+```bash
+kubectl -n braingeneers create secret generic dandi-sandbox-api-key \
+  --from-file=api_key=/path/to/dandi-sandbox-api-key
+kubectl -n braingeneers get secret dandi-sandbox-api-key \
+  -o go-template='{{range $key, $_ := .data}}{{$key}}{{"\n"}}{{end}}'
+```
+
+After publishing aligned Data Explorer, Workflows, and worker images, an
+operator can refresh only the affected server services:
+
+```bash
+docker compose pull sql-db workflows-backend workflows data-explorer
+docker compose up -d sql-db
+docker compose up -d --force-recreate workflows-backend workflows data-explorer
+docker compose ps sql-db workflows-backend workflows data-explorer
+docker compose logs --tail=200 workflows-backend data-explorer
+```
 
 ## Replicated volume backup
 
