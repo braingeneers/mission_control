@@ -42,6 +42,12 @@
   auto-create disabled. Its MQTT and Workflows links are optional integrations,
   not Compose startup dependencies; the DANDI API key belongs only in the
   operator-owned NRP Secret consumed by the publication workflow.
+- Pin Data Explorer's NWB materialization namespace to
+  `s3://braingeneerscache/data-explorer/dandi/materialized/v1/`; canonical NWBs
+  remain untouched and the bucket's 90-day lifecycle owns temporary-copy expiry.
+  Sandbox workflow credentials use Secret `dandi-api-key`, data key
+  `dandi-sandbox-api-key`. Local-source workflow revisions require a definition
+  refresh after the workflows checkout updates, not a service restart.
 - Mission Control owns the Data Lifecycle task image source under
   `data-lifecycle/`, while the catalog and Nextflow source remain in the
   sibling `workflows` repository. Keep the image's `/data_lifecycle/src`

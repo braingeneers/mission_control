@@ -39,6 +39,8 @@ image="$(service_value '.image')"
     || fail "data-explorer publication must default to DANDI Sandbox"
 [[ "$(service_value '.environment.DATA_EXPLORER_DANDI_MANIFEST_PREFIX')" == "s3://braingeneers/services/data-explorer/dandi/sandbox/" ]] \
     || fail "data-explorer publication manifests must use the approved immutable S3 namespace"
+[[ "$(service_value '.environment.DATA_EXPLORER_DANDI_MATERIALIZATION_CACHE_PREFIX')" == "s3://braingeneerscache/data-explorer/dandi/materialized/v1/" ]] \
+    || fail "data-explorer NWB materializations must use the approved temporary cache namespace"
 [[ "$(service_value '.environment.DATA_EXPLORER_DANDI_WORKFLOW_ID')" == "dandi-publication" ]] \
     || fail "data-explorer must launch the cataloged DANDI publication workflow"
 [[ "$(service_value '.environment.DATA_EXPLORER_MQTT_TOPIC')" == "workflows/launch" ]] \

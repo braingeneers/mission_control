@@ -798,7 +798,7 @@ services:
 
   # Acceptance-test uploader; runs alongside the production uploader above.
   uploader-dev:
-    image: braingeneers/braingeneers-data-uploader:20260903-1068ee4f2a43
+    image: braingeneers/braingeneers-data-uploader:20260911-ae8a95b85fbf
     container_name: uploader-dev
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -910,7 +910,7 @@ services:
 
   # Data Explorer dataset browser
   data-explorer:
-    image: braingeneers/data-explorer:20260902-ff86d61f80ba
+    image: braingeneers/data-explorer:20260911-dc78a46ae187
     container_name: data-explorer
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -935,6 +935,7 @@ services:
       DATA_EXPLORER_DATABASE_SCHEMA: "data_explorer"
       DATA_EXPLORER_AUTO_CREATE_TABLES: "false"
       DATA_EXPLORER_DANDI_MANIFEST_PREFIX: "s3://braingeneers/services/data-explorer/dandi/sandbox/"
+      DATA_EXPLORER_DANDI_MATERIALIZATION_CACHE_PREFIX: "s3://braingeneerscache/data-explorer/dandi/materialized/v1/"
       DATA_EXPLORER_DANDI_INSTANCE: "sandbox"
       DATA_EXPLORER_DANDI_API_URL: "https://api.sandbox.dandiarchive.org/api"
       DATA_EXPLORER_DANDI_WEB_URL: "https://sandbox.dandiarchive.org"

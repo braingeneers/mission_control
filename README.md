@@ -145,29 +145,30 @@ MQTT or Workflows, so either integration can recover independently.
 The credential-bearing `dandi-publication` task runs on NRP from the sibling
 `workflows` catalog. Data Explorer itself never receives a DANDI API key. The
 workflow expects the existing `s3-credentials` Secret keys `access_key` and
-`secret_key`, plus the operator-owned `dandi-sandbox-api-key` Secret key
-`api_key`. Verify those exact names and keys before enabling a real test; Secret
-creation or changes remain operator-owned.
+`secret_key`, plus the operator-owned `dandi-api-key` Secret data key
+`dandi-sandbox-api-key`. The separate `dandi-api-key` data key is reserved for
+an explicit future production-DANDI configuration. Secret creation and changes
+remain operator-owned.
 
-Create the Sandbox token Secret from an operator-protected file, then verify
-only its key name (the command does not print the token):
+Uploader metadata is frozen through a revision-scoped exact NWB projection
+index. The workflow uploads a source NWB directly when it already matches that
+projection; otherwise it writes a self-contained metadata-enriched copy below
+`s3://braingeneerscache/data-explorer/dandi/materialized/v1/` and uploads from
+there. Canonical NWBs are never rewritten. The cache bucket's 90-day lifecycle
+removes temporary copies, while Data Explorer retains source, projection,
+validation, materialization, and DOI-content provenance.
+
+After publishing the aligned Data Explorer, Uploader, and worker images, update
+the checked-out `workflows` repository and use the Workflows definition refresh;
+the workflow services do not need a restart for a local-source definition
+change. Recreate only the affected Compose application services:
 
 ```bash
-kubectl -n braingeneers create secret generic dandi-sandbox-api-key \
-  --from-file=api_key=/path/to/dandi-sandbox-api-key
-kubectl -n braingeneers get secret dandi-sandbox-api-key \
-  -o go-template='{{range $key, $_ := .data}}{{$key}}{{"\n"}}{{end}}'
-```
-
-After publishing aligned Data Explorer, Workflows, and worker images, an
-operator can refresh only the affected server services:
-
-```bash
-docker compose pull sql-db workflows-backend workflows data-explorer
-docker compose up -d sql-db
-docker compose up -d --force-recreate workflows-backend workflows data-explorer
-docker compose ps sql-db workflows-backend workflows data-explorer
-docker compose logs --tail=200 workflows-backend data-explorer
+docker compose pull uploader-dev data-explorer
+docker compose up -d --force-recreate uploader-dev data-explorer
+docker compose ps uploader-dev data-explorer
+docker compose logs --tail=200 uploader-dev data-explorer
+make verify-uploader-deployment SERVICE=uploader-dev
 ```
 
 ## Replicated volume backup
