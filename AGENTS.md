@@ -16,7 +16,13 @@
   `expires_at`, must have owner-only permissions, and must never be printed. Otherwise use the
   dynamic token-discovery workflow in
   `skills/mission-control-services-management/references/access-and-auth.md`. In either case,
-  treat the embedded JWT `exp` as authoritative.
+  treat the embedded JWT `exp` as authoritative. Automatically renew a still-valid
+  local token within seven days of expiry, replace the selected file, and notify
+  the user afterward; no additional confirmation is needed. For interactive
+  renewal, offer `https://service-accounts.braingeneers.gi.ucsc.edu/generate_token`
+  directly as well as `python -m braingeneers.iot.authenticate`. The command
+  writes the package credential, so it does not by itself update a selected
+  `~/.ssh` file. Follow the reference for validation and atomic replacement.
 - For semantic Data Explorer checks such as finding paths, confirming recent
   objects, searching, or downloading, use the `data-explorer-cli-access` skill
   and the authenticated HTTPS API. Force a fresh listing when new objects may

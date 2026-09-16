@@ -53,11 +53,12 @@ machine-api routes use different backend-validation contracts.
 
 ### 1. Locate The Token
 
-Prefer the operator-managed file when present:
+Prefer the local file `~/.ssh/braingeneers_jwt_token.json` when present:
 
 ```bash
 operator_token_file="${HOME}/.ssh/braingeneers_jwt_token.json"
-if [ -s "${operator_token_file}" ]; then
+token_file=""
+if [ -f "${operator_token_file}" ]; then
     token_file="${operator_token_file}"
 fi
 ```
@@ -69,26 +70,56 @@ assuming a checkout, Conda environment, Python version, or site-packages path:
 if [ -z "${token_file:-}" ]; then
     token_file="$(python - <<'PY'
 from pathlib import Path
-import braingeneers.iot
 
-candidates = [
-    Path(package_path) / "service_account" / "config.json"
-    for package_path in braingeneers.iot.__path__
-]
-print(next((path for path in candidates if path.is_file()), candidates[0]))
+try:
+    import braingeneers.iot
+except ImportError:
+    candidates = []
+else:
+    candidates = [
+        Path(package_path) / "service_account" / "config.json"
+        for package_path in braingeneers.iot.__path__
+    ]
+print(next(
+    (path for path in candidates if path.is_file()),
+    Path.home() / ".ssh" / "braingeneers_jwt_token.json",
+))
 PY
 )"
 fi
 ```
 
-Run this from an environment with `braingeneerspy` installed. If the file does
-not exist, generate it interactively:
+Package discovery uses the active Python environment when `braingeneerspy` is
+installed. If neither location has a credential, or the package is unavailable,
+the default is `~/.ssh/braingeneers_jwt_token.json` for browser setup below.
+Keep the selected path through validation and renewal; do not silently fall
+back to another file because the selected token is empty, malformed, or expired.
+
+### 2. Browser Setup Or Interactive Renewal
+
+For a missing, expired, or rejected credential, offer the user this direct link:
+[Generate a service-account token](https://service-accounts.braingeneers.gi.ucsc.edu/generate_token).
+They sign in through the normal browser flow. The complete JSON response belongs
+in the selected `token_file`, with owner-only permissions (`0600`). Have them
+enter it only in their local terminal or save it locally from the browser;
+never ask for it in chat or put it in a shell command or shell history.
+Validate the JSON and embedded expiry before replacing an existing file, using
+the atomic-save procedure in step 4.
+
+Alternatively, from an environment containing `braingeneerspy`, offer:
 
 ```bash
 python -m braingeneers.iot.authenticate
 ```
 
-### 2. Validate Permissions And Embedded Expiry
+This command opens the same page and prompts for its complete JSON in the user's
+terminal. It saves the package's `service_account/config.json`, not the preferred
+`~/.ssh` file. If a different `token_file` was selected, validate the result and
+securely copy it to that selected path using the same atomic-save procedure;
+otherwise rediscover the package path. Ensure owner-only permissions, reload,
+and validate the selected file before continuing.
+
+### 3. Validate Permissions And Embedded Expiry
 
 The JSON wrapper contains `access_token` and `expires_at`, but the JWT's embedded
 `exp` claim is authoritative. Never print the token or file contents.
@@ -96,7 +127,7 @@ The JSON wrapper contains `access_token` and `expires_at`, but the JWT's embedde
 ```bash
 python - "${token_file}" <<'PY'
 import base64
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import stat
@@ -113,33 +144,53 @@ payload = json.loads(base64.urlsafe_b64decode(payload_part))
 expires_at = datetime.fromtimestamp(payload["exp"], timezone.utc)
 print("JWT exp:", expires_at.isoformat())
 print("Declared expires_at:", token_data.get("expires_at", "missing"))
-if expires_at <= datetime.now(timezone.utc):
-    raise SystemExit("JWT is expired; regenerate it before making requests.")
+remaining = expires_at - datetime.now(timezone.utc)
+if remaining <= timedelta(0):
+    raise SystemExit("JWT is expired; use browser setup or interactive renewal.")
+print("Automatic renewal due:", remaining <= timedelta(days=7))
 PY
 ```
 
-The owner-only rule applies to either token location. If the wrapper expiry is
-later than embedded `exp`, regenerate the credential rather than trusting the
-wrapper.
+The owner-only rule applies to either token location. Use embedded `exp` for
+all expiry decisions. A different wrapper `expires_at` alone is not a reason
+to renew; the wrapper may overstate the actual lifetime. Decoding claims checks
+expiry only; the protected service verifies the JWT's signature and access.
 
-For routine `braingeneerspy` refresh without opening MQTT or Redis connections:
+### 4. Automatically Renew Within Seven Days
 
-```bash
-python - <<'PY'
-import io
-from braingeneers.iot.messaging import MessageBroker
+During an API task, when `0 < exp - now <= 604800` seconds, renew the local
+credential automatically without asking for confirmation. This is expected
+credential maintenance, like the automatic renewal performed by `braingeneerspy`;
+the threshold for this skill is seven days. It does not authorize application
+mutations, production operations, or Kubernetes Secret changes.
 
-token_data = MessageBroker(
-    credentials_file=io.StringIO(""),
-).jwt_service_account_token
-print("Declared expires_at:", token_data.get("expires_at", "missing"))
-PY
-```
+1. Make one HTTPS `GET` to
+   `https://service-accounts.braingeneers.gi.ucsc.edu/generate_token`, with the
+   selected still-valid token in `Authorization: Bearer <token>`. Keep the token
+   and response in process memory, leave TLS verification enabled, use a bounded
+   timeout (for example, 30 seconds), and disable redirects. Never print request
+   headers, the response body, or credential-bearing exception details.
+2. Require HTTP `200` and a JSON object containing a nonempty `access_token` and
+   `expires_at`. Decode the returned JWT and require a valid embedded `exp` in
+   the future and later than the selected token's `exp`. Do not save a login
+   page, error response, malformed token, or response that fails to extend expiry.
+3. Save the validated JSON to a temporary file in the selected file's directory,
+   with mode `0600` from creation, then atomically replace that selected file
+   (for example, `os.replace`). Preserve the original on validation or write
+   failure. Apply this procedure to either local credential location; do not
+   refresh only the package copy when the `~/.ssh` file was selected.
+4. Reload and revalidate the saved file, then notify the user that renewal
+   succeeded, naming the path and new embedded expiry only. Continue the
+   requested task. Do not wait for acknowledgment.
 
-Re-run the embedded-expiry check after refresh. If refresh does not replace a
-JWT whose embedded `exp` is stale, authenticate interactively again.
+Attempt automatic renewal at most once per task. If it fails, preserve the
+original file and report a sanitized reason; continue authorized API requests
+while that credential remains valid and accepted. If a new token still expires
+within seven days, report its short lifetime rather than repeatedly renewing.
+For missing, malformed, expired, or rejected credentials, offer step 2. A fresh
+valid token that is still rejected requires access/admin help, not a renewal loop.
 
-### 3. Make A Read-Only Request
+### 5. Make A Read-Only Request
 
 Load the bearer token directly into a shell variable, never echo it, and unset
 it immediately after the request:
@@ -164,8 +215,8 @@ unset bearer_token
 
 An unexpected `302` to the login service means the proxy did not accept the
 bearer request. Confirm that the header was sent, recheck embedded `exp`, and
-regenerate the token if necessary. Never paste a token into chat, source,
-command output, logs, or shell history.
+use step 2 if the credential is expired or rejected. Never paste a token into
+chat, source, command output, logs, or shell history.
 
 ## NRP And Secret Access
 

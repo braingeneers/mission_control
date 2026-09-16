@@ -19,6 +19,10 @@ Use this skill for services deployed through the `mission_control` repository on
   explicitly requests a local test.
 - Preserve user scope. Diagnosis does not authorize deployment, restart,
   migration, notification delivery, or another external mutation.
+- Routine local service-account JWT renewal within seven days of embedded
+  expiry is expected credential maintenance: follow
+  [access-and-auth.md](references/access-and-auth.md), renew without asking for
+  confirmation, and notify the user afterward.
 - After Compose or proxy changes, run `make test`.
 
 ## Choose The Evidence Or Action Surface First
@@ -75,7 +79,7 @@ the proxy is intended to authenticate the client.
 ## Load References By Need
 
 - [access-and-auth.md](references/access-and-auth.md): web/API access, JWT
-  discovery and validation, kubeconfig modes, and MCP distinction.
+  discovery, browser setup, automatic renewal, kubeconfig modes, and MCP distinction.
 - [service-routing.md](references/service-routing.md): topology, proxy identity
   and authorization behavior, and custom nginx directives.
 - [operations.md](references/operations.md): targeted deployment, status,
