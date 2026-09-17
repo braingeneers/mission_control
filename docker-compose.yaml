@@ -1045,7 +1045,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20260917-d4e07be3935e
+    image: braingeneers/workflows-backend:20260917-00aa81a0a3c5
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1089,7 +1089,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20260917-d4e07be3935e
+    image: braingeneers/workflows-frontend:20260917-00aa81a0a3c5
     container_name: workflows
     restart: unless-stopped
     expose:
