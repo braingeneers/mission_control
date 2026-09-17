@@ -358,6 +358,17 @@ not belong in the backed-up `replicated` volume. Kubernetes continues to use
 the PVC-backed `/workspace/runs` path, which can lazily repopulate an older
 run's local collected cache while the PVC data remains available.
 
+New workflow drivers and tasks use `flowforge-nextflow-work-west`, a 200Gi
+ReadWriteMany NRP west CephFS claim (`rook-cephfs`), selected explicitly by
+`WORKSPACE_PVC_CLAIM`. The owning manifest is
+`../workflows/web-service/deploy/k8s/pvc.example.yaml`; provision this claim
+before recreating the backend with these settings. The old
+`flowforge-nextflow-work` claim uses central CephFS and must remain available
+for historical run workspaces. Existing Jobs keep their original mounts, so
+queued runs must be stopped and cloned after the deployment. Historical
+artifact collectors continue using each run's recorded claim. S3 bucket
+endpoints are separate and do not change during this workspace switch.
+
 The backend is also the sole managed MQTT workflow launcher. It subscribes to
 the internal `mqtt` service on `workflows/launch` with QoS 1 and applies the
 same catalog validation, durable request idempotency, provenance, and

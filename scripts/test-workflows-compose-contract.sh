@@ -39,6 +39,10 @@ if [[ ! "${frontend_image}" =~ ^braingeneers/workflows-frontend:[0-9]{8}-[0-9a-f
 fi
 assert_equal "${backend_tag}" "${frontend_tag}" "Workflows backend/frontend image tags"
 assert_equal \
+    "$(service_value workflows-backend '.environment.WORKSPACE_PVC_CLAIM')" \
+    "flowforge-nextflow-work-west" \
+    "Workflows west workspace claim"
+assert_equal \
     "$(service_value workflows-backend '.environment.COLLECTED_RUNS_ROOT')" \
     "/local/workflows/runs" \
     "Collected run root"
