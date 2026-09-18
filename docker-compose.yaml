@@ -1045,7 +1045,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20260917-da5de77d4831
+    image: braingeneers/workflows-backend:20260918-4b767d70e596
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1071,6 +1071,7 @@ services:
       MQTT_QOS: "1"
       COLLECTED_RUNS_ROOT: "/local/workflows/runs"
       WORKSPACE_PVC_CLAIM: "flowforge-nextflow-work-west"
+      LAUNCHER_MOUNT_TIMEOUT_SECONDS: "1800"
       NOTIFICATION_DISPATCH_ENABLED: "true"
       NOTIFICATION_SERVICE_URL: "http://notification-service:8000"
     healthcheck:
@@ -1090,7 +1091,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20260917-da5de77d4831
+    image: braingeneers/workflows-frontend:20260918-4b767d70e596
     container_name: workflows
     restart: unless-stopped
     expose:

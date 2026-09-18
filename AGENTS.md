@@ -10,6 +10,9 @@
   (`rook-cephfs`, 200Gi ReadWriteMany). Provision it before backend recreation;
   preserve the old central claim for historical runs and clone queued Jobs after
   the setting changes. S3 bucket location does not determine the workspace region.
+- Workflows snapshots a 30-minute launcher mount timeout only into new runs;
+  `LAUNCHER_MOUNT_TIMEOUT_SECONDS=0` disables new timeout decisions after backend
+  recreation. Existing cleanup intents still finish, and older runs remain exempt.
 - Do not create, update, patch, replace, or delete Kubernetes Secrets. Secret mutations are operator-owned; provide the required instructions and wait for the operator to apply them.
 - Do not run production-style `mission_control` services locally unless the user explicitly asks for a local test.
 - Services such as `mqtt-job-listener`, `maxwell-dashboard`, and other Docker Compose managed lab services are intended to run on `braingeneers.gi.ucsc.edu`.

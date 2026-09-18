@@ -43,6 +43,10 @@ assert_equal \
     "flowforge-nextflow-work-west" \
     "Workflows west workspace claim"
 assert_equal \
+    "$(service_value workflows-backend '.environment.LAUNCHER_MOUNT_TIMEOUT_SECONDS')" \
+    "1800" \
+    "Workflows launcher mount timeout"
+assert_equal \
     "$(service_value workflows-backend '.environment.COLLECTED_RUNS_ROOT')" \
     "/local/workflows/runs" \
     "Collected run root"
