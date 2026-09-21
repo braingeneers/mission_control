@@ -17,6 +17,10 @@
 - Do not run production-style `mission_control` services locally unless the user explicitly asks for a local test.
 - Services such as `mqtt-job-listener`, `maxwell-dashboard`, and other Docker Compose managed lab services are intended to run on `braingeneers.gi.ucsc.edu`.
 - When service restart, pull, recreate, or deployment operations are needed, instruct the user to handle them on the `braingeneers` server instead of running them from a local workstation.
+- Unless the user explicitly says otherwise, finish restart-required application changes by
+  validating and publishing the affected images, updating and pushing their applicable Compose
+  pins, and providing targeted pull/recreate/verify commands. Do not hand off a restart with only
+  source-code changes pushed; server-side restarts remain operator-owned.
 - Diagnose protected Braingeneers web-service APIs from the local workstation with the standard
   service-account JWT. Prefer the operator-managed
   `~/.ssh/braingeneers_jwt_token.json` when present; it contains `access_token` and
