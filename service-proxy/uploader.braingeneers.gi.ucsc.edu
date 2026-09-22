@@ -1,6 +1,18 @@
 # Enable auth_request and shared proxy headers.
 include /etc/nginx/vhost.d/default;
 
+# Background API calls must not follow cross-origin login redirects.
+# The generated root location selects this handler; other services keep the default.
+location @uploader_auth_required {
+    default_type application/json;
+    add_header Cache-Control "no-store" always;
+    add_header X-Request-ID $request_id always;
+    if ($request_uri ~ "^/api/") {
+        return 401 '{"detail":{"code":"authentication_required","message":"Sign in again, then retry your request."}}';
+    }
+    return 302 "https://auth.braingeneers.gi.ucsc.edu/oauth2/start?rd=https://$host$request_uri";
+}
+
 # Enable websocket upgrades and streaming for this service.
 access_log /var/log/nginx/uploader.access.log vhost;
 error_log /var/log/nginx/uploader.error.log info;

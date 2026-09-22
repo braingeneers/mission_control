@@ -42,6 +42,14 @@
 - Keep uploader `proxy_set_header` directives at vhost scope. Defining any in a
   generated `_location` prevents inheritance of the trusted identity-header
   overrides and downstream `Authorization` stripping from `service-proxy/default`.
+- Uploader `_location` files select `@uploader_auth_required` for 401 responses. The
+  uploader-only handler returns JSON for `/api/` paths while page navigation retains
+  the normal login redirect; do not change the shared policy for other services.
+  `service-proxy/test-uploader-auth.sh` exercises both actual uploader overrides with
+  an isolated auth/backend stub, including POST bodies and trusted-header inheritance.
+  Recreate `service-proxy` after these bind-mounted files change so it reads the new
+  files rather than old inodes. Proxy logs include their request ID and the backend
+  response's request ID to correlate copied uploader diagnostics.
 - Keep `proxy_pass_request_body off` and an empty `Content-Length` header inside
   the `/_oauth2_proxy_auth` location in `service-proxy/default`. Authentication
   subrequests do not receive the original request body; forwarding its length

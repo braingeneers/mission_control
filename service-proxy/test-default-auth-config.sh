@@ -80,3 +80,12 @@ docker run --rm \
     --volume "${script_dir}/test-nginx.conf:/test/nginx.conf:ro" \
     nginxproxy/nginx-proxy:latest \
     -t -c /test/nginx.conf
+
+# Exercise the actual uploader overrides, not a hand-copied auth policy.
+docker run --rm \
+    --entrypoint sh \
+    --add-host oauth2-proxy:127.0.0.1 \
+    --volume "${script_dir}:/etc/nginx/vhost.d:ro" \
+    --volume "${script_dir}:/test:ro" \
+    nginxproxy/nginx-proxy:latest \
+    /test/test-uploader-auth.sh
