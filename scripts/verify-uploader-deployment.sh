@@ -51,4 +51,40 @@ running_prod="$(
 [[ "${running_prod}" == "${expected_prod}" ]] \
     || fail "${service} reports PROD=${running_prod}; expected ${expected_prod}."
 
-echo "${service} deployment matches ${expected_image} with PROD=${expected_prod}."
+# Check the live edge contract too: a current app container can still sit behind
+# stale bind-mounted proxy configuration that redirects API requests to login.
+api_url="https://${service}.braingeneers.gi.ucsc.edu/api/version"
+api_response="$(curl -q --silent --show-error --connect-timeout 5 --max-time 15 \
+    --proto '=https' --max-redirs 0 --max-filesize 16384 --include --suppress-connect-headers \
+    --write-out $'\n%{http_code}' "${api_url}")" \
+    || fail "${service} public API authentication check could not reach ${api_url}; check HTTPS connectivity and retry."
+api_status="${api_response##*$'\n'}"
+api_body="${api_response%$'\n'*}"
+
+auth_failure() {
+    fail "${service} public API authentication check failed: $1. Pull the updated proxy configuration, recreate service-proxy, and rerun this verifier."
+}
+
+[[ "${api_status}" == "401" ]] \
+    || auth_failure "expected HTTP 401 at ${api_url}, received ${api_status}"
+# Keep this small anonymous response in memory. Skip informational header blocks
+# such as HTTP 103 so only the final response determines the authentication result.
+while true; do
+    [[ "${api_body}" == HTTP/* && "${api_body}" == *$'\r\n\r\n'* ]] \
+        || auth_failure "incomplete response headers"
+    api_headers="${api_body%%$'\r\n\r\n'*}"
+    api_body="${api_body#*$'\r\n\r\n'}"
+    status_line="${api_headers%%$'\r\n'*}"
+    [[ "${status_line}" =~ ^HTTP/[^[:space:]]+[[:space:]]+1[0-9][0-9]([[:space:]]|$) ]] || break
+done
+# Header names are case-insensitive, and curl preserves CRLF response endings.
+awk 'tolower($0) ~ /^location[[:space:]]*:/ { found=1 } END { exit !found }' \
+    <<<"${api_headers}" && auth_failure "anonymous API response contains a login redirect"
+awk 'tolower($0) ~ /^content-type:[[:space:]]*application\/json([;[:space:]]|$)/ { found=1 } END { exit !found }' \
+    <<<"${api_headers}" || auth_failure "anonymous API response is not JSON"
+awk 'tolower($0) ~ /^x-request-id:[[:space:]]*[^[:space:]]/ { found=1 } END { exit !found }' \
+    <<<"${api_headers}" || auth_failure "anonymous API response has no request ID"
+jq -e '.detail.code == "authentication_required"' <<<"${api_body}" >/dev/null 2>&1 \
+    || auth_failure "anonymous API response does not contain the authentication-required error"
+
+echo "${service} deployment matches ${expected_image} with PROD=${expected_prod}; public API authentication is correct."

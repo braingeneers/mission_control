@@ -463,9 +463,14 @@ make verify-uploader-deployment SERVICE=uploader-dev
 ```
 
 The deployment verifier compares the Compose image reference, the pulled image
-ID, the running container image ID, `APP_VERSION`, and `PROD`. Run it after every
-uploader image update so an old container left behind by a pull or restart is
-reported immediately.
+ID, the running container image ID, `APP_VERSION`, and `PROD`. It also checks the
+selected service's public HTTPS `/api/version` without credentials: the response
+must be HTTP 401 JSON with an `authentication_required` code, a request ID, and
+no login redirect. Run it after every uploader image or proxy update. A current
+app image can still use stale bind-mounted proxy configuration; if the API check
+reports a redirect, pull the updated configuration and recreate `service-proxy`
+before rerunning the verifier. The check never follows redirects or uses local
+curl configuration, and requires `curl` and `jq` on the operator's machine.
 
 If shared Kubernetes secrets such as `prp-s3-credentials` or `kube-config`
 were changed, refresh `secret-fetcher` first:

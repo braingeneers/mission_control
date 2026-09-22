@@ -92,6 +92,10 @@
   `make verify-uploader-deployment SERVICE=uploader` or
   `make verify-uploader-deployment SERVICE=uploader-dev` on the server. A pull plus restart does not
   replace an existing container; the verifier compares the configured and running image IDs.
+  It also requires anonymous public `/api/version` to return HTTP 401 JSON with
+  `authentication_required`, `X-Request-ID`, and no `Location`. Keep redirect,
+  malformed-response, missing-request-ID, and HTTPS failure coverage: matching app
+  images alone do not prove the bind-mounted proxy configuration was refreshed.
 - Keep `replicated-volume-backup` additive: it copies new and changed files to
   `s3://braingeneersdev/services/replicated/` and must not delete remote
   objects. Keep its `replicated` mount read-only and exclude dot-prefixed and
