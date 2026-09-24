@@ -798,7 +798,7 @@ services:
 
   # Acceptance-test uploader; runs alongside the production uploader above.
   uploader-dev:
-    image: braingeneers/braingeneers-data-uploader:20260923-d579580964e3
+    image: braingeneers/braingeneers-data-uploader:20260924-0f638311e794
     container_name: uploader-dev
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -910,7 +910,7 @@ services:
 
   # Data Explorer dataset browser
   data-explorer:
-    image: braingeneers/data-explorer:20260924-88aceea92c57
+    image: braingeneers/data-explorer:20260924-756f5d6ab034
     container_name: data-explorer
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -947,7 +947,7 @@ services:
       DATA_EXPLORER_MQTT_TOPIC: "workflows/launch"
       DATA_EXPLORER_MQTT_QOS: "1"
       DATA_EXPLORER_DANDI_DISPATCH_GRACE_SECONDS: "300"
-      DATA_EXPLORER_UPLOADER_URL: "https://uploader.braingeneers.gi.ucsc.edu"
+      DATA_EXPLORER_UPLOADER_URL: "https://uploader-dev.braingeneers.gi.ucsc.edu"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/config', timeout=5)"]
       interval: 10s

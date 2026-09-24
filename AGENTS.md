@@ -73,6 +73,11 @@
   Sandbox workflow credentials use Secret `dandi-api-key`, data key
   `dandi-sandbox-api-key`. Local-source workflow revisions require a definition
   refresh after the workflows checkout updates, not a service restart.
+- Data Explorer metadata-repair links currently target `uploader-dev` for
+  acceptance, using `source`, `uuid`, and optional `field` parameters. Keep that
+  destination on an editor image supporting deep links; the older main uploader
+  image predates the existing-metadata URL handler. This routing choice does not
+  change the production bucket used by `uploader-dev`.
 - Mission Control owns the Data Lifecycle task image source under
   `data-lifecycle/`, while the catalog and Nextflow source remain in the
   sibling `workflows` repository. Keep the image's `/data_lifecycle/src`

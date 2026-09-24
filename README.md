@@ -137,6 +137,12 @@ the Dandiset, validation/access states, workflow outcome, every known DOI, and
 the source NWBs represented by each immutable version. The existing Sandbox
 badge identifies the current DANDI instance.
 
+For this acceptance iteration, `DATA_EXPLORER_UPLOADER_URL` points to
+`https://uploader-dev.braingeneers.gi.ucsc.edu`. Metadata-repair links open the
+selected dataset there and focus an optional authoring `field`. The acceptance
+service uses `PROD=true`, so ephys links still address the production bucket.
+The main `uploader` service retains its existing image pin.
+
 The service owns a `data_explorer` schema in shared `sql-db`. Its entrypoint
 runs Alembic before FastAPI and keeps SQLAlchemy table auto-create disabled.
 Unique immutable request and result objects live beneath
