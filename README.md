@@ -126,13 +126,16 @@ Explorer is the sole user interface for retention renewal and `NOBACKUP`.
 
 ## Data Explorer DANDI publication
 
-Data Explorer provides push-button publication of an exact NWB selection to a
-new DANDI Sandbox Dandiset. The browser can separately select raw ephys and
-derived spike/telemetry NWBs, choose open or embargoed access at creation, sync
-the mutable draft, publish an OPEN Valid draft with release notes, and later start an
-irreversible unembargo. It displays the Dandiset, validation/access states,
-workflow outcome, every known DOI, and the source NWBs represented by each
-immutable version.
+Data Explorer explains publication in two steps: prepare a DANDI draft from an
+exact NWB selection, then publish a fixed version with release notes. Users can
+choose raw ephys and derived spike/telemetry NWBs, create a public or private
+(embargoed) draft, update its files, and review it on DANDI. Public drafts are
+visible before publication; **Make draft public** changes private access
+irreversibly without publishing a version. Publication requires an OPEN Valid
+draft, and the panel explains unmet requirements beside the button. It displays
+the Dandiset, validation/access states, workflow outcome, every known DOI, and
+the source NWBs represented by each immutable version. The existing Sandbox
+badge identifies the current DANDI instance.
 
 The service owns a `data_explorer` schema in shared `sql-db`. Its entrypoint
 runs Alembic before FastAPI and keeps SQLAlchemy table auto-create disabled.
