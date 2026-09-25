@@ -62,6 +62,10 @@ assert_equal \
     "uploader-dev" \
     "Acceptance uploader explicit container name"
 assert_immutable_uploader_image uploader-dev
+assert_equal "$(service_value uploader-dev '.environment.WHATS_NEW_DIR')" \
+    "/replicated/uploader-dev/whats-new" "Announcement state survives uploader-dev recreation/domain moves"
+assert_equal "$(service_value uploader-dev '.volumes[] | select(.target == "/replicated") | .source')" \
+    "replicated" "Acceptance uploader announcement state is backed up"
 
 assert_equal "$(service_value uploader-dev '.environment.WORKFLOWS_API_URL')" \
     "http://workflows-backend:8000" "Acceptance uploader internal Recipe API"

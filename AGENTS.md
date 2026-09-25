@@ -132,3 +132,8 @@
   through the API, and recreate uploader-dev only outside active uploads. Missing Slack
   `users:read.email` scope leaves email notifications working; scope/token updates are
   operator-owned.
+- Uploader-dev What’s new state lives at `/replicated/uploader-dev/whats-new` through
+  `WHATS_NEW_DIR`. Preserve that volume/path during recreation and a future hostname move.
+  The initial message is disabled for operator editing in `/admin`; image deployment must not
+  enable it or reset edited content/dismissals. Keep changes on uploader-dev until the operator
+  explicitly switches its domain; do not promote the older `uploader` service implicitly.

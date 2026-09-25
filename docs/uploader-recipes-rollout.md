@@ -5,8 +5,9 @@ The main `uploader` service stays on its existing image and MQTT configuration. 
 still use production data (`PROD=true`). No scientific workflow source or parameters change.
 
 The initial integration shipped Workflows backend/frontend `20260925-f860b5615638` and
-notification-service `1.2.0`. The current uploader UI follow-up is `20260925-66add91984c8`;
-`docker-compose.yaml` pins the current service images.
+notification-service `1.2.0`. The Recipe UI follow-up shipped uploader-dev `20260925-66add91984c8`.
+See [the What’s new rollout](uploader-whats-new-rollout.md) for the subsequent announcement and
+layout update. `docker-compose.yaml` pins the current service images.
 
 ## Radio-button follow-up
 
