@@ -5,7 +5,33 @@ The main `uploader` service stays on its existing image and MQTT configuration. 
 still use production data (`PROD=true`). No scientific workflow source or parameters change.
 
 Published services: Workflows backend/frontend `20260925-f860b5615638`, notification-service
-`1.2.0`, and uploader-dev `20260925-09b03bc43b5d`, pinned in `docker-compose.yaml`.
+`1.2.0`, and uploader-dev `20260925-2a2eed6f4bae`, pinned in `docker-compose.yaml`.
+
+## Radio-button follow-up
+
+Section 5 now presents **Upload only** and each available saved Recipe as native radio buttons.
+Exactly one option is selected; workflow and scientific parameter controls are absent.
+
+The initial visibility/default setup was completed through the authenticated HTTPS API on
+September 25, after the first service restart. Both Workflows and uploader-dev returned all three
+Ephys Recipes, with Standard as the lab default. Their scientific settings were unchanged. An empty
+list before setup was expected filtering of unavailable Recipes, not a transport failure.
+Do not rerun the initial setup below during ordinary updates or overwrite a newer lab default.
+
+For this UI update, run only these commands on the server from the Mission Control checkout,
+outside active uploader-dev uploads:
+
+```bash
+git pull --ff-only
+docker compose pull uploader-dev
+docker compose up -d --no-deps --wait uploader-dev
+make verify-uploader-deployment SERVICE=uploader-dev
+```
+
+Refresh the browser afterward. An explicit Upload only preference stays selected; choose a Recipe
+or use **Use lab default** in Recipe help to restore the shared default.
+
+## Initial service rollout (reference)
 
 Run these commands **on the server, from its Mission Control checkout**, outside active
 uploader-dev uploads. Uploader sessions/multipart bookkeeping are in memory and cannot survive
