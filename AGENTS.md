@@ -107,3 +107,10 @@
   `*.tmp` incomplete files.
 - The legacy Data Lifecycle web and scheduler containers are retired. Backup
   and advisory-report execution is owned exclusively by Workflows.
+- The uploader-dev Recipe release uses Workflows over `http://workflows-backend:8000`, with
+  the default Recipe stored in Workflows and managed through uploader `/admin`. Keep the
+  main uploader image and MQTT wiring unchanged until explicitly promoting the candidate.
+  Deploy notification-service then Workflows/migration, enable the initial Recipes/default
+  through the API, and recreate uploader-dev only outside active uploads. Missing Slack
+  `users:read.email` scope leaves email notifications working; scope/token updates are
+  operator-owned.

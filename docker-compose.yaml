@@ -798,7 +798,7 @@ services:
 
   # Acceptance-test uploader; runs alongside the production uploader above.
   uploader-dev:
-    image: braingeneers/braingeneers-data-uploader:20260924-0f638311e794
+    image: braingeneers/braingeneers-data-uploader:20260925-09b03bc43b5d
     container_name: uploader-dev
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -819,10 +819,8 @@ services:
       LETSENCRYPT_HOST: "uploader-dev.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
       PROD: "true"
-      MQTT_BROKER_HOST: "mqtt"
-      MQTT_BROKER_PORT: "1883"
-      MQTT_WORKFLOW_TOPIC: "workflows/launch"
-      MQTT_QOS: "1"
+      WORKFLOWS_API_URL: "http://workflows-backend:8000"
+      WORKFLOWS_PUBLIC_URL: "https://workflows.braingeneers.gi.ucsc.edu"
       METADATA_TEMPLATE_DIR: "/replicated/uploader-dev/metadata-templates"
       NRP_LLM_API_KEY_FILE: "/secrets/nrp-llm-api-key"
     networks:
@@ -993,7 +991,7 @@ services:
   # Shared stateless Slack and email API. Internal callers use Docker service
   # discovery; external callers use the standard JWT-capable authenticated proxy.
   notification-service:
-    image: braingeneers/notification-service:1.1.0
+    image: braingeneers/notification-service:1.2.0
     container_name: notification-service
     restart: unless-stopped
     expose:
@@ -1045,7 +1043,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20260924-d432cbfc4369
+    image: braingeneers/workflows-backend:20260925-f860b5615638
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1091,7 +1089,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20260924-d432cbfc4369
+    image: braingeneers/workflows-frontend:20260925-f860b5615638
     container_name: workflows
     restart: unless-stopped
     expose:
