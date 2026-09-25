@@ -1,10 +1,24 @@
 # Workflows pod protection rollout — September 25, 2026
 
-Release: `20260925-a63af1265893` for both Workflows images, from Workflows
-commit `a63af126589374b916ebaf421b6a2d98523fcfd1`. The backend introduces
-Alembic `0022_cluster_admission`. The existing Compose command applies migrations
-before starting Uvicorn. This first release intentionally retains Braindance
-v0.3.8 in its image fallback; deploy protection before publishing the v0.4 source.
+Release: `20260925-56427ead0824` for both Workflows images, from Workflows
+commit `56427ead0824`. The backend retains Alembic `0022_cluster_admission`.
+The existing Compose command applies migrations before starting Uvicorn.
+This correction includes the published Braindance v0.4 source in its image fallback.
+
+The operator restarted initial protection release `20260925-a63af1265893` and
+the live admission API verified fresh observations. Braindance v0.4 / Maxwell
+v0.1.15 were then published and the catalog reloaded. Fresh NRP canary
+`7656596f-01a5-4833-b745-919e3c55eb10` completed with eight successful task Jobs,
+at most two concurrent task Pods and three task submissions per rolling minute.
+Its scientific outputs, manifests, exact recovery bytes and linked replacements
+were verified.
+
+That canary exposed an ignored `k8s.labels` option: task Pods were counted as
+external work. This correction assigns the immutable `workflows_<run UUID>`
+Nextflow name and uses the native `nextflow.io/runName` label on Jobs and Pods.
+The complete backend suite and real nf-k8s manifest capture with both parsers
+passed; Secret and scratch settings remain intact. One targeted recreation is
+required to run the corrected backend. No schema change is required beyond 0022.
 
 On **braingeneers.gi.ucsc.edu**, from the existing **mission_control** checkout:
 
@@ -17,7 +31,7 @@ docker compose exec -T workflows-backend alembic current
 docker compose logs --tail=80 workflows-backend workflows
 ```
 
-Expected: both services run image `20260925-a63af1265893`, the migration reports
+Expected: both services run image `20260925-56427ead0824`, the migration reports
 `0022_cluster_admission (head)`, and startup succeeds. Stop here on migration,
 startup or observation errors; preserve the output for diagnosis. Do not restart
 the database, proxy, uploader or any unrelated service. Server execution remains
@@ -38,8 +52,8 @@ rejection creates a durable hold for review in Settings; a fresh rejected attemp
 re-latches it after clearance. Pausing new starts retains accepted work in the
 database and leaves bounded artifact collection available.
 
-Then publish the prepared Braindance v0.4/Maxwell v0.1.15 source change, refresh
-the catalog, and run a bounded canary before broad launches. Check actual task
+Then run the bounded reuse canary and verify native ownership before broad
+launches. Braindance v0.4/Maxwell v0.1.15 are already published. Check actual task
 rates/peak pod counts, source/output verification, memory and scratch, and full
 reuse. Do not interpret a local fixture test as proof of full-dataset throughput.
 
@@ -49,7 +63,8 @@ migration and simultaneous reservation tests; both Nextflow parser modes and
 measured 5/min task limiting; read-only live namespace observation. Scientific
 fixture checks cover standalone/fused equality, interrupted upload recovery,
 fresh and reused paired NWBs, selective derived rebuild, manifests, exact recovery
-bytes and linked-source replacement. No NRP validation pods were launched.
+bytes and linked-source replacement. The subsequent fresh NRP canary is described
+above; large-recording resource headroom remains a separate measurement.
 
 If application rollback becomes necessary, retain the additive database table;
 do not downgrade/drop it while any reservations exist. Reverting to the previous

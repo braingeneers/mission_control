@@ -6,11 +6,14 @@
 
 ## Service Operations
 
-- Workflows release `20260925-a63af1265893` adds Alembic revision
-  `0022_cluster_admission` and namespace-wide launch protection. Recreate only
+- Workflows release `20260925-56427ead0824` retains Alembic revision
+  `0022_cluster_admission` and namespace-wide launch protection. It corrects task
+  ownership using Nextflow's native `workflows_<run UUID>` run-name labels; the
+  initial `a63af1265893` release used an ignored `k8s.labels` setting. Recreate only
   `workflows-backend` and `workflows`, retaining the existing startup migration
-  command. Check Settings/API freshness before releasing the Braindance v0.4
-  source update. Old running Jobs drain; unsubmitted legacy snapshots require
+  command. Braindance v0.4 is published and its eight-task fresh NRP canary passed;
+  verify native ownership on a bounded reuse run after this correction. Old
+  running Jobs drain; unsubmitted legacy snapshots require
   Stop and Clone. No cluster quota, Secret or other service changes are needed.
 
 - Keep Workflows on the explicit `flowforge-nextflow-work-west` workspace claim
