@@ -9,12 +9,14 @@
 - Workflows release `20260925-56427ead0824` retains Alembic revision
   `0022_cluster_admission` and namespace-wide launch protection. It corrects task
   ownership using Nextflow's native `workflows_<run UUID>` run-name labels; the
-  initial `a63af1265893` release used an ignored `k8s.labels` setting. Recreate only
-  `workflows-backend` and `workflows`, retaining the existing startup migration
-  command. Braindance v0.4 is published and its eight-task fresh NRP canary passed;
-  verify native ownership on a bounded reuse run after this correction. Old
-  running Jobs drain; unsubmitted legacy snapshots require
-  Stop and Clone. No cluster quota, Secret or other service changes are needed.
+  initial `a63af1265893` release used an ignored `k8s.labels` setting. The operator
+  recreated `workflows-backend` and `workflows`; the existing startup migration
+  command remains in place. Braindance v0.4 passed its eight-task fresh NRP canary
+  and four-task reuse canary `86e70394-484c-4fb4-9d4f-fdae39fdc31a`. Live native
+  ownership, accounting without double counting, unchanged output bytes and
+  complete reservation release were verified. Large-recording resource headroom
+  still needs measurement. Old running Jobs drain; unsubmitted legacy snapshots
+  require Stop and Clone. No cluster quota, Secret or other service changes are needed.
 
 - Keep Workflows on the explicit `flowforge-nextflow-work-west` workspace claim
   (`rook-cephfs`, 200Gi ReadWriteMany). Provision it before backend recreation;

@@ -17,9 +17,14 @@ That canary exposed an ignored `k8s.labels` option: task Pods were counted as
 external work. This correction assigns the immutable `workflows_<run UUID>`
 Nextflow name and uses the native `nextflow.io/runName` label on Jobs and Pods.
 The complete backend suite and real nf-k8s manifest capture with both parsers
-passed; Secret and scratch settings remain intact. One targeted recreation is
-required to run the corrected backend. No schema change is required beyond 0022.
+passed; Secret and scratch settings remain intact. The operator confirmed the
+targeted corrective recreation, and the live checks below verified the corrected
+behavior. No schema change was required beyond 0022.
 
+## Completed deployment procedure
+
+These are the operator commands supplied for the completed deployment, retained
+as a reference. No further restart is needed for the verification-note update.
 On **braingeneers.gi.ucsc.edu**, from the existing **mission_control** checkout:
 
 ```bash
@@ -52,10 +57,29 @@ rejection creates a durable hold for review in Settings; a fresh rejected attemp
 re-latches it after clearance. Pausing new starts retains accepted work in the
 database and leaves bounded artifact collection available.
 
-Then run the bounded reuse canary and verify native ownership before broad
-launches. Braindance v0.4/Maxwell v0.1.15 are already published. Check actual task
-rates/peak pod counts, source/output verification, memory and scratch, and full
-reuse. Do not interpret a local fixture test as proof of full-dataset throughput.
+## Completed production verification
+
+After the corrective restart, reuse canary
+`86e70394-484c-4fb4-9d4f-fdae39fdc31a` completed at 21:25:27 UTC on September 25.
+The driver used its immutable Nextflow name; all four successful task Jobs and
+Pods carried the matching native ownership label. No raw or derived conversion
+ran again. Peak task concurrency was one Pod and the maximum was two task Job
+creations per rolling minute. Downloaded NWB, LINDI, validation and linked-source
+bytes were unchanged; original recovery bytes, eight complete manifests and the
+unrelated source object were verified again.
+
+The live ledger counted the owned task within its reservation rather than as
+external activity. After completion and cooldown, the authenticated admission
+endpoint reported fresh observations, zero run/task-slot/task-rate/helper
+reservations, two external pods, no hold and no queued runs. This verifies live
+API and Kubernetes behavior; the UI walkthrough below used the local production
+image because production browser access was unavailable.
+
+Braindance v0.4/Maxwell v0.1.15 are published. Retain the default budgets for a
+bounded-subset rollout before one dataset at a time. Measure large-recording
+memory, scratch and throughput; these tiny NRP fixtures do not establish that
+headroom. Defaults are not an NRP-approved allocation, and direct submissions
+remain outside website admission control.
 
 Local evidence before publication: complete backend regression suite; frontend
 unit/build checks and desktop/mobile production-image walkthrough; PostgreSQL
@@ -63,8 +87,10 @@ migration and simultaneous reservation tests; both Nextflow parser modes and
 measured 5/min task limiting; read-only live namespace observation. Scientific
 fixture checks cover standalone/fused equality, interrupted upload recovery,
 fresh and reused paired NWBs, selective derived rebuild, manifests, exact recovery
-bytes and linked-source replacement. The subsequent fresh NRP canary is described
-above; large-recording resource headroom remains a separate measurement.
+bytes and linked-source replacement. Both subsequent NRP canaries are described
+above; large-recording resource headroom remains a separate measurement. Full
+implementation and evidence are in the
+[Workflows report](https://github.com/braingeneers/workflows/blob/main/docs/pod-efficiency.md).
 
 If application rollback becomes necessary, retain the additive database table;
 do not downgrade/drop it while any reservations exist. Reverting to the previous
