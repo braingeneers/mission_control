@@ -6,6 +6,13 @@
 
 ## Service Operations
 
+- Workflows release `20260925-a63af1265893` adds Alembic revision
+  `0022_cluster_admission` and namespace-wide launch protection. Recreate only
+  `workflows-backend` and `workflows`, retaining the existing startup migration
+  command. Check Settings/API freshness before releasing the Braindance v0.4
+  source update. Old running Jobs drain; unsubmitted legacy snapshots require
+  Stop and Clone. No cluster quota, Secret or other service changes are needed.
+
 - Keep Workflows on the explicit `flowforge-nextflow-work-west` workspace claim
   (`rook-cephfs`, 200Gi ReadWriteMany). Provision it before backend recreation;
   preserve the old central claim for historical runs and clone queued Jobs after
