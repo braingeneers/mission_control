@@ -314,8 +314,15 @@ Operator-owned credentials:
   `notifications` and domain `braingeneers.gi.ucsc.edu`.
 
 Only notification components read these files. Secret creation and replacement
-remain operator-owned. A missing Slack token disables only `/v1/slack`; the mail
+remain operator-owned. A missing Slack token disables the Slack endpoints; the mail
 relay waits for its DKIM key rather than sending unsigned mail.
+
+After granting scopes and reinstalling/reauthorizing the Slack app, test the API
+with the existing token first. Updated scope grants can take effect without a
+notification-service restart (verified for group-DM discovery/history). If Slack
+issues a replacement token, the operator must update the Secret, refresh
+`secret-fetcher`, and recreate `notification-service`: its Slack client caches
+the loaded token.
 
 `notification-mail-relay` is outbound-only, unexposed, on
 `braingeneers-net`, and has no inbox, IMAP, webmail, or MX requirement. Its
