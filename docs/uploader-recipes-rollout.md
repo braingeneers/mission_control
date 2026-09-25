@@ -4,13 +4,17 @@ This release replaces the candidate uploader's MQTT publisher with the Workflows
 The main `uploader` service stays on its existing image and MQTT configuration. Both uploaders
 still use production data (`PROD=true`). No scientific workflow source or parameters change.
 
-Published services: Workflows backend/frontend `20260925-f860b5615638`, notification-service
-`1.2.0`, and uploader-dev `20260925-2a2eed6f4bae`, pinned in `docker-compose.yaml`.
+The initial integration shipped Workflows backend/frontend `20260925-f860b5615638` and
+notification-service `1.2.0`. The current uploader UI follow-up is `20260925-66add91984c8`;
+`docker-compose.yaml` pins the current service images.
 
 ## Radio-button follow-up
 
 Section 5 now presents **Upload only** and each available saved Recipe as native radio buttons.
 Exactly one option is selected; workflow and scientific parameter controls are absent.
+Recipe purposes appear in the existing help popover when hovering over a row or using its **?**
+control with a keyboard or touch. Selection uses a larger amber radio and an amber row highlight.
+Purpose text no longer changes the panel height or moves the list when switching Recipes.
 
 The initial visibility/default setup was completed through the authenticated HTTPS API on
 September 25, after the first service restart. Both Workflows and uploader-dev returned all three
