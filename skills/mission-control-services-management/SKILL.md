@@ -1,6 +1,6 @@
 ---
 name: mission-control-services-management
-description: Design, deploy, operate, or diagnose Braingeneers services managed by mission_control on braingeneers.gi.ucsc.edu. Use for Compose service wiring, protected HTTPS API diagnosis, proxy and authentication patterns, shared infrastructure, secrets, packaging, and targeted production operations. Do not use for ordinary application development that does not involve Mission Control deployment or service contracts.
+description: Use Braingeneers notification-service to find/read Slack conversations and send messages or email; design, deploy, operate, or diagnose services managed by mission_control on braingeneers.gi.ucsc.edu. Use for protected HTTPS APIs, Compose wiring, proxy authentication, shared infrastructure, secrets, packaging, and targeted production operations. Do not use for ordinary application development that does not involve these service contracts.
 ---
 
 # Mission Control Services Management
@@ -32,6 +32,11 @@ Classify what the user needs before selecting tools or deployment topology:
 - **Hosted service data or status:** use the documented HTTPS API from the local
   workstation with the standard service-account JWT. Read
   [references/access-and-auth.md](references/access-and-auth.md).
+- **Slack conversations or notifications:** use `notification-service` to discover
+  bot-joined conversations, read history/replies, and send requested messages or
+  email. Read [references/notifications.md](references/notifications.md) and reuse
+  the authentication reference above. Keep Slack messages concise; put detailed
+  results in linked artifacts when possible.
 - **Data Explorer content:** for paths, searches, fresh listings, and downloads,
   use the `data-explorer-cli-access` skill when available. A request to find or
   verify objects is semantic data access even if the user says “on the website.”
@@ -92,8 +97,8 @@ the proxy is intended to authenticate the client.
   contract.
 - [hosted-llms.md](references/hosted-llms.md): NRP-hosted model access and its
   distinct API-key contract.
-- [notifications.md](references/notifications.md): shared Slack and email API,
-  caller behavior, Postfix, and provider-specific operations.
+- [notifications.md](references/notifications.md): discover/read Slack conversations,
+  post concise thread replies, send email, and operate the notification providers.
 - [web-app-style.md](references/web-app-style.md): Braingeneers operations UI
   style and bundled assets, only for new or materially refreshed web UIs.
 

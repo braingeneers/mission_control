@@ -988,10 +988,10 @@ services:
       - local:/local
       - replicated:/replicated
 
-  # Shared stateless Slack and email API. Internal callers use Docker service
+  # Shared stateless Slack conversations and email API. Internal callers use Docker service
   # discovery; external callers use the standard JWT-capable authenticated proxy.
   notification-service:
-    image: braingeneers/notification-service:1.2.0
+    image: braingeneers/notification-service:1.3.0
     container_name: notification-service
     restart: unless-stopped
     expose:

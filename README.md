@@ -265,13 +265,18 @@ docker compose logs -f sql-db
 
 ## Notification service
 
-`notification-service` is the shared outbound Slack and email boundary for new
-integrations. Compose peers call `http://notification-service:8000` directly.
+`notification-service` is the shared Slack conversation and outbound email API
+for services and agents. Compose peers call `http://notification-service:8000` directly.
 External callers use `https://notifications.braingeneers.gi.ucsc.edu` through
 the normal authenticated proxy, which accepts existing service-account JWTs and
 signed-in browser sessions. The application does not implement another bearer
 token scheme and does not use PostgreSQL or MQTT.
 
+Agents discover bot-joined conversations with `GET /v1/slack/conversations`,
+confirm participants through `/{channel_id}/members`, and read bounded
+`/{channel_id}/history` or `/{channel_id}/replies` pages under that same prefix.
+Bot membership controls access for all authenticated callers. Slack replies
+should stay concise, with detailed results linked when possible.
 Slack delivery is synchronous through `POST /v1/slack`, supports channel IDs or
 direct delivery to stable user IDs, and exposes `GET /v1/slack/destinations`
 for friendly user and joined-channel pickers. Email is accepted with

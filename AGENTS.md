@@ -83,7 +83,10 @@
   sibling `workflows` repository. Keep the image's `/data_lifecycle/src`
   layout stable and keep workflow image pins synchronized with
   `data-lifecycle/VERSION`.
-- Keep `notification-service` as the shared boundary for new outbound Slack and email integrations. Compose peers call it directly; external clients use the standard authenticated proxy and existing service-account JWTs. The application has no producer tokens, database, or MQTT adapter.
+- Keep `notification-service` as the shared boundary for Slack conversation access and outbound Slack/email integrations. Compose peers call it directly; external clients use the standard authenticated proxy and existing service-account JWTs. The application has no producer tokens, database, or MQTT adapter.
+- Slack conversation reads use bot membership for all authenticated callers. Keep
+  discovery/history/replies paginated, use the existing posting endpoint for thread
+  replies, and keep agent Slack messages concise. Scope/token changes remain operator-owned.
 - Treat `/secrets/slack-token-braingeneersbot-gi` and `/secrets/notification-service` as operator-owned. Only the notification components read the `ucsc-gi` `braingeneersbot` token and DKIM private key; consumers never receive either credential.
 - Keep `notification-mail-relay` outbound-only, unexposed, on the trusted `braingeneers-net`, and fixed to the aligned `notifications@braingeneers.gi.ucsc.edu` sender. Internal services are trusted, but callers should use `notification-service` rather than connect to Postfix directly. Email durability belongs to the persisted Postfix queue.
 - Keep report workflows notification-neutral: publish channel-agnostic artifacts, including bounded Slack-ready text when useful, and leave recipient selection and delivery to the Workflows website. Do not add workflow-owned channel ids or completion-notification manifests.
