@@ -1,6 +1,6 @@
 # Uploader-dev announcements and layout — September 25, 2026
 
-Candidate image: `braingeneers/braingeneers-data-uploader:20260925-6750199f246c`.
+Candidate image: `braingeneers/braingeneers-data-uploader:20260925-0e6fb4ee4e5f`.
 The older `uploader` service and both hostnames stay unchanged. This update only recreates
 `uploader-dev`; no Workflows, notification, proxy, or database restart is required.
 
