@@ -6,10 +6,10 @@
 
 ## Service Operations
 
-- Workflows release `20260926-f0bd2ad44a8a` carries the requested menu order,
-  moves Recipe reference workflows into test-only fixtures, and preserves
-  current run notification definitions through clone review and launch. Both
-  Compose image pins must advance together. Operator recreation of
+- Workflows release `20260926-d1dc3bbd8b15` adds the Schedules list/detail
+  browser and separate create/edit routes, retaining the earlier menu order,
+  test-only Recipe fixtures, and clone notification preservation. Both Compose
+  image pins must advance together. Operator recreation of
   `workflows-backend` and `workflows` is pending; no new database migration is
   required beyond the existing `0022_cluster_admission` head.
 
