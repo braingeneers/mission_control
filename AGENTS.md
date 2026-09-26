@@ -6,6 +6,13 @@
 
 ## Service Operations
 
+- Uploader release `20260926-0ef037362a12` prevents inferred ephys sample assignments,
+  preserves drafts through failed/canceled replacements, and reuses verified historical
+  projections across warning-only upgrades (including Recipe preflight). It also prevents
+  queued dialog-close events from stealing newer keyboard focus. No data migration
+  is required. Operator recreation of `uploader` is pending; use the existing deployment
+  verifier afterward and preserve the promoted state paths and Recipe settings.
+
 - Workflows release `20260926-d1dc3bbd8b15` adds the Schedules list/detail
   browser and separate create/edit routes, retaining the earlier menu order,
   test-only Recipe fixtures, and clone notification preservation. Both Compose
