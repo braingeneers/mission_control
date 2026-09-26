@@ -6,17 +6,21 @@
 
 ## Service Operations
 
-- Workflows release `20260925-56427ead0824` retains Alembic revision
-  `0022_cluster_admission` and namespace-wide launch protection. It corrects task
-  ownership using Nextflow's native `workflows_<run UUID>` run-name labels; the
-  initial `a63af1265893` release used an ignored `k8s.labels` setting. The operator
-  recreated `workflows-backend` and `workflows`; the existing startup migration
-  command remains in place. Braindance v0.4 passed its eight-task fresh NRP canary
-  and four-task reuse canary `86e70394-484c-4fb4-9d4f-fdae39fdc31a`. Live native
-  ownership, accounting without double counting, unchanged output bytes and
-  complete reservation release were verified. Large-recording resource headroom
-  still needs measurement. Old running Jobs drain; unsubmitted legacy snapshots
-  require Stop and Clone. No cluster quota, Secret or other service changes are needed.
+- Workflows release `20260926-8d5946299cdf` removes the global workflow-count
+  cap, defaults to 60 managed Jobs/minute and retains the 150-pod ceiling.
+  DANDI 0.2.4 requests one task slot and two submissions/minute with no separate
+  publication-count cap. Operator recreation of `workflows-backend` and
+  `workflows` is pending; after it, use a revision-checked Settings update to
+  raise an explicitly stored 30/minute policy to 60 while preserving all other
+  settings and any hold. Old `max_runs` fields are ignored. Existing launch
+  snapshots stay frozen; never clone an immutable DANDI request to change its
+  budget. Alembic remains at `0022_cluster_admission`; no cluster quota, Secret
+  or other service changes are needed.
+- The September 25 Workflows correction uses Nextflow's native
+  `workflows_<run UUID>` ownership labels; `k8s.labels` is ignored by nf-k8s.
+  Braindance's eight-task fresh and four-task reuse canaries verified native
+  ownership, accounting without double counting and complete reservation
+  release. Large-recording resource headroom still needs measurement.
 
 - Keep Workflows on the explicit `flowforge-nextflow-work-west` workspace claim
   (`rook-cephfs`, 200Gi ReadWriteMany). Provision it before backend recreation;
