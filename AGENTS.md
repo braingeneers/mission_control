@@ -6,13 +6,19 @@
 
 ## Service Operations
 
+- Workflows release `20260926-f0bd2ad44a8a` carries the requested menu order,
+  moves Recipe reference workflows into test-only fixtures, and preserves
+  current run notification definitions through clone review and launch. Both
+  Compose image pins must advance together. Operator recreation of
+  `workflows-backend` and `workflows` is pending; no new database migration is
+  required beyond the existing `0022_cluster_admission` head.
+
 - Workflows release `20260926-8d5946299cdf` removes the global workflow-count
   cap, defaults to 60 managed Jobs/minute and retains the 150-pod ceiling.
   DANDI 0.2.4 requests one task slot and two submissions/minute with no separate
-  publication-count cap. Operator recreation of `workflows-backend` and
-  `workflows` is pending; after it, use a revision-checked Settings update to
-  raise an explicitly stored 30/minute policy to 60 while preserving all other
-  settings and any hold. Old `max_runs` fields are ignored. Existing launch
+  publication-count cap. After backend recreation, use a revision-checked
+  Settings update to raise any explicitly stored 30/minute policy to 60 while
+  preserving all other settings and any hold. Old `max_runs` fields are ignored. Existing launch
   snapshots stay frozen; never clone an immutable DANDI request to change its
   budget. Alembic remains at `0022_cluster_admission`; no cluster quota, Secret
   or other service changes are needed.
