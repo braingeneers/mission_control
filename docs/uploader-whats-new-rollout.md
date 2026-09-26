@@ -1,5 +1,8 @@
 # Uploader-dev announcements and layout — September 25, 2026
 
+Historical candidate rollout. For the current service name, hostname and deployment
+commands, use [the uploader cutover handoff](uploader-cutover.md).
+
 Candidate image: `braingeneers/braingeneers-data-uploader:20260925-0e6fb4ee4e5f`.
 The older `uploader` service and both hostnames stay unchanged. This update only recreates
 `uploader-dev`; no Workflows, notification, proxy, or database restart is required.

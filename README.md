@@ -137,11 +137,10 @@ the Dandiset, validation/access states, workflow outcome, every known DOI, and
 the source NWBs represented by each immutable version. The existing Sandbox
 badge identifies the current DANDI instance.
 
-For this acceptance iteration, `DATA_EXPLORER_UPLOADER_URL` points to
-`https://uploader-dev.braingeneers.gi.ucsc.edu`. Metadata-repair links open the
-selected dataset there and focus an optional authoring `field`. The acceptance
-service uses `PROD=true`, so ephys links still address the production bucket.
-The main `uploader` service retains its existing image pin.
+`DATA_EXPLORER_UPLOADER_URL` points to
+`https://uploader.braingeneers.gi.ucsc.edu`. Metadata-repair links open the
+selected dataset there and focus an optional authoring `field`. The promoted
+uploader uses `PROD=true`, so ephys links address the production bucket.
 
 The service owns a `data_explorer` schema in shared `sql-db`. Its entrypoint
 runs Alembic before FastAPI and keeps SQLAlchemy table auto-create disabled.
@@ -173,11 +172,11 @@ the workflow services do not need a restart for a local-source definition
 change. Recreate only the affected Compose application services:
 
 ```bash
-docker compose pull uploader-dev data-explorer
-docker compose up -d --force-recreate uploader-dev data-explorer
-docker compose ps uploader-dev data-explorer
-docker compose logs --tail=200 uploader-dev data-explorer
-make verify-uploader-deployment SERVICE=uploader-dev
+docker compose pull uploader data-explorer
+docker compose up -d --no-deps --force-recreate --wait uploader data-explorer
+docker compose ps uploader data-explorer
+docker compose logs --tail=200 uploader data-explorer
+make verify-uploader-deployment SERVICE=uploader
 ```
 
 ## Replicated volume backup
@@ -444,36 +443,30 @@ docker compose logs --tail=200 workflows-backend workflows
 The published `braingeneers/data-lifecycle` image remains required by the two
 Nextflow workflows even though no long-running Compose service has that name.
 
-The uploader publishes selected Ephys workflow requests to the same internal
-MQTT broker. Refresh it alongside Workflows when the launch contract or
-uploader image changes:
+The uploader launches saved Recipes through the internal Workflows HTTP API at
+`http://workflows-backend:8000`. Recipe visibility and the lab default remain
+stored in Workflows and are managed through uploader `/admin`.
+
+The former `uploader-dev` image now runs as `uploader` at
+https://uploader.braingeneers.gi.ucsc.edu. Only one uploader service remains;
+see [the cutover handoff](docs/uploader-cutover.md) for the one-time stopped-container
+cleanup and Data Explorer URL update. Dataset discovery, metadata operations,
+and uploads use the production `braingeneers` bucket (`PROD=true`).
+
+Presets and What’s new state retain their existing directories under
+`/replicated/uploader-dev/`; the historical path does not imply a second service.
+Optional AI metadata prefill reads the NRP LLM key from the shared secret-fetcher
+volume at `/secrets/nrp-llm-api-key`. If that secret is unavailable, ordinary
+upload and metadata editing remain enabled while only AI prefill is disabled.
+
+Refresh uploader outside active uploads:
 
 ```bash
-docker compose pull uploader workflows workflows-backend
-docker compose up -d --force-recreate workflows-backend workflows uploader
-docker compose logs -f workflows-backend workflows uploader
+docker compose pull uploader
+docker compose up -d --no-deps --force-recreate --wait uploader
+docker compose ps uploader
+docker compose logs --tail=100 uploader
 make verify-uploader-deployment SERVICE=uploader
-```
-
-For side-by-side uploader acceptance testing, `uploader` remains the production
-service at https://uploader.braingeneers.gi.ucsc.edu and `uploader-dev` runs the
-candidate image at https://uploader-dev.braingeneers.gi.ucsc.edu. The candidate
-service uses `PROD=true`, so dataset discovery, metadata operations, and uploads
-all use the production `braingeneers` bucket. Treat it as production-data access
-despite the `-dev` hostname. It stores its metadata templates separately under
-`/replicated/uploader-dev/metadata-templates`. Its optional AI metadata prefill
-reads the NRP LLM key from the shared secret-fetcher volume at
-`/secrets/nrp-llm-api-key`; if that secret is unavailable, the candidate keeps
-ordinary upload and metadata editing enabled while disabling only AI prefill.
-
-Deploy or refresh only the acceptance-test service:
-
-```bash
-docker compose pull uploader-dev
-docker compose up -d --force-recreate uploader-dev
-docker compose ps uploader uploader-dev
-docker compose logs --tail=100 uploader-dev
-make verify-uploader-deployment SERVICE=uploader-dev
 ```
 
 The deployment verifier compares the Compose image reference, the pulled image
@@ -508,12 +501,11 @@ directory under the volume root, such as `/local/sql-db` or
 - Dot-prefixed temporary publish files in `replicated` should be treated as
   incomplete and ignored by backup tooling.
 
-Uploader versions that support metadata presets store their versioned template
-JSON in an environment-specific service directory. Production uses
-`/replicated/uploader/metadata-templates`; the acceptance-test service uses
-`/replicated/uploader-dev/metadata-templates`. They publish completed records
-with atomic renames from dot-prefixed temporary files, so the daily
-replicated-volume sync copies only complete template revisions.
+Uploader stores its versioned template JSON at
+`/replicated/uploader-dev/metadata-templates` and announcement content/dismissals
+at `/replicated/uploader-dev/whats-new`. Promotion preserves both existing paths
+and the shared volume. Atomic renames from dot-prefixed temporary files let the
+daily replicated-volume sync copy only complete records.
 
 ## Managing all services
 

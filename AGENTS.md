@@ -67,7 +67,7 @@
   subrequests do not receive the original request body; forwarding its length
   makes authenticated POST, PUT, and PATCH requests wait indefinitely.
 - Run `make test` after changing Compose or proxy configuration. It validates Compose, authenticated
-  uploader proxy inheritance, production/acceptance uploader bucket and image contracts, and the
+  uploader proxy inheritance, promoted uploader bucket, image and persistent-state contracts, and the
   stale-container deployment verifier.
 - Keep Data Explorer's storage-protection index on `local:/local`, pin its
   immutable date/SHA image, and derive backup status only from the completed
@@ -85,11 +85,9 @@
   Sandbox workflow credentials use Secret `dandi-api-key`, data key
   `dandi-sandbox-api-key`. Local-source workflow revisions require a definition
   refresh after the workflows checkout updates, not a service restart.
-- Data Explorer metadata-repair links currently target `uploader-dev` for
-  acceptance, using `source`, `uuid`, and optional `field` parameters. Keep that
-  destination on an editor image supporting deep links; the older main uploader
-  image predates the existing-metadata URL handler. This routing choice does not
-  change the production bucket used by `uploader-dev`.
+- Data Explorer metadata-repair links target the promoted `uploader`, using
+  `source`, `uuid`, and optional `field` parameters. Recreate `data-explorer`
+  during the cutover to pick up `DATA_EXPLORER_UPLOADER_URL`; its image is unchanged.
 - Mission Control owns the Data Lifecycle task image source under
   `data-lifecycle/`, while the catalog and Nextflow source remain in the
   sibling `workflows` repository. Keep the image's `/data_lifecycle/src`
@@ -106,14 +104,15 @@
 - Keep `notification-mail-relay` outbound-only, unexposed, on the trusted `braingeneers-net`, and fixed to the aligned `notifications@braingeneers.gi.ucsc.edu` sender. Internal services are trusted, but callers should use `notification-service` rather than connect to Postfix directly. Email durability belongs to the persisted Postfix queue.
 - Keep report workflows notification-neutral: publish channel-agnostic artifacts, including bounded Slack-ready text when useful, and leave recipient selection and delivery to the Workflows website. Do not add workflow-owned channel ids or completion-notification manifests.
 - Keep Workflows independently startable when the optional MQTT launch broker is unavailable. More generally, use Compose `depends_on` only for genuine startup prerequisites, not to document optional integrations; add dependencies later when the runtime contract actually requires them.
-- Leave `uploader` without `container_name` so Compose manages production naming. Set
-  `uploader-dev` to `container_name: uploader-dev` so its operator log prefix matches the service
-  name; keep contract tests for both choices.
-- Keep both uploader services at `PROD=true`. Despite its acceptance hostname, `uploader-dev`
-  discovers, updates, and uploads datasets in the production `braingeneers` bucket.
-- After an operator updates either uploader service, run
-  `make verify-uploader-deployment SERVICE=uploader` or
-  `make verify-uploader-deployment SERVICE=uploader-dev` on the server. A pull plus restart does not
+- The September 25 cutover replaces the older `uploader` with the former `uploader-dev`
+  image and configuration at `uploader.braingeneers.gi.ucsc.edu`; only `uploader`
+  remains in Compose. Leave it without `container_name` so Compose manages naming,
+  and keep `PROD=true` for the production `braingeneers` bucket. See
+  `docs/uploader-cutover.md` for the operator handoff and stopped-container cleanup.
+  Existing main-host proxy overrides are unchanged; retained legacy dev overrides
+  do not advertise the retired hostname or require a proxy restart.
+- After an operator updates uploader, run
+  `make verify-uploader-deployment SERVICE=uploader` on the server. A pull plus restart does not
   replace an existing container; the verifier compares the configured and running image IDs.
   It also requires anonymous public `/api/version` to return HTTP 401 JSON with
   `authentication_required`, `X-Request-ID`, and no `Location`. Keep redirect,
@@ -125,15 +124,14 @@
   `*.tmp` incomplete files.
 - The legacy Data Lifecycle web and scheduler containers are retired. Backup
   and advisory-report execution is owned exclusively by Workflows.
-- The uploader-dev Recipe release uses Workflows over `http://workflows-backend:8000`, with
-  the default Recipe stored in Workflows and managed through uploader `/admin`. Keep the
-  main uploader image and MQTT wiring unchanged until explicitly promoting the candidate.
-  Deploy notification-service then Workflows/migration, enable the initial Recipes/default
-  through the API, and recreate uploader-dev only outside active uploads. Missing Slack
-  `users:read.email` scope leaves email notifications working; scope/token updates are
-  operator-owned.
-- Uploader-dev What’s new state lives at `/replicated/uploader-dev/whats-new` through
-  `WHATS_NEW_DIR`. Preserve that volume/path during recreation and a future hostname move.
-  The initial message is disabled for operator editing in `/admin`; image deployment must not
-  enable it or reset edited content/dismissals. Keep changes on uploader-dev until the operator
-  explicitly switches its domain; do not promote the older `uploader` service implicitly.
+- Uploader Recipes use Workflows over `http://workflows-backend:8000`, with the
+  default Recipe stored in Workflows and managed through uploader `/admin`.
+  Promotion preserves the existing Recipe visibility/default settings and needs
+  no Workflows or notification-service restart. Recreate uploader only outside
+  active uploads. Missing Slack `users:read.email` scope leaves email notifications
+  working; scope/token updates are operator-owned.
+- Promoted uploader retains `/replicated/uploader-dev/metadata-templates` and
+  `/replicated/uploader-dev/whats-new` through `METADATA_TEMPLATE_DIR` and
+  `WHATS_NEW_DIR`. The historical directory names deliberately preserve presets,
+  announcement content and dismissal receipts; do not rename them during cutover.
+  Deployment must not enable, reset, or reseed the existing announcement state.

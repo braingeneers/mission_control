@@ -1,5 +1,8 @@
 # Uploader-dev Recipes rollout — September 25, 2026
 
+Historical candidate rollout. For the current service name, hostname and deployment
+commands, use [the uploader cutover handoff](uploader-cutover.md).
+
 This release replaces the candidate uploader's MQTT publisher with the Workflows HTTP API.
 The main `uploader` service stays on its existing image and MQTT configuration. Both uploaders
 still use production data (`PROD=true`). No scientific workflow source or parameters change.

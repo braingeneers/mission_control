@@ -43,6 +43,8 @@ image="$(service_value '.image')"
     || fail "data-explorer NWB materializations must use the approved temporary cache namespace"
 [[ "$(service_value '.environment.DATA_EXPLORER_DANDI_WORKFLOW_ID')" == "dandi-publication" ]] \
     || fail "data-explorer must launch the cataloged DANDI publication workflow"
+[[ "$(service_value '.environment.DATA_EXPLORER_UPLOADER_URL')" == "https://uploader.braingeneers.gi.ucsc.edu" ]] \
+    || fail "data-explorer metadata-repair links must use the promoted uploader hostname"
 [[ "$(service_value '.environment.DATA_EXPLORER_MQTT_TOPIC')" == "workflows/launch" ]] \
     || fail "data-explorer must use the generic Workflows MQTT launch ingress"
 [[ "$(service_value '.environment.DATA_EXPLORER_DANDI_DISPATCH_GRACE_SECONDS')" == "300" ]] \

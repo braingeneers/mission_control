@@ -762,9 +762,9 @@ services:
     dns: 8.8.8.8
     restart: unless-stopped
 
-  # Braingeneers data uploader web app
+  # Braingeneers data uploader, promoted from uploader-dev.
   uploader:
-    image: braingeneers/braingeneers-data-uploader:20260728-c845c3427b9d
+    image: braingeneers/braingeneers-data-uploader:20260925-0e6fb4ee4e5f
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
@@ -784,43 +784,9 @@ services:
       LETSENCRYPT_HOST: "uploader.braingeneers.gi.ucsc.edu"
       LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
       PROD: "true"
-      MQTT_BROKER_HOST: "mqtt"
-      MQTT_BROKER_PORT: "1883"
-      MQTT_WORKFLOW_TOPIC: "workflows/launch"
-      MQTT_QOS: "1"
-    networks:
-      - braingeneers-net
-    volumes:
-      - secrets:/secrets
-    depends_on:
-      secret-fetcher:
-        condition: service_healthy
-
-  # Acceptance-test uploader; runs alongside the production uploader above.
-  uploader-dev:
-    image: braingeneers/braingeneers-data-uploader:20260925-0e6fb4ee4e5f
-    container_name: uploader-dev
-    restart: unless-stopped
-    entrypoint: /secrets/entrypoint-secrets-setup.sh
-    command:
-      - "--copy"
-      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
-      - "uvicorn"
-      - "data_uploader.app:app"
-      - "--host"
-      - "0.0.0.0"
-      - "--port"
-      - "8000"
-    expose:
-      - "8000"
-    environment:
-      VIRTUAL_HOST: "uploader-dev.braingeneers.gi.ucsc.edu"
-      VIRTUAL_PORT: "8000"
-      LETSENCRYPT_HOST: "uploader-dev.braingeneers.gi.ucsc.edu"
-      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
-      PROD: "true"
       WORKFLOWS_API_URL: "http://workflows-backend:8000"
       WORKFLOWS_PUBLIC_URL: "https://workflows.braingeneers.gi.ucsc.edu"
+      # Preserve existing presets, announcement content, and dismissal receipts.
       METADATA_TEMPLATE_DIR: "/replicated/uploader-dev/metadata-templates"
       WHATS_NEW_DIR: "/replicated/uploader-dev/whats-new"
       NRP_LLM_API_KEY_FILE: "/secrets/nrp-llm-api-key"
@@ -946,7 +912,7 @@ services:
       DATA_EXPLORER_MQTT_TOPIC: "workflows/launch"
       DATA_EXPLORER_MQTT_QOS: "1"
       DATA_EXPLORER_DANDI_DISPATCH_GRACE_SECONDS: "300"
-      DATA_EXPLORER_UPLOADER_URL: "https://uploader-dev.braingeneers.gi.ucsc.edu"
+      DATA_EXPLORER_UPLOADER_URL: "https://uploader.braingeneers.gi.ucsc.edu"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/config', timeout=5)"]
       interval: 10s
