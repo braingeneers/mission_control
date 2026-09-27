@@ -6,11 +6,12 @@
 
 ## Service Operations
 
-- Data Explorer release `20260926-8b4247415966` starts first-time DANDI drafts
-  with no selected files and restores prior choices after partial upload failures.
-  Collapsible groups and a fixed raw/derived/total summary show the exact upload
-  selection. Recreate only `data-explorer` to apply the image; no database
-  migration, workflow image change, or modification of existing drafts is needed.
+- Data Explorer release `20260927-bc4f016d0e52` groups DANDI selection by saved
+  Braindance experiments/recordings and standard ephys experiments/recordings/wells.
+  Raw and derived choices share one exact file selection with the All files view;
+  unknown mappings retain the file picker. Empty first selections and retry
+  restoration remain intact. Recreate only `data-explorer` to apply the image;
+  no database migration, workflow image change, or existing-draft change is needed.
 
 - Uploader release `20260926-0ef037362a12` prevents inferred ephys sample assignments,
   preserves drafts through failed/canceled replacements, and reuses verified historical
