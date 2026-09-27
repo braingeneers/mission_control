@@ -6,12 +6,12 @@
 
 ## Service Operations
 
-- Data Explorer release `20260927-bc4f016d0e52` groups DANDI selection by saved
-  Braindance experiments/recordings and standard ephys experiments/recordings/wells.
-  Raw and derived choices share one exact file selection with the All files view;
-  unknown mappings retain the file picker. Empty first selections and retry
-  restoration remain intact. Recreate only `data-explorer` to apply the image;
-  no database migration, workflow image change, or existing-draft change is needed.
+- Data Explorer release `20260927-977190fd460e` automatically checks active DANDI
+  requests, shows elapsed time and timing guidance, and preserves the current UI
+  during background checks. Hidden tabs pause, transient errors back off, and
+  authentication failures request sign-in. Terminal snapshots stop polling even
+  if DANDI validation remains unconfirmed. Recreate only `data-explorer` to apply
+  the image; no database migration, workflow change, or draft mutation is needed.
 
 - Uploader release `20260926-0ef037362a12` prevents inferred ephys sample assignments,
   preserves drafts through failed/canceled replacements, and reuses verified historical

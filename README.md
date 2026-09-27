@@ -149,6 +149,15 @@ failures; new files remain unchecked. Missing or unmapped prior choices require
 acknowledgement before proceeding. These changes need only the pinned Data
 Explorer image and no database migration or workflow change.
 
+Active DANDI requests update automatically every 15 seconds for the first two
+minutes after submission, then every minute. The UI shows elapsed time, rough
+timing guidance, and clear completion or failure messages. Checks pause in hidden
+tabs and resume on return; leaving the page does not cancel the workflow. Failed
+checks preserve the last state and retry with backoff, while expired authentication
+offers sign-in. Terminal immutable results stop polling; pending DANDI validation
+is explicitly unconfirmed and linked to DANDI for review. Browser status-check
+time is separate from the last DANDI snapshot time.
+
 `DATA_EXPLORER_UPLOADER_URL` points to
 `https://uploader.braingeneers.gi.ucsc.edu`. Metadata-repair links open the
 selected dataset there and focus an optional authoring `field`. The promoted
