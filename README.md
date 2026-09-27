@@ -137,6 +137,13 @@ the Dandiset, validation/access states, workflow outcome, every known DOI, and
 the source NWBs represented by each immutable version. The existing Sandbox
 badge identifies the current DANDI instance.
 
+First-time drafts start with no files selected. Collapsible raw/derived groups
+show independent selection counts, and a fixed footer summarizes the exact
+selection and source size. Updates and retries restore the last submitted file
+selection even after partial failures; new files remain unchecked. Missing or
+unmapped prior choices require acknowledgement before proceeding. These changes
+need only the pinned Data Explorer image and no database migration.
+
 `DATA_EXPLORER_UPLOADER_URL` points to
 `https://uploader.braingeneers.gi.ucsc.edu`. Metadata-repair links open the
 selected dataset there and focus an optional authoring `field`. The promoted

@@ -6,6 +6,12 @@
 
 ## Service Operations
 
+- Data Explorer release `20260926-8b4247415966` starts first-time DANDI drafts
+  with no selected files and restores prior choices after partial upload failures.
+  Collapsible groups and a fixed raw/derived/total summary show the exact upload
+  selection. Recreate only `data-explorer` to apply the image; no database
+  migration, workflow image change, or modification of existing drafts is needed.
+
 - Uploader release `20260926-0ef037362a12` prevents inferred ephys sample assignments,
   preserves drafts through failed/canceled replacements, and reuses verified historical
   projections across warning-only upgrades (including Recipe preflight). It also prevents
@@ -103,8 +109,8 @@
   `dandi-sandbox-api-key`. Local-source workflow revisions require a definition
   refresh after the workflows checkout updates, not a service restart.
 - Data Explorer metadata-repair links target the promoted `uploader`, using
-  `source`, `uuid`, and optional `field` parameters. Recreate `data-explorer`
-  during the cutover to pick up `DATA_EXPLORER_UPLOADER_URL`; its image is unchanged.
+  `source`, `uuid`, and optional `field` parameters. Preserve the promoted
+  `DATA_EXPLORER_UPLOADER_URL` when updating the Data Explorer image.
 - Mission Control owns the Data Lifecycle task image source under
   `data-lifecycle/`, while the catalog and Nextflow source remain in the
   sibling `workflows` repository. Keep the image's `/data_lifecycle/src`
