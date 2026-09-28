@@ -151,7 +151,8 @@ Explorer image and no database migration or workflow change.
 
 Active DANDI requests update automatically every 15 seconds for the first two
 minutes after submission, then every minute. The UI shows elapsed time, rough
-timing guidance, and clear completion or failure messages. Checks pause in hidden
+timing guidance, and clear completion or failure messages, with no separate
+publication refresh button. Checks pause in hidden
 tabs and resume on return; leaving the page does not cancel the workflow. Failed
 checks preserve the last state and retry with backoff, while expired authentication
 offers sign-in. Terminal immutable results stop polling; pending DANDI validation

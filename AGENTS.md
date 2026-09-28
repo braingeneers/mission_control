@@ -6,8 +6,9 @@
 
 ## Service Operations
 
-- Data Explorer release `20260927-977190fd460e` automatically checks active DANDI
-  requests, shows elapsed time and timing guidance, and preserves the current UI
+- Data Explorer release `20260928-7f5f293356f6` removes the redundant publication
+  refresh button. It automatically checks active DANDI requests, shows elapsed
+  time and timing guidance, and preserves the current UI
   during background checks. Hidden tabs pause, transient errors back off, and
   authentication failures request sign-in. Terminal snapshots stop polling even
   if DANDI validation remains unconfirmed. Recreate only `data-explorer` to apply
