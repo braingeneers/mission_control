@@ -35,7 +35,9 @@ Classify what the user needs before selecting tools or deployment topology:
 - **Slack conversations or notifications:** use `notification-service` to discover
   bot-joined conversations, read history/replies, and send requested messages or
   email. Read [references/notifications.md](references/notifications.md) and reuse
-  the authentication reference above. Keep Slack messages concise; put detailed
+  the authentication reference above. In each agent-written message through
+  `braingeneersbot`, identify the assistant and collaborator, for example,
+  "This is Codex (working with David)." Keep Slack messages concise; put detailed
   results in linked artifacts when possible.
 - **Data Explorer content:** for paths, searches, fresh listings, and downloads,
   use the `data-explorer-cli-access` skill when available. A request to find or

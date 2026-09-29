@@ -177,7 +177,7 @@ For an authorized reply, reuse the existing send endpoint:
 POST /v1/slack
 Content-Type: application/json
 
-{"channel_id":"G0123456789","thread_ts":"1750000010.000001","text":"Review complete. The result looks consistent."}
+{"channel_id":"G0123456789","thread_ts":"1750000010.000001","text":"This is Codex (working with David). Review complete. The result looks consistent."}
 ```
 
 Use the parent's exact `thread_ts` and the existing `channel_id`; `user_id`
@@ -186,10 +186,19 @@ opens a bot-to-user DM and must not be used to address a group DM. Omit
 subsequent calls. Clarify ambiguous destinations before posting. Reading or
 discovering a conversation does not itself authorize sending a message.
 
-**Keep Slack messages concise.** Lead with the result or requested action, use a
-few short sentences or bullets, and link to detailed artifacts instead of pasting
-logs or repeating context. Longer replies are appropriate when requested or
-needed for essential context. This is guidance, not an additional API length cap.
+**Identify the speaker and collaborator.** Start each agent-written Slack message
+through the shared `braingeneersbot`, including thread replies, with a brief
+attribution such as "This is Codex (working with David)." Use the actual assistant
+name (Codex, Claude, etc.) and the person you are working with. Use the
+collaborator's name established in the current task; clarify it before posting
+if unknown. The shared bot identity alone does not identify the speaker or
+collaborator.
+
+**Keep Slack messages concise.** After any attribution, lead with the result or
+requested action, use a few short sentences or bullets, and link to detailed
+artifacts instead of pasting logs or repeating context. Longer replies are
+appropriate when requested or needed for essential context. This is guidance,
+not an additional API length cap.
 
 Bot scopes depend on conversation type:
 
@@ -240,7 +249,7 @@ For a user-requested reply, after confirming the conversation and parent:
 curl --silent --show-error --fail-with-body --location --max-redirs 0 --max-time 60 \
   -H "Authorization: Bearer ${bearer_token}" \
   -H 'Content-Type: application/json' \
-  --data '{"channel_id":"G0123456789","thread_ts":"1750000010.000001","text":"Review complete. The result looks consistent."}' \
+  --data '{"channel_id":"G0123456789","thread_ts":"1750000010.000001","text":"This is Codex (working with David). Review complete. The result looks consistent."}' \
   https://notifications.braingeneers.gi.ucsc.edu/v1/slack
 unset bearer_token
 ```
