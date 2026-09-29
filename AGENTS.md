@@ -6,16 +6,21 @@
 
 ## Service Operations
 
-- Data Explorer release `20260929-cbc24309726b` adds dual environments and requires Alembic `0002_dandi_environments`
-  and both DANDI workflow entries at 0.3.0. Preserve Sandbox history; do not reset
+- Data Explorer release `20260929-1adbf2bf3065` adds approved shared collections
+  and requires Alembic `0003_dandi_collections`, both DANDI workflow entries at
+  0.4.0, and worker `braingeneers/dandi-publication:0.3.0`. Preserve Sandbox history; do not reset
   the schema. Hosted defaults to production, with explicit Sandbox review links.
-  Follow `../data-explorer/docs/dandi-environments-rollout.md` for drain, backup,
-  recreation, acceptance, and rollback. No production Dandiset is created by deployment.
-  Older application images must keep publication disabled on a dual-environment database.
+  Follow `../data-explorer/docs/dandi-collections-rollout.md` for drain, backup,
+  recreation, and Sandbox acceptance. No production Dandiset is created or adopted
+  by deployment. Older images must keep publication disabled on the new schema;
+  never downgrade after collection state exists.
   Startup verifies the actual schema, migration head, tables, and mapping constraints;
   `/healthz.publication_database` exposes the timestamped verification for HTTPS checks.
 
-- Uploader release `20260926-0ef037362a12` prevents inferred ephys sample assignments,
+- Uploader release `20260929-b582b04704d9` additionally rejects effective NWB
+  session IDs over DANDI's 150-character limit before metadata/history writes;
+  explicit and fallback identities follow the same rule, without truncation.
+  It preserves the `20260926-0ef037362a12` changes that prevent inferred ephys sample assignments,
   preserves drafts through failed/canceled replacements, and reuses verified historical
   projections across warning-only upgrades (including Recipe preflight). It also prevents
   queued dialog-close events from stealing newer keyboard focus. No data migration

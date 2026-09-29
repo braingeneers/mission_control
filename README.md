@@ -881,11 +881,15 @@ Data Explorer exposes independent Sandbox and production publication mappings.
 Hosted pages default to production via `DATA_EXPLORER_DANDI_DEFAULT_INSTANCE`;
 review URLs can explicitly choose Sandbox. API requests must name their environment.
 The application owns fixed environment routing; DANDI keys remain in the NRP
-publication worker. Keep both Workflows catalog entries at 0.3.0 before deploying
+publication worker. Keep both Workflows catalog entries at 0.4.0 with worker
+`braingeneers/dandi-publication:0.3.0` before deploying
 this application release. The existing materialization cache is unchanged.
 
-This release requires Alembic `0002_dandi_environments`. Back up the existing schema,
+This release adds approved shared collection targets and requires Alembic
+`0003_dandi_collections`. Back up the existing schema,
 drain publication jobs, and follow the owning repository's
-[rollout and rollback procedure](../data-explorer/docs/dandi-environments-rollout.md).
+[collection rollout procedure](../data-explorer/docs/dandi-collections-rollout.md).
 It preserves Sandbox history and creates no production Dandiset. Recreate only
-`data-explorer`; do not restore a pre-release database over new production mappings.
+`data-explorer` and the companion `uploader` session-ID validation release,
+coordinating outside active uploads. A plain Compose restart does not replace
+images. Do not downgrade or restore earlier archives over new collection state.
