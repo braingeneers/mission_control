@@ -6,12 +6,14 @@
 
 ## Service Operations
 
-- Data Explorer release `20260929-c671353dd5b2` adds dual environments and requires Alembic `0002_dandi_environments`
+- Data Explorer release `20260929-cbc24309726b` adds dual environments and requires Alembic `0002_dandi_environments`
   and both DANDI workflow entries at 0.3.0. Preserve Sandbox history; do not reset
   the schema. Hosted defaults to production, with explicit Sandbox review links.
   Follow `../data-explorer/docs/dandi-environments-rollout.md` for drain, backup,
   recreation, acceptance, and rollback. No production Dandiset is created by deployment.
   Older application images must keep publication disabled on a dual-environment database.
+  Startup verifies the actual schema, migration head, tables, and mapping constraints;
+  `/healthz.publication_database` exposes the timestamped verification for HTTPS checks.
 
 - Uploader release `20260926-0ef037362a12` prevents inferred ephys sample assignments,
   preserves drafts through failed/canceled replacements, and reuses verified historical

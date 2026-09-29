@@ -875,7 +875,7 @@ services:
 
   # Data Explorer dataset browser
   data-explorer:
-    image: braingeneers/data-explorer:20260929-c671353dd5b2
+    image: braingeneers/data-explorer:20260929-cbc24309726b
     container_name: data-explorer
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
