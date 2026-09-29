@@ -35,14 +35,14 @@ image="$(service_value '.image')"
     || fail "data-explorer must apply Alembic migrations before application startup"
 [[ "$(service_value '.healthcheck.test | join(" ")')" == *"/api/config"* ]] \
     || fail "data-explorer process health must not depend on live S3 availability"
-[[ "$(service_value '.environment.DATA_EXPLORER_DANDI_INSTANCE')" == "sandbox" ]] \
-    || fail "data-explorer publication must default to DANDI Sandbox"
-[[ "$(service_value '.environment.DATA_EXPLORER_DANDI_MANIFEST_PREFIX')" == "s3://braingeneers/services/data-explorer/dandi/sandbox/" ]] \
-    || fail "data-explorer publication manifests must use the approved immutable S3 namespace"
+[[ "$(service_value '.environment.DATA_EXPLORER_DANDI_DEFAULT_INSTANCE')" == "production" ]] \
+    || fail "hosted data-explorer must default to Production while retaining explicit Sandbox selection"
 [[ "$(service_value '.environment.DATA_EXPLORER_DANDI_MATERIALIZATION_CACHE_PREFIX')" == "s3://braingeneerscache/data-explorer/dandi/materialized/v1/" ]] \
     || fail "data-explorer NWB materializations must use the approved temporary cache namespace"
-[[ "$(service_value '.environment.DATA_EXPLORER_DANDI_WORKFLOW_ID')" == "dandi-publication" ]] \
-    || fail "data-explorer must launch the cataloged DANDI publication workflow"
+for obsolete in DATA_EXPLORER_DANDI_INSTANCE DATA_EXPLORER_DANDI_API_URL DATA_EXPLORER_DANDI_WEB_URL DATA_EXPLORER_DANDI_MANIFEST_PREFIX DATA_EXPLORER_DANDI_WORKFLOW_ID; do
+    [[ "$(service_value ".environment.${obsolete} // empty")" == "" ]] \
+        || fail "${obsolete} must not override server-owned environment routing"
+done
 [[ "$(service_value '.environment.DATA_EXPLORER_UPLOADER_URL')" == "https://uploader.braingeneers.gi.ucsc.edu" ]] \
     || fail "data-explorer metadata-repair links must use the promoted uploader hostname"
 [[ "$(service_value '.environment.DATA_EXPLORER_MQTT_TOPIC')" == "workflows/launch" ]] \

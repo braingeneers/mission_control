@@ -874,3 +874,18 @@ To ensure security and maintainability:
 1. The services are designed to be stateless except for the `~/.kube/config` requirement to retrieve the secrets.
 2. Services can rely on the Kubernetes secrets and can access any state files via our standard S3 service at `s3://braingeneers/` or other buckets.
 3. Services that need local files should use service-scoped directories under the shared `local` or `replicated` Docker volumes. Mutable files belong in `local`; completed files that should be backed up belong in `replicated`.
+
+### Data Explorer DANDI environments
+
+Data Explorer exposes independent Sandbox and production publication mappings.
+Hosted pages default to production via `DATA_EXPLORER_DANDI_DEFAULT_INSTANCE`;
+review URLs can explicitly choose Sandbox. API requests must name their environment.
+The application owns fixed environment routing; DANDI keys remain in the NRP
+publication worker. Keep both Workflows catalog entries at 0.3.0 before deploying
+this application release. The existing materialization cache is unchanged.
+
+This release requires Alembic `0002_dandi_environments`. Back up the existing schema,
+drain publication jobs, and follow the owning repository's
+[rollout and rollback procedure](../data-explorer/docs/dandi-environments-rollout.md).
+It preserves Sandbox history and creates no production Dandiset. Recreate only
+`data-explorer`; do not restore a pre-release database over new production mappings.

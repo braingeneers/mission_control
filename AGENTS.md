@@ -6,13 +6,12 @@
 
 ## Service Operations
 
-- Data Explorer release `20260928-7f5f293356f6` removes the redundant publication
-  refresh button. It automatically checks active DANDI requests, shows elapsed
-  time and timing guidance, and preserves the current UI
-  during background checks. Hidden tabs pause, transient errors back off, and
-  authentication failures request sign-in. Terminal snapshots stop polling even
-  if DANDI validation remains unconfirmed. Recreate only `data-explorer` to apply
-  the image; no database migration, workflow change, or draft mutation is needed.
+- Data Explorer release `20260929-c671353dd5b2` adds dual environments and requires Alembic `0002_dandi_environments`
+  and both DANDI workflow entries at 0.3.0. Preserve Sandbox history; do not reset
+  the schema. Hosted defaults to production, with explicit Sandbox review links.
+  Follow `../data-explorer/docs/dandi-environments-rollout.md` for drain, backup,
+  recreation, acceptance, and rollback. No production Dandiset is created by deployment.
+  Older application images must keep publication disabled on a dual-environment database.
 
 - Uploader release `20260926-0ef037362a12` prevents inferred ephys sample assignments,
   preserves drafts through failed/canceled replacements, and reuses verified historical
