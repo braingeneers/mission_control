@@ -12,9 +12,9 @@ have been recreated.
 ## Release contracts
 
 The immutable artifacts for this combined release are listed below. Image
-publication and running-container verification are separate checks. Final
-publication of the Workflows pair remains pending its focused release gate;
-confirm every required registry artifact before operator cutover.
+publication and running-container verification are separate checks. All listed
+immutable images are published and their registry digests verified;
+confirm the running containers and catalog during operator cutover.
 
 | Artifact | Required image | Source commit | Schema or workflow contract |
 | --- | --- | --- | --- |

@@ -50,7 +50,7 @@
   Data Explorer's published combined image includes general collections;
   preserve the companion Uploader state/wiring. Follow
   `docs/geo-safety-rollout.md` for the drain, archive and staged cutover.
-  Confirm final pair publication and registry artifacts before handing off a pull.
+  The paired service images and required worker tags are published and verified.
   Source/image publication does not recreate hosted services. Real metadata,
   packaging and FTP remain separate reviewed steps; Hunter authorizes FTP.
 
