@@ -6,16 +6,27 @@
 
 ## Service Operations
 
+- Data Explorer release `20260930-756af3a39330` shows storage help only for
+  applicable controls and links to the policy documentation. The image is back
+  under `braingeneers/data-explorer`; its Compose contract requires that namespace
+  again. The help change adds no migration, but this image includes the preceding
+  GEO migration `0004_geo_publications`. Hosted health was verified at `0003` on
+  September 30; recreate outside active publication work, preserve the collection
+  rollout gates, and verify `/healthz.publication_database` reaches `0004` afterward.
+  Operator recreation of Data Explorer is pending.
+
 - GEO release (2026-09-29): Uploader `20260929-cbb83a35ed12` adds the `sequencing`
   source; Data Explorer `20260929-32f141e659b3` adds the GEO target and Alembic
   `0004_geo_publications` (runs at startup) with `DATA_EXPLORER_GEO_ENABLED=true`;
   Workflows `20260929-e4a64a3371e6` adds `geo-publication` 0.1.0 (worker
-  `hschweiger15/geo-publication:0.1.0`, Secret `geo-ftp`). These four images are
-  TEMPORARILY published under `hschweiger15` because that account cannot push to the
-  `braingeneers` Docker Hub org; the compose contract tests accept either namespace
-  until they are copied to `braingeneers/*`, repinned here and in the workflows
-  catalog, and the tests are narrowed again. Operator recreation of `uploader`,
-  `data-explorer`, `workflows-backend` and `workflows` is pending.
+  `hschweiger15/geo-publication:0.1.0`, Secret `geo-ftp`). Uploader, Workflows, and
+  the GEO worker remain temporarily published under `hschweiger15` because that
+  account cannot push to the `braingeneers` Docker Hub org. The Uploader/Workflows
+  Compose contracts accept either namespace until those images are copied to
+  `braingeneers/*`, repinned here and in the workflows catalog, and those tests are
+  narrowed again. Data Explorer uses the newer official image above. Operator
+  recreation of `uploader`, `data-explorer`, `workflows-backend` and `workflows`
+  is pending.
 
 - Data Explorer release `20260929-1adbf2bf3065` adds approved shared collections
   and requires Alembic `0003_dandi_collections`, both DANDI workflow entries at

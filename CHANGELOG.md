@@ -63,3 +63,4 @@
 2026-07-15 15:42 | workflows service | deploy generic task-label UI and concise Ephys workflow task tags
 2026-07-16 13:37 | workflows service | pinned recovered Kubernetes scheduling status and live task activity release
 2026-07-16 14:11 | workflows service | pinned compact responsive artifact-link release
+2026-09-30 | data-explorer | pin official storage-guidance release 20260930-756af3a39330 and restore its braingeneers image namespace contract

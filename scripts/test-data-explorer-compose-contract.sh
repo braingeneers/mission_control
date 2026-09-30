@@ -15,7 +15,7 @@ service_value() {
 }
 
 image="$(service_value '.image')"
-[[ "${image}" =~ ^(braingeneers|hschweiger15)/data-explorer:[0-9]{8}-[0-9a-f]{12}$ ]] \
+[[ "${image}" =~ ^braingeneers/data-explorer:[0-9]{8}-[0-9a-f]{12}$ ]] \
     || fail "data-explorer must use an immutable date/SHA image, got ${image}"
 [[ "$(service_value '.volumes[] | select(.target == "/local") | .source')" == "local" ]] \
     || fail "data-explorer must persist its disposable indexes on the local volume"

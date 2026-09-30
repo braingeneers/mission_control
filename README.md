@@ -110,6 +110,11 @@ backup is confirmed; the Glacier archive remains restorable, and Data Explorer
 does not perform cleanup itself. The `local` volume holds only a disposable,
 restart-persistent index; immutable request/result audits remain in S3.
 
+Storage help follows the current selection's available controls. Sources
+outside the policy show a coverage message and a link to the policy documentation
+without cleanup or action instructions; loading and unavailable states hide that
+guidance as well.
+
 Mission Control owns the registry image source and lifecycle policy in
 [`data-lifecycle/`](data-lifecycle/). The Nextflow source and catalog
 definitions remain in the sibling `workflows` repository. Build, test, and
