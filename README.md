@@ -142,8 +142,11 @@ the Dandiset, validation/access states, workflow outcome, every known DOI, and
 the source NWBs represented by each immutable version. The existing Sandbox
 badge identifies the current DANDI instance.
 
-The **Publication target** selector has a **?** help button explaining separate
-dataset drafts and shared collections. Selecting a target opens its controls;
+The **Publication target** selector has a **?** hover tooltip, also available on
+keyboard focus or tap, explaining separate dataset drafts and shared collections.
+Raw and sorted targets are separate shared Dandisets for original recording NWBs
+versus spike-sorted and other derived NWBs; a dataset can contribute to both.
+Selecting a target opens its controls without sorting or uploading files;
 uploads, publication, and access changes require separate confirmation.
 Collection publication and public-access actions apply to the entire collection.
 

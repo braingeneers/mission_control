@@ -65,3 +65,4 @@
 2026-07-16 14:11 | workflows service | pinned compact responsive artifact-link release
 2026-09-30 | data-explorer | pin official storage-guidance release 20260930-756af3a39330 and restore its braingeneers image namespace contract
 2026-09-30 | data-explorer | pin publication-target help release 20260930-a077c65b1c06
+2026-09-30 | data-explorer | pin hover-help release 20260930-f339848fd403 with raw/sorted shared-Dandiset explanations

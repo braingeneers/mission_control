@@ -6,9 +6,10 @@
 
 ## Service Operations
 
-- Data Explorer release `20260930-a077c65b1c06` adds accessible question-mark help
-  explaining separate dataset drafts, shared collections, and the scope of
-  collection publication/access actions. It also includes storage help only for
+- Data Explorer release `20260930-f339848fd403` replaces the question-mark help
+  dialog with a compact hover/focus/touch tooltip. It explains separate dataset
+  drafts, raw versus sorted shared Dandisets, and the scope of collection
+  publication/access actions. It also includes storage help only for
   applicable controls and the policy-documentation link. The image is back
   under `braingeneers/data-explorer`; its Compose contract requires that namespace
   again. These help changes add no migration, but this image includes the preceding
