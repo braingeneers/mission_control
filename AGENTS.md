@@ -6,7 +6,9 @@
 
 ## Service Operations
 
-- Uploader release `20260930-724908c70030` includes the sequencing source and
+- Uploader release `20260930-222ea0c1d0d9` adds the independent shared-collection
+  details workspace, preserves Archive-generated metadata fields, and keeps
+  history current after uncertain saves. It retains the sequencing source and
   explicit ephys raw/derived NWB asset mapping. Sequencing corrections preserve
   malformed drafts for field-level repair, protect library biology dependencies,
   validate stored IDs/enums exactly, and guide explicit edits for newly discovered
@@ -14,39 +16,48 @@
   under `braingeneers/braingeneers-data-uploader`, including `latest`; its Compose
   contract requires the official namespace again. No migration is required.
   Recreate only `uploader` outside active uploads, then run the deployment verifier.
-  The last observed hosted version `20260929-b582b04704d9` is the rollback image;
-  it predates sequencing support. Operator recreation of the new uploader is pending.
+  The last recorded hosted check reported `20260929-b582b04704d9`, which predates
+  sequencing and collection details. Published images and committed pins do not
+  prove operator recreation; preserve the collection, template, and announcement
+  paths and verify the running version after the cutover.
 
-- Data Explorer release `20260930-f339848fd403` replaces the question-mark help
-  dialog with a compact hover/focus/touch tooltip. It explains separate dataset
-  drafts, raw versus sorted shared Dandisets, and the scope of collection
-  publication/access actions. It also includes storage help only for
+- Data Explorer release `20260930-2efbb2ca8955` combines GEO publication safety
+  with general shared collections and migration `0005_general_dandi_collections`.
+  FTP confirmation is bound to the reviewed package; stale responses cannot
+  retarget consent or discard accession drafts. Existing GEO history remains
+  readable with GEO intake disabled, and legacy packages need fresh pinned
+  provenance before FTP. The image also retains compact hover/focus/touch help
+  explaining separate dataset drafts, raw versus sorted shared Dandisets, and
+  the scope of collection publication/access actions. It also includes storage help only for
   applicable controls and the policy-documentation link. The image is back
   under `braingeneers/data-explorer`; its Compose contract requires that namespace
-  again. These help changes add no migration, but this image includes the preceding
-  GEO migration `0004_geo_publications`. Hosted health was verified at `0004` on
+  again. Hosted health was verified at `0004_geo_publications` on
   September 30, 2026 at 20:52 UTC. This observation establishes the schema only;
   do not infer a deployed image from source or release handoffs. The combined
   collection/GEO cutover requires `0005_general_dandi_collections`, paired DANDI
-  workflows 0.5.0, worker 0.4.0, and the companion Uploader collection workspace;
+  workflows 0.5.1, worker 0.4.1, and the companion Uploader collection workspace;
   preserve the drain/archive gates in `docs/geo-safety-rollout.md`.
 
-- GEO safety release (2026-09-30) replaces the temporary Workflows images with
-  official `braingeneers/workflows-{backend,frontend}:20260930-e902be8d3393`
+- GEO safety release (2026-09-30) selects the official paired Workflows images
+  `braingeneers/workflows-{backend,frontend}:20260930-0b97a32126ce`
   and narrows the Compose contract back to the official namespace. GEO workflow
   0.2.0 uses tested `braingeneers/geo-publication:0.2.0`; both DANDI definitions
-  are 0.5.0 with `braingeneers/dandi-publication:0.4.0`. The worker enforces
+  are 0.5.1 with `braingeneers/dandi-publication:0.4.1`, preserving Archive-generated
+  collection metadata on reviewed updates. Workflows stays at migration
+  `0022_cluster_admission`. The GEO worker enforces
   reviewed package/source digests and account/destination-bound transfer evidence;
   unproven files and unknown effects require a new reviewed package/folder.
-  Combine Data Explorer's GEO safety changes with general collections before
-  publication, preserving the companion Uploader state/wiring. Follow
+  Data Explorer's published combined image includes general collections;
+  preserve the companion Uploader state/wiring. Follow
   `docs/geo-safety-rollout.md` for the drain, archive and staged cutover.
+  Confirm final pair publication and registry artifacts before handing off a pull.
   Source/image publication does not recreate hosted services. Real metadata,
   packaging and FTP remain separate reviewed steps; Hunter authorizes FTP.
 
-- Data Explorer release `20260929-1adbf2bf3065` adds approved shared collections
-  and requires Alembic `0003_dandi_collections`, both DANDI workflow entries at
-  0.4.0, and worker `braingeneers/dandi-publication:0.3.0`. Preserve Sandbox history; do not reset
+- The earlier Data Explorer `20260929-1adbf2bf3065` release introduced approved
+  collections at `0003_dandi_collections`, DANDI workflows 0.4.0, and worker
+  `braingeneers/dandi-publication:0.3.0`. These are historical versions, not the
+  combined release contract. Preserve Sandbox history; do not reset
   the schema. Hosted defaults to production, with explicit Sandbox review links.
   Follow `../data-explorer/docs/dandi-collections-rollout.md` for drain, backup,
   recreation, and Sandbox acceptance. No production Dandiset is created or adopted
@@ -63,15 +74,14 @@
   projections across warning-only upgrades (including Recipe preflight). It also prevents
   queued dialog-close events from stealing newer keyboard focus. No data migration
   is required. The authenticated hosted API reported this version on September 30;
-  it is the rollback image for the sequencing authoring correction release.
+  it predates the sequencing and general-collection releases.
   Preserve the promoted state paths and Recipe settings.
 
 - Workflows release `20260926-d1dc3bbd8b15` adds the Schedules list/detail
   browser and separate create/edit routes, retaining the earlier menu order,
   test-only Recipe fixtures, and clone notification preservation. Both Compose
-  image pins must advance together. Operator recreation of
-  `workflows-backend` and `workflows` is pending; no new database migration is
-  required beyond the existing `0022_cluster_admission` head.
+  image pins must advance together. These features are retained in the combined
+  release; Workflows migrations remain at `0022_cluster_admission`.
 
 - Workflows release `20260926-8d5946299cdf` removes the global workflow-count
   cap, defaults to 60 managed Jobs/minute and retains the 150-pod ceiling.

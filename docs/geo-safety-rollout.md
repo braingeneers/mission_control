@@ -11,6 +11,20 @@ have been recreated.
 
 ## Release contracts
 
+The immutable artifacts for this combined release are listed below. Image
+publication and running-container verification are separate checks. Final
+publication of the Workflows pair remains pending its focused release gate;
+confirm every required registry artifact before operator cutover.
+
+| Artifact | Required image | Source commit | Schema or workflow contract |
+| --- | --- | --- | --- |
+| Uploader | `braingeneers/braingeneers-data-uploader:20260930-222ea0c1d0d9` | [`222ea0c1d0d9bc460cdd5f1c68637417ad72f35c`](https://github.com/braingeneers/uploader/commit/222ea0c1d0d9bc460cdd5f1c68637417ad72f35c) | Independent collection details; no database migration |
+| Data Explorer | `braingeneers/data-explorer:20260930-2efbb2ca8955` | [`2efbb2ca89553775c40f12ee7467f16b56394467`](https://github.com/braingeneers/data-explorer/commit/2efbb2ca89553775c40f12ee7467f16b56394467) | `0005_general_dandi_collections` |
+| Workflows backend | `braingeneers/workflows-backend:20260930-0b97a32126ce` | [`0b97a32126cef2880552cecef1698a56181768e8`](https://github.com/braingeneers/workflows/commit/0b97a32126cef2880552cecef1698a56181768e8) | `0022_cluster_admission`; paired catalog and fallback |
+| Workflows frontend | `braingeneers/workflows-frontend:20260930-0b97a32126ce` | [`0b97a32126cef2880552cecef1698a56181768e8`](https://github.com/braingeneers/workflows/commit/0b97a32126cef2880552cecef1698a56181768e8) | Advances with backend |
+| GEO worker | `braingeneers/geo-publication:0.2.0` | [`e902be8d3393c42fcfbb1ac11deb330ead4f6982`](https://github.com/braingeneers/workflows/commit/e902be8d3393c42fcfbb1ac11deb330ead4f6982) | GEO workflow 0.2.0; package schema 2 |
+| DANDI worker | `braingeneers/dandi-publication:0.4.1` | [`0b97a32126cef2880552cecef1698a56181768e8`](https://github.com/braingeneers/workflows/commit/0b97a32126cef2880552cecef1698a56181768e8) | Both DANDI definitions 0.5.1; new collection request/plan schema 3 |
+
 - Mission Control pins official immutable date/SHA Data Explorer and matching
   Workflows backend/frontend images. The loaded `geo-publication` definition and
   image-pinned fallback both use workflow 0.2.0 and
@@ -28,7 +42,7 @@ have been recreated.
   optional at startup; do not add reciprocal service startup dependencies.
 - Data Explorer advances to `0005_general_dandi_collections`, preserving legacy
   publication records and both environment histories. Deploy both DANDI workflow
-  definitions at 0.5.0 with `braingeneers/dandi-publication:0.4.0` before starting
+  definitions at 0.5.1 with `braingeneers/dandi-publication:0.4.1` before starting
   the new Data Explorer image. Workflows remains at `0022_cluster_admission`;
   the GEO safety changes add no migration or status constraint. Follow the
   [collection rollout contract](https://github.com/braingeneers/data-explorer/blob/main/docs/dandi-collections-rollout.md)
@@ -73,9 +87,9 @@ requests. Agents do not SSH to the server or recreate its services.
    ```
 
    A terminal GEO conflict with unknown remote effects remains blocked for
-   reconciliation; a fresh reviewed package/folder is the recovery path. Do not manufacture a new
-   request UUID for the old operation. The older application hides GEO reads
-   when its feature flag is off, so reconcile existing work before disabling it.
+   reconciliation; a fresh reviewed package/folder is the recovery path. Do not
+   manufacture a new request UUID for the old operation. The older application
+   hides GEO reads when its feature flag is off, so reconcile existing work before disabling it.
    The corrected application keeps authenticated history/reconciliation reads
    available with mutations disabled.
 
@@ -114,7 +128,7 @@ requests. Agents do not SSH to the server or recreate its services.
 
    Verify Workflows readiness and the actual admin catalog: `geo-publication`
    0.2.0, official worker 0.2.0, and the expected source revision. Both DANDI
-   definitions must be 0.5.0 with worker `braingeneers/dandi-publication:0.4.0`.
+   definitions must be 0.5.1 with worker `braingeneers/dandi-publication:0.4.1`.
    Use the authenticated Operations reload if the managed catalog needs refresh;
    no host Workflows source checkout is mounted. Preserve historical launch
    snapshots and do not clone old immutable publication requests. Stop here if
@@ -141,9 +155,9 @@ requests. Agents do not SSH to the server or recreate its services.
 
    Through authenticated HTTPS, verify Data Explorer's startup health reports
    verified schema `data_explorer`, revision `0005_general_dandi_collections`,
-   migrations mode, and a new startup verification timestamp. Confirm historical publication
-   records and both environment registries remain available and all GEO mutation
-   actions are disabled. Publication remains enabled during this phase, so the
+   migrations mode, and a new startup verification timestamp. Confirm historical
+   publication records and both environment registries remain available and all
+   GEO mutation actions are disabled. Publication remains enabled during this phase, so the
    maintenance window must continue to exclude new DANDI requests. Setting
    `DATA_EXPLORER_PUBLICATION_ENABLED=false` would skip startup database
    verification and hide publication history; it is not this verification mode.
