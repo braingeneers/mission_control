@@ -6,6 +6,17 @@
 
 ## Service Operations
 
+- Uploader release `20260930-724908c70030` includes the sequencing source and
+  explicit ephys raw/derived NWB asset mapping. Sequencing corrections preserve
+  malformed drafts for field-level repair, protect library biology dependencies,
+  validate stored IDs/enums exactly, and guide explicit edits for newly discovered
+  mates without rewriting authored libraries or layouts. The image is published
+  under `braingeneers/braingeneers-data-uploader`, including `latest`; its Compose
+  contract requires the official namespace again. No migration is required.
+  Recreate only `uploader` outside active uploads, then run the deployment verifier.
+  The last observed hosted version `20260929-b582b04704d9` is the rollback image;
+  it predates sequencing support. Operator recreation of the new uploader is pending.
+
 - Data Explorer release `20260930-f339848fd403` replaces the question-mark help
   dialog with a compact hover/focus/touch tooltip. It explains separate dataset
   drafts, raw versus sorted shared Dandisets, and the scope of collection
@@ -22,14 +33,14 @@
   source; Data Explorer `20260929-32f141e659b3` adds the GEO target and Alembic
   `0004_geo_publications` (runs at startup) with `DATA_EXPLORER_GEO_ENABLED=true`;
   Workflows `20260929-e4a64a3371e6` adds `geo-publication` 0.1.0 (worker
-  `hschweiger15/geo-publication:0.1.0`, Secret `geo-ftp`). Uploader, Workflows, and
-  the GEO worker remain temporarily published under `hschweiger15` because that
-  account cannot push to the `braingeneers` Docker Hub org. The Uploader/Workflows
-  Compose contracts accept either namespace until those images are copied to
-  `braingeneers/*`, repinned here and in the workflows catalog, and those tests are
-  narrowed again. Data Explorer uses the newer official image above. Operator
-  recreation of `uploader`, `data-explorer`, `workflows-backend` and `workflows`
-  is pending.
+  `hschweiger15/geo-publication:0.1.0`, Secret `geo-ftp`). Workflows and the GEO
+  worker remain temporarily published under `hschweiger15` because that account
+  cannot push to the `braingeneers` Docker Hub org. The Workflows Compose contract
+  accepts either namespace until those images are copied to `braingeneers/*`,
+  repinned here and in the workflows catalog, and its test is narrowed again.
+  Uploader and Data Explorer use newer official images. Uploader's Compose
+  contract requires `braingeneers/braingeneers-data-uploader` again. Operator
+  recreation of these updated services is pending.
 
 - Data Explorer release `20260929-1adbf2bf3065` adds approved shared collections
   and requires Alembic `0003_dandi_collections`, both DANDI workflow entries at
@@ -49,8 +60,9 @@
   preserves drafts through failed/canceled replacements, and reuses verified historical
   projections across warning-only upgrades (including Recipe preflight). It also prevents
   queued dialog-close events from stealing newer keyboard focus. No data migration
-  is required. Operator recreation of `uploader` is pending; use the existing deployment
-  verifier afterward and preserve the promoted state paths and Recipe settings.
+  is required. The authenticated hosted API reported this version on September 30;
+  it is the rollback image for the sequencing authoring correction release.
+  Preserve the promoted state paths and Recipe settings.
 
 - Workflows release `20260926-d1dc3bbd8b15` adds the Schedules list/detail
   browser and separate create/edit routes, retaining the earlier menu order,

@@ -30,7 +30,7 @@ assert_immutable_uploader_image() {
     local service="$1"
     local image
     image="$(service_value "${service}" ".image")"
-    if [[ ! "${image}" =~ ^(braingeneers|hschweiger15)/braingeneers-data-uploader:[0-9]{8}-[0-9a-f]{12}$ ]]; then
+    if [[ ! "${image}" =~ ^braingeneers/braingeneers-data-uploader:[0-9]{8}-[0-9a-f]{12}$ ]]; then
         fail "${service} must use an immutable date/SHA uploader image, got ${image}"
     fi
 }
