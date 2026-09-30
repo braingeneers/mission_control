@@ -59,6 +59,12 @@ assert_equal "$(service_value uploader '.environment.METADATA_TEMPLATE_DIR')" \
     "/replicated/uploader-dev/metadata-templates" "Presets survive promotion to uploader"
 assert_equal "$(service_value uploader '.environment.WHATS_NEW_DIR')" \
     "/replicated/uploader-dev/whats-new" "Announcement state survives promotion to uploader"
+assert_equal "$(service_value uploader '.environment.COLLECTION_METADATA_DIR')" \
+    "/replicated/uploader/collection-metadata" "Independent collection details are backed up"
+assert_equal "$(service_value uploader '.environment.DATA_EXPLORER_INTERNAL_URL')" \
+    "http://data-explorer:8000" "Verified DANDI seeds use the trusted internal API"
+assert_equal "$(service_value uploader '.depends_on["data-explorer"] // empty')" \
+    "" "Collection seed import must not create a reciprocal startup dependency"
 assert_equal "$(service_value uploader '.volumes[] | select(.target == "/replicated") | .source')" \
     "replicated" "Uploader presets and announcement state are backed up"
 assert_equal "$(service_value uploader '.environment.NRP_LLM_API_KEY_FILE')" \

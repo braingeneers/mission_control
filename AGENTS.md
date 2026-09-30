@@ -156,6 +156,14 @@
 - Data Explorer metadata-repair links target the promoted `uploader`, using
   `source`, `uuid`, and optional `field` parameters. Preserve the promoted
   `DATA_EXPLORER_UPLOADER_URL` when updating the Data Explorer image.
+- Independent Uploader collection details persist under
+  `/replicated/uploader/collection-metadata`. Preserve existing templates and
+  announcements separately. Data Explorer reads revisions through fixed
+  `DATA_EXPLORER_UPLOADER_API_URL=http://uploader:8000`; Uploader reads verified
+  seeds through `DATA_EXPLORER_INTERNAL_URL=http://data-explorer:8000`. Do not add
+  reciprocal Compose startup dependencies. General collection rollout requires
+  worker 0.4.1 and paired workflows 0.5.1 before Data Explorer migration 0005;
+  drain publication gates and archive the schema before recreating the app.
 - Mission Control owns the Data Lifecycle task image source under
   `data-lifecycle/`, while the catalog and Nextflow source remain in the
   sibling `workflows` repository. Keep the image's `/data_lifecycle/src`

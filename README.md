@@ -177,6 +177,22 @@ time is separate from the last DANDI snapshot time.
 selected dataset there and focus an optional authoring `field`. The promoted
 uploader uses `PROD=true`, so ephys links address the production bucket.
 
+Shared Dandisets use independent Uploader collection-details workspaces under
+`COLLECTION_METADATA_DIR=/replicated/uploader/collection-metadata`. Preserve this
+backed-up state and the existing template/announcement paths. Data Explorer reads
+saved revisions through `DATA_EXPLORER_UPLOADER_API_URL=http://uploader:8000`;
+Uploader imports verified inspection seeds through
+`DATA_EXPLORER_INTERNAL_URL=http://data-explorer:8000`. Both integrations are
+optional at startup and use the trusted internal network. Saving collection
+details does not update DANDI until reviewed in Data Explorer.
+
+The general-collection release requires Data Explorer migration
+`0005_general_dandi_collections`, publication worker `0.4.1`, and both DANDI
+workflow definitions `0.5.1`. Publish the worker, refresh the paired definitions,
+drain publication gates, archive the schema, and recreate Uploader and Data
+Explorer outside active uploads. Follow
+[the rollout procedure](https://github.com/braingeneers/data-explorer/blob/main/docs/dandi-collections-rollout.md).
+
 The service owns a `data_explorer` schema in shared `sql-db`. Its entrypoint
 runs Alembic before FastAPI and keeps SQLAlchemy table auto-create disabled.
 Unique immutable request and result objects live beneath

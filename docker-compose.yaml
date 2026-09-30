@@ -764,7 +764,7 @@ services:
 
   # Braingeneers data uploader, promoted from uploader-dev.
   uploader:
-    image: braingeneers/braingeneers-data-uploader:20260930-724908c70030
+    image: braingeneers/braingeneers-data-uploader:20260930-222ea0c1d0d9
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
@@ -789,6 +789,8 @@ services:
       # Preserve existing presets, announcement content, and dismissal receipts.
       METADATA_TEMPLATE_DIR: "/replicated/uploader-dev/metadata-templates"
       WHATS_NEW_DIR: "/replicated/uploader-dev/whats-new"
+      COLLECTION_METADATA_DIR: "/replicated/uploader/collection-metadata"
+      DATA_EXPLORER_INTERNAL_URL: "http://data-explorer:8000"
       NRP_LLM_API_KEY_FILE: "/secrets/nrp-llm-api-key"
     networks:
       - braingeneers-net
@@ -875,7 +877,7 @@ services:
 
   # Data Explorer dataset browser
   data-explorer:
-    image: braingeneers/data-explorer:20260930-f339848fd403
+    image: braingeneers/data-explorer:20260930-2efbb2ca8955
     container_name: data-explorer
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -910,6 +912,7 @@ services:
       DATA_EXPLORER_MQTT_QOS: "1"
       DATA_EXPLORER_DANDI_DISPATCH_GRACE_SECONDS: "300"
       DATA_EXPLORER_UPLOADER_URL: "https://uploader.braingeneers.gi.ucsc.edu"
+      DATA_EXPLORER_UPLOADER_API_URL: "http://uploader:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/config', timeout=5)"]
       interval: 10s

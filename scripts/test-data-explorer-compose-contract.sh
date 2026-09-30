@@ -45,6 +45,10 @@ for obsolete in DATA_EXPLORER_DANDI_INSTANCE DATA_EXPLORER_DANDI_API_URL DATA_EX
 done
 [[ "$(service_value '.environment.DATA_EXPLORER_UPLOADER_URL')" == "https://uploader.braingeneers.gi.ucsc.edu" ]] \
     || fail "data-explorer metadata-repair links must use the promoted uploader hostname"
+[[ "$(service_value '.environment.DATA_EXPLORER_UPLOADER_API_URL')" == "http://uploader:8000" ]] \
+    || fail "collection revisions must use the trusted internal Uploader API"
+[[ "$(service_value '.depends_on["uploader"] // empty')" == "" ]] \
+    || fail "collection authoring must not create a reciprocal startup dependency"
 [[ "$(service_value '.environment.DATA_EXPLORER_MQTT_TOPIC')" == "workflows/launch" ]] \
     || fail "data-explorer must use the generic Workflows MQTT launch ingress"
 [[ "$(service_value '.environment.DATA_EXPLORER_DANDI_DISPATCH_GRACE_SECONDS')" == "300" ]] \
