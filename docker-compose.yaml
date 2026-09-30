@@ -764,7 +764,7 @@ services:
 
   # Braingeneers data uploader, promoted from uploader-dev.
   uploader:
-    image: braingeneers/braingeneers-data-uploader:20260929-b582b04704d9
+    image: hschweiger15/braingeneers-data-uploader:20260929-cbb83a35ed12
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
@@ -875,7 +875,7 @@ services:
 
   # Data Explorer dataset browser
   data-explorer:
-    image: braingeneers/data-explorer:20260929-1adbf2bf3065
+    image: hschweiger15/data-explorer:20260929-32f141e659b3
     container_name: data-explorer
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -896,6 +896,7 @@ services:
       DATA_EXPLORER_LIFECYCLE_MANIFEST_URI: "s3://braingeneers/services/data-lifecycle/latest-backup-state.json"
       DATA_EXPLORER_LIFECYCLE_REPORT_POINTER_URI: "s3://braingeneers/services/data-lifecycle/latest-cleanup-report.json"
       DATA_EXPLORER_PUBLICATION_ENABLED: "true"
+      DATA_EXPLORER_GEO_ENABLED: "true"
       DATA_EXPLORER_DANDI_DEFAULT_INSTANCE: "production"
       DATA_EXPLORER_DATABASE_URL: "postgresql+psycopg://services:services@sql-db:5432/services?options=-csearch_path%3Ddata_explorer"
       DATA_EXPLORER_DATABASE_SCHEMA: "data_explorer"
@@ -1006,7 +1007,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20260926-d1dc3bbd8b15
+    image: hschweiger15/workflows-backend:20260929-e4a64a3371e6
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1052,7 +1053,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20260926-d1dc3bbd8b15
+    image: hschweiger15/workflows-frontend:20260929-e4a64a3371e6
     container_name: workflows
     restart: unless-stopped
     expose:

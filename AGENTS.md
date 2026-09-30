@@ -6,6 +6,17 @@
 
 ## Service Operations
 
+- GEO release (2026-09-29): Uploader `20260929-cbb83a35ed12` adds the `sequencing`
+  source; Data Explorer `20260929-32f141e659b3` adds the GEO target and Alembic
+  `0004_geo_publications` (runs at startup) with `DATA_EXPLORER_GEO_ENABLED=true`;
+  Workflows `20260929-e4a64a3371e6` adds `geo-publication` 0.1.0 (worker
+  `hschweiger15/geo-publication:0.1.0`, Secret `geo-ftp`). These four images are
+  TEMPORARILY published under `hschweiger15` because that account cannot push to the
+  `braingeneers` Docker Hub org; the compose contract tests accept either namespace
+  until they are copied to `braingeneers/*`, repinned here and in the workflows
+  catalog, and the tests are narrowed again. Operator recreation of `uploader`,
+  `data-explorer`, `workflows-backend` and `workflows` is pending.
+
 - Data Explorer release `20260929-1adbf2bf3065` adds approved shared collections
   and requires Alembic `0003_dandi_collections`, both DANDI workflow entries at
   0.4.0, and worker `braingeneers/dandi-publication:0.3.0`. Preserve Sandbox history; do not reset
