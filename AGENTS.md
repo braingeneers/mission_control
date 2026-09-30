@@ -6,11 +6,13 @@
 
 ## Service Operations
 
-- Data Explorer release `20260930-756af3a39330` shows storage help only for
-  applicable controls and links to the policy documentation. The image is back
+- Data Explorer release `20260930-a077c65b1c06` adds accessible question-mark help
+  explaining separate dataset drafts, shared collections, and the scope of
+  collection publication/access actions. It also includes storage help only for
+  applicable controls and the policy-documentation link. The image is back
   under `braingeneers/data-explorer`; its Compose contract requires that namespace
-  again. The help change adds no migration, but this image includes the preceding
-  GEO migration `0004_geo_publications`. Hosted health was verified at `0003` on
+  again. These help changes add no migration, but this image includes the preceding
+  GEO migration `0004_geo_publications`. Hosted health was last verified at `0003` on
   September 30; recreate outside active publication work, preserve the collection
   rollout gates, and verify `/healthz.publication_database` reaches `0004` afterward.
   Operator recreation of Data Explorer is pending.

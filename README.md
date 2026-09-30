@@ -142,6 +142,11 @@ the Dandiset, validation/access states, workflow outcome, every known DOI, and
 the source NWBs represented by each immutable version. The existing Sandbox
 badge identifies the current DANDI instance.
 
+The **Publication target** selector has a **?** help button explaining separate
+dataset drafts and shared collections. Selecting a target opens its controls;
+uploads, publication, and access changes require separate confirmation.
+Collection publication and public-access actions apply to the entire collection.
+
 First-time drafts start with no files selected. When saved metadata supports it,
 the picker opens **By experiment**, with Braindance recordings grouped by chip
 and experiment or standard ephys recordings/wells grouped by experiment. Each
