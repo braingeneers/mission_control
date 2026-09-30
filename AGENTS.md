@@ -24,23 +24,25 @@
   applicable controls and the policy-documentation link. The image is back
   under `braingeneers/data-explorer`; its Compose contract requires that namespace
   again. These help changes add no migration, but this image includes the preceding
-  GEO migration `0004_geo_publications`. Hosted health was last verified at `0003` on
-  September 30; recreate outside active publication work, preserve the collection
-  rollout gates, and verify `/healthz.publication_database` reaches `0004` afterward.
-  Operator recreation of Data Explorer is pending.
+  GEO migration `0004_geo_publications`. Hosted health was verified at `0004` on
+  September 30, 2026 at 20:52 UTC. This observation establishes the schema only;
+  do not infer a deployed image from source or release handoffs. The combined
+  collection/GEO cutover requires `0005_general_dandi_collections`, paired DANDI
+  workflows 0.5.0, worker 0.4.0, and the companion Uploader collection workspace;
+  preserve the drain/archive gates in `docs/geo-safety-rollout.md`.
 
-- GEO release (2026-09-29): Uploader `20260929-cbb83a35ed12` adds the `sequencing`
-  source; Data Explorer `20260929-32f141e659b3` adds the GEO target and Alembic
-  `0004_geo_publications` (runs at startup) with `DATA_EXPLORER_GEO_ENABLED=true`;
-  Workflows `20260929-e4a64a3371e6` adds `geo-publication` 0.1.0 (worker
-  `hschweiger15/geo-publication:0.1.0`, Secret `geo-ftp`). Workflows and the GEO
-  worker remain temporarily published under `hschweiger15` because that account
-  cannot push to the `braingeneers` Docker Hub org. The Workflows Compose contract
-  accepts either namespace until those images are copied to `braingeneers/*`,
-  repinned here and in the workflows catalog, and its test is narrowed again.
-  Uploader and Data Explorer use newer official images. Uploader's Compose
-  contract requires `braingeneers/braingeneers-data-uploader` again. Operator
-  recreation of these updated services is pending.
+- GEO safety release (2026-09-30) replaces the temporary Workflows images with
+  official `braingeneers/workflows-{backend,frontend}:20260930-e902be8d3393`
+  and narrows the Compose contract back to the official namespace. GEO workflow
+  0.2.0 uses tested `braingeneers/geo-publication:0.2.0`; both DANDI definitions
+  are 0.5.0 with `braingeneers/dandi-publication:0.4.0`. The worker enforces
+  reviewed package/source digests and account/destination-bound transfer evidence;
+  unproven files and unknown effects require a new reviewed package/folder.
+  Combine Data Explorer's GEO safety changes with general collections before
+  publication, preserving the companion Uploader state/wiring. Follow
+  `docs/geo-safety-rollout.md` for the drain, archive and staged cutover.
+  Source/image publication does not recreate hosted services. Real metadata,
+  packaging and FTP remain separate reviewed steps; Hunter authorizes FTP.
 
 - Data Explorer release `20260929-1adbf2bf3065` adds approved shared collections
   and requires Alembic `0003_dandi_collections`, both DANDI workflow entries at

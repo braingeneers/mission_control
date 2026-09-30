@@ -922,3 +922,15 @@ It preserves Sandbox history and creates no production Dandiset. Recreate only
 `data-explorer` and the companion `uploader` session-ID validation release,
 coordinating outside active uploads. A plain Compose restart does not replace
 images. Do not downgrade or restore earlier archives over new collection state.
+
+### GEO publication safety rollout
+
+The GEO safety release requires `geo-publication` workflow and official worker
+0.2.0, review-bound confirmation, and durable transfer receipts. Data Explorer's
+current migration head is `0004_geo_publications`; the safety changes add no
+migration. Follow the [staged operator rollout](docs/geo-safety-rollout.md) to
+preserve publication gates and history, deploy with GEO intake disabled, verify
+the catalog and Uploader, and then restore intake. A direct NRP preview is not
+acceptance of the Data Explorer-to-Workflows path. FTP needs explicit approval of
+the exact reviewed package; metadata saves, packaging, website submission, and
+GSE recording are separate dataset actions.

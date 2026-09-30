@@ -31,10 +31,10 @@ frontend_image="$(service_value workflows '.image')"
 backend_tag="${backend_image##*:}"
 frontend_tag="${frontend_image##*:}"
 
-if [[ ! "${backend_image}" =~ ^(braingeneers|hschweiger15)/workflows-backend:[0-9]{8}-[0-9a-f]{12}$ ]]; then
+if [[ ! "${backend_image}" =~ ^braingeneers/workflows-backend:[0-9]{8}-[0-9a-f]{12}$ ]]; then
     fail "workflows-backend must use an immutable date/SHA image, got ${backend_image}"
 fi
-if [[ ! "${frontend_image}" =~ ^(braingeneers|hschweiger15)/workflows-frontend:[0-9]{8}-[0-9a-f]{12}$ ]]; then
+if [[ ! "${frontend_image}" =~ ^braingeneers/workflows-frontend:[0-9]{8}-[0-9a-f]{12}$ ]]; then
     fail "workflows must use an immutable date/SHA image, got ${frontend_image}"
 fi
 assert_equal "${backend_tag}" "${frontend_tag}" "Workflows backend/frontend image tags"
