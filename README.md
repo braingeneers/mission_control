@@ -910,25 +910,35 @@ Data Explorer exposes independent Sandbox and production publication mappings.
 Hosted pages default to production via `DATA_EXPLORER_DANDI_DEFAULT_INSTANCE`;
 review URLs can explicitly choose Sandbox. API requests must name their environment.
 The application owns fixed environment routing; DANDI keys remain in the NRP
-publication worker. Keep both Workflows catalog entries at 0.4.0 with worker
-`braingeneers/dandi-publication:0.3.0` before deploying
-this application release. The existing materialization cache is unchanged.
+publication worker. Keep both Workflows catalog entries at 0.5.1 with worker
+`braingeneers/dandi-publication:0.4.1` before enabling new collection intake.
+The existing materialization cache is unchanged; preserve historical asset paths,
+source/projection provenance, and immutable requests and receipts.
 
-This release adds approved shared collection targets and requires Alembic
-`0003_dandi_collections`. Back up the existing schema,
-drain publication jobs, and follow the owning repository's
-[collection rollout procedure](../data-explorer/docs/dandi-collections-rollout.md).
-It preserves Sandbox history and creates no production Dandiset. Recreate only
-`data-explorer` and the companion `uploader` session-ID validation release,
-coordinating outside active uploads. A plain Compose restart does not replace
-images. Do not downgrade or restore earlier archives over new collection state.
+Shared destinations use a durable database registry and independent collection
+metadata workspaces in Uploader. Researchers can create shared drafts or explicitly
+inspect and adopt existing Dandisets, then contribute mixed eligible NWBs from
+each dataset in turn. Saving collection details in Uploader remains local until
+a reviewed revision is applied through Data Explorer.
+
+The combined release requires Alembic `0005_general_dandi_collections` and
+preserves legacy publication history and both environments. Back up the existing
+schema, drain DANDI and GEO publication gates, and follow the
+[combined operator cutover](docs/geo-safety-rollout.md) alongside the owning
+repository's [collection rollout procedure](https://github.com/braingeneers/data-explorer/blob/main/docs/dandi-collections-rollout.md).
+Deploy the paired Workflows images and companion Uploader before recreating
+Data Explorer, coordinating outside active uploads and publication work.
+Deployment creates no production Dandiset. A plain Compose restart does not
+replace images. Do not downgrade or restore earlier archives over new collection
+state.
 
 ### GEO publication safety rollout
 
 The GEO safety release requires `geo-publication` workflow and official worker
 0.2.0, review-bound confirmation, and durable transfer receipts. Data Explorer's
-current migration head is `0004_geo_publications`; the safety changes add no
-migration. Follow the [staged operator rollout](docs/geo-safety-rollout.md) to
+required migration head is `0005_general_dandi_collections`; the GEO safety changes
+add no additional migration. Follow the
+[staged operator rollout](docs/geo-safety-rollout.md) to
 preserve publication gates and history, deploy with GEO intake disabled, verify
 the catalog and Uploader, and then restore intake. A direct NRP preview is not
 acceptance of the Data Explorer-to-Workflows path. FTP needs explicit approval of
