@@ -6,20 +6,21 @@
 
 ## Service Operations
 
-- Uploader release `20260930-222ea0c1d0d9` adds the independent shared-collection
-  details workspace, preserves Archive-generated metadata fields, and keeps
-  history current after uncertain saves. It retains the sequencing source and
-  explicit ephys raw/derived NWB asset mapping. Sequencing corrections preserve
-  malformed drafts for field-level repair, protect library biology dependencies,
-  validate stored IDs/enums exactly, and guide explicit edits for newly discovered
-  mates without rewriting authored libraries or layouts. The image is published
-  under `braingeneers/braingeneers-data-uploader`, including `latest`; its Compose
-  contract requires the official namespace again. No migration is required.
+- Uploader release `20261005-4507b932386a` adds **Upload sequencing data** for
+  FASTQ deliveries, count matrices, and provider reports under
+  `s3://braingeneers/sequencing/<dataset>/original/{fastq,processed,reports}/`.
+  Sequencing uses its explicit source allowlist independently of `PROD`;
+  immutable-object preflight precedes presigning, and the completed upload links
+  to the existing GEO metadata editor. It retains independent shared-collection
+  details, lossless sequencing authoring, and explicit ephys raw/derived NWB
+  asset mapping. The versioned image and `latest` are published under
+  `braingeneers/braingeneers-data-uploader`. No migration is required.
   Recreate only `uploader` outside active uploads, then run the deployment verifier.
-  The last recorded hosted check reported `20260929-b582b04704d9`, which predates
-  sequencing and collection details. Published images and committed pins do not
-  prove operator recreation; preserve the collection, template, and announcement
-  paths and verify the running version after the cutover.
+  The authenticated hosted check on October 5, 2026 at 21:17 UTC reported
+  `20260930-222ea0c1d0d9`, the previous release and rollback image. Published
+  images and committed pins do not prove operator recreation; preserve the
+  collection, template, and announcement paths and verify the running version
+  after recreation.
 
 - Data Explorer release `20260930-2efbb2ca8955` combines GEO publication safety
   with general shared collections and migration `0005_general_dandi_collections`.
