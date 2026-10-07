@@ -1,5 +1,14 @@
 # AGENTS.md
 
+- DANDI target consolidation uses Workflows `20261007-20f6b9acf8bf`, Data Explorer
+  `20261007-bc0615849651`, and unchanged worker 0.4.11. Use the three-stage operator
+  script in `docs/dandi-target-rollout.md`; the temporary Workflows pair
+  `20261007-a0afdb335df1` disables source synchronization until Data Explorer switches.
+  Final catalog version 0.5.12 has one `dandi-publication` entry with an explicit target.
+  Historical run views stay readable; retired Clone errors are visible. No database,
+  Secret, or publication-evidence migration is required. Publication of images and pins
+  does not prove hosted recreation or UI verification.
+
 ## File Operations
 
 - Use `trash` instead of `rm`.
@@ -163,8 +172,9 @@
 - Pin Data Explorer's NWB materialization namespace to
   `s3://braingeneerscache/data-explorer/dandi/materialized/v1/`; canonical NWBs
   remain untouched and the bucket's 90-day lifecycle owns temporary-copy expiry.
-  Sandbox workflow credentials use Secret `dandi-api-key`, data key
-  `dandi-sandbox-api-key`. Local-source workflow revisions require a definition
+  The combined DANDI workflow selects Secret `dandi-api-key` data key
+  `dandi-sandbox-api-key` or `dandi-api-key` from its Sandbox/production target.
+  Local-source workflow revisions require a definition
   refresh after the workflows checkout updates, not a service restart.
 - Data Explorer metadata-repair links target the promoted `uploader`, using
   `source`, `uuid`, and optional `field` parameters. Preserve the promoted

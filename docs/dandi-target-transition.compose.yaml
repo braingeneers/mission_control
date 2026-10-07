@@ -1,0 +1,9 @@
+# Temporary first-stage image pins. Use only with docker-compose.yaml.
+services:
+  workflows-backend:
+    image: braingeneers/workflows-backend:20261007-a0afdb335df1
+    environment:
+      # Keep the temporary production entry until Data Explorer has switched.
+      WORKFLOW_REPO_SYNC_ENABLED: "false"
+  workflows:
+    image: braingeneers/workflows-frontend:20261007-a0afdb335df1
