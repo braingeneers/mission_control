@@ -1,6 +1,6 @@
 # AGENTS.md
 
-- DANDI target consolidation uses Workflows `20261007-977d76e2e9dc`, Data Explorer
+- DANDI target consolidation uses Workflows `20261008-597c7dbf3328`, Data Explorer
   `20261007-bc0615849651`, and unchanged worker 0.4.11. Update the three services
   together with direct Compose pull/recreate commands in `docs/dandi-target-rollout.md`
   during a brief pause in new DANDI publication launches.
@@ -13,6 +13,13 @@
   A failed Braindance run otherwise repeatedly rolled back terminal backfill at
   notification commit. PostgreSQL regression covers the commit and repeat cycle.
   Recreate only the paired Workflows services; no migration or Data Explorer update.
+- Workflows `20261008-597c7dbf3328` uses the same workflow/status title for email
+  subjects and Slack's first line, retaining a run link before every artifact.
+  Include that context in Slack's 4,000-character budget and fall back to links
+  for oversized inline reports. Both Data Lifecycle schedule recipients already
+  select the same bundle link; changing their settings is unnecessary. This
+  update requires only paired Workflows recreation, with no migration or
+  notification-service update; verify hosted recreation separately from publication.
 
 ## File Operations
 
