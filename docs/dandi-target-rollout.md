@@ -7,7 +7,7 @@ collection launch envelopes. Worker `hschweiger15/dandi-publication:0.4.11`,
 Secrets, request/result schemas, storage namespaces and database migrations are
 unchanged. Existing runs keep their recorded source and launch specification.
 
-Mission Control pins Workflows backend/frontend to `20261007-20f6b9acf8bf` and
+Mission Control pins Workflows backend/frontend to `20261007-977d76e2e9dc` and
 Data Explorer to `20261007-bc0615849651`.
 
 ## Operator commands

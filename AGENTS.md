@@ -1,6 +1,6 @@
 # AGENTS.md
 
-- DANDI target consolidation uses Workflows `20261007-20f6b9acf8bf`, Data Explorer
+- DANDI target consolidation uses Workflows `20261007-977d76e2e9dc`, Data Explorer
   `20261007-bc0615849651`, and unchanged worker 0.4.11. Update the three services
   together with direct Compose pull/recreate commands in `docs/dandi-target-rollout.md`
   during a brief pause in new DANDI publication launches.
@@ -8,6 +8,11 @@
   Historical run views stay readable; retired Clone errors are visible. No database,
   Secret, or publication-evidence migration is required. Publication of images and pins
   does not prove hosted recreation or UI verification.
+- The October 7 Workflows patch strips NUL padding only from derived diagnostics
+  and console progress, retaining saved redacted logs and the observed byte count.
+  A failed Braindance run otherwise repeatedly rolled back terminal backfill at
+  notification commit. PostgreSQL regression covers the commit and repeat cycle.
+  Recreate only the paired Workflows services; no migration or Data Explorer update.
 
 ## File Operations
 
