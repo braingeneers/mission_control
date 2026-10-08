@@ -57,11 +57,7 @@ help:
 compose-validate:
 	docker compose -f docker-compose.yaml config -q
 
-test: compose-validate service-proxy-test notification-service-compose-test data-explorer-compose-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test replicated-volume-backup-compose-test dandi-target-rollout-test
-
-.PHONY: dandi-target-rollout-test
-dandi-target-rollout-test:
-	bash scripts/test-dandi-target-rollout-contract.sh
+test: compose-validate service-proxy-test notification-service-compose-test data-explorer-compose-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test replicated-volume-backup-compose-test
 
 service-proxy-test:
 	./service-proxy/test-default-auth-config.sh

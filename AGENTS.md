@@ -1,9 +1,9 @@
 # AGENTS.md
 
 - DANDI target consolidation uses Workflows `20261007-20f6b9acf8bf`, Data Explorer
-  `20261007-bc0615849651`, and unchanged worker 0.4.11. Use the three-stage operator
-  script in `docs/dandi-target-rollout.md`; the temporary Workflows pair
-  `20261007-a0afdb335df1` disables source synchronization until Data Explorer switches.
+  `20261007-bc0615849651`, and unchanged worker 0.4.11. Update the three services
+  together with direct Compose pull/recreate commands in `docs/dandi-target-rollout.md`
+  during a brief pause in new DANDI publication launches.
   Final catalog version 0.5.12 has one `dandi-publication` entry with an explicit target.
   Historical run views stay readable; retired Clone errors are visible. No database,
   Secret, or publication-evidence migration is required. Publication of images and pins
@@ -123,6 +123,9 @@
   validating and publishing the affected images, updating and pushing their applicable Compose
   pins, and providing targeted pull/recreate/verify commands. Do not hand off a restart with only
   source-code changes pushed; server-side restarts remain operator-owned.
+- Prefer direct targeted Compose pull/recreate commands and existing health checks
+  for routine image updates. Match rollout complexity to actual migration needs;
+  do not assume uninterrupted launch availability.
 - Diagnose protected Braingeneers web-service APIs from the local workstation with the standard
   service-account JWT. Prefer the operator-managed
   `~/.ssh/braingeneers_jwt_token.json` when present; it contains `access_token` and
