@@ -193,6 +193,17 @@ drain publication gates, archive the schema, and recreate Uploader and Data
 Explorer outside active uploads. Follow
 [the rollout procedure](https://github.com/braingeneers/data-explorer/blob/main/docs/dandi-collections-rollout.md).
 
+Interrupted shared uploads now have human-reviewed recovery in Data Explorer.
+The October 9 release pairs Workflows `20261009-0810a9ee6375`, Data Explorer
+`20261009-9cba05309fb5`, worker `0.5.0` and workflow `0.6.0`. Install Workflows
+support first, then archive the Data Explorer schema and recreate the app for
+additive migration `0006_dandi_recovery`. Existing conflict gates are preserved.
+Agents prepare a read-only check and share its review link; a signed-in
+researcher approves it in Data Explorer. Recovery restores proven provenance
+and releases the gate, after which uploads need a fresh reviewed plan. Use the
+[staged recovery rollout](docs/dandi-recovery-rollout.md); no manual DANDI login,
+SQL gate edits or automatic mutation retries are part of this feature.
+
 The service owns a `data_explorer` schema in shared `sql-db`. Its entrypoint
 runs Alembic before FastAPI and keeps SQLAlchemy table auto-create disabled.
 Unique immutable request and result objects live beneath

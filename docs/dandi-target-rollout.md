@@ -1,5 +1,10 @@
 # One DANDI workflow with an explicit target
 
+This records the October 8 consolidation release. The later
+[human-reviewed recovery release](dandi-recovery-rollout.md) supersedes its
+image pins and adds Data Explorer migration `0006_dandi_recovery`; use that
+procedure for the current rollout.
+
 The final catalog has `dandi-publication` version **0.5.12**, with `target=sandbox`
 or `target=production`. Standalone defaults remain Sandbox; hosted Data Explorer
 keeps its Production default and sends the chosen target in both dataset and

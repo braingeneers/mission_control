@@ -877,7 +877,7 @@ services:
 
   # Data Explorer dataset browser
   data-explorer:
-    image: braingeneers/data-explorer:20261007-bc0615849651
+    image: braingeneers/data-explorer:20261009-9cba05309fb5
     container_name: data-explorer
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1010,7 +1010,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20261008-597c7dbf3328
+    image: braingeneers/workflows-backend:20261009-0810a9ee6375
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1056,7 +1056,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20261008-597c7dbf3328
+    image: braingeneers/workflows-frontend:20261009-0810a9ee6375
     container_name: workflows
     restart: unless-stopped
     expose:

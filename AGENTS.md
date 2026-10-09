@@ -1,13 +1,18 @@
 # AGENTS.md
 
-- DANDI target consolidation uses Workflows `20261008-597c7dbf3328`, Data Explorer
-  `20261007-bc0615849651`, and unchanged worker 0.4.11. Update the three services
-  together with direct Compose pull/recreate commands in `docs/dandi-target-rollout.md`
-  during a brief pause in new DANDI publication launches.
-  Final catalog version 0.5.12 has one `dandi-publication` entry with an explicit target.
-  Historical run views stay readable; retired Clone errors are visible. No database,
-  Secret, or publication-evidence migration is required. Publication of images and pins
-  does not prove hosted recreation or UI verification.
+- DANDI recovery pairs Workflows `20261009-0810a9ee6375`, Data Explorer
+  `20261009-9cba05309fb5`, worker 0.5.0 and catalog version 0.6.0. Follow
+  `docs/dandi-recovery-rollout.md`: recreate Workflows support first, archive the
+  Data Explorer schema, then recreate the app for additive migration 0006.
+  Existing conflict gates are preserved. Agents prepare read-only evidence and
+  share its review link; only a signed-in researcher approves in Data Explorer.
+  Recovery restores proven ownership, retains the original conflict and never
+  resumes uploads. Future uploads need a fresh reviewed plan. Source/image
+  publication is separate from hosted recreation and Sandbox acceptance.
+- DANDI target consolidation is retained: one `dandi-publication` entry has an
+  explicit Sandbox/production target. Historical run views stay readable and
+  retired Clone errors are visible. The October 8 no-migration release is recorded
+  in `docs/dandi-target-rollout.md`; its pins are superseded by recovery above.
 - The October 7 Workflows patch strips NUL padding only from derived diagnostics
   and console progress, retaining saved redacted logs and the observed byte count.
   A failed Braindance run otherwise repeatedly rolled back terminal backfill at
