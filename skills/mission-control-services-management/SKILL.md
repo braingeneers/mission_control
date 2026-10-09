@@ -127,8 +127,11 @@ For MCP services, also inspect `docs/mcp-onboarding.md`,
 - Match validation to the change and service route. Prefer existing contract
   tests and read-only health/status endpoints.
 - For production operations, supply the smallest exact command sequence and
-  state the expected evidence. Wait for the operator’s output before claiming
-  success.
+  state the expected evidence. Put the commands directly in the chat; a rollout
+  document is supporting detail. State whether the images are published and
+  Compose pins are pushed, and distinguish restart from pull/recreate. Include
+  extra stages only when actual dependencies or migrations require them. Wait
+  for the operator’s output before claiming success.
 - Report separately what was verified from source, API responses, browser UI,
   and operator-provided production output.
 - Escalate missing GI, GitHub, NRP, registry, identity-provider, or secret-admin

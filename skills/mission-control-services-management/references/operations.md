@@ -9,7 +9,8 @@ HTTPS API diagnosis.
 Never SSH to or execute commands on `braingeneers.gi.ucsc.edu`. For every
 server-side action:
 
-1. Give the user the smallest exact command sequence.
+1. Give the user the smallest exact command sequence directly in the chat. Link
+   a rollout document only as supporting detail; it does not replace instructions.
 2. Name the host and working repository when context could be ambiguous.
 3. State the expected evidence and any stopping condition.
 4. Wait for the operator's output before diagnosing the next step or claiming
@@ -32,6 +33,11 @@ docker compose logs --tail=200 SERVICE
 Use `--pull always` when the intended tag may have moved. A pull or restart by
 itself does not guarantee that an existing container was replaced. Use a
 service-specific deployment verifier when the repository provides one.
+
+For restart-required application changes, finish validation, image publication
+and applicable Compose pin updates before handoff. State what is ready and what
+still needs the operator. Add ordering, backups or checkpoints when actual
+service dependencies or migrations require them, and explain their purpose.
 
 Avoid `docker compose down` and whole-stack restarts during routine work. Proxy
 changes may require targeted proxy recreation in addition to the application.
