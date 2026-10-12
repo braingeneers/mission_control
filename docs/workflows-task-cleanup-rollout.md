@@ -8,7 +8,14 @@ Both versioned tags and `latest` were published successfully. Registry digests:
 - Backend: `sha256:b74b8bd35edd9692ef41d74a40aefacb998d1190902f982c9491230cb47b45fa`
 - Frontend: `sha256:c9fd4c8f0b8997ab00aa584f6562092858eb7972fc5110d55f92f4e848128cd2`
 
-Hosted recreation is pending operator evidence.
+The operator reported restarting both services on October 12. Authenticated
+HTTPS checks at 21:40 UTC returned `{"status":"ready"}`, exposed the new Run
+`cleanup` field, and served `/assets/index-DGOY9G33.js` with SHA-256
+`f3bc6655e9e6b9cdfc9e17092c86c61ee3d4aae0fab6c7f9ee9d7ff2b7fabb06`, matching
+the published frontend image exactly. These checks verify hosted feature
+availability and the frontend bundle; container image IDs were not supplied.
+The weekly Grant schedule remained enabled and unchanged, with its next
+occurrence on October 19 at 14:00 UTC.
 
 New launcher failures and explicit Stop requests use a durable RunEvent cleanup
 checkpoint. Before stopping verified native Nextflow Jobs, the worker captures
@@ -74,3 +81,8 @@ archived at 20:48 UTC on October 12. The replacement retained the launch setting
 notifications and workflow version 0.8.8; its initial admission wait was namespace
 pod capacity. Schedules and admission ceilings were not changed. The available
 mount/network warnings do not establish the driver's exact terminal cause.
+After recreation, the clone still waited for capacity: namespace quota showed
+200/200 Pods used by other batches, while Workflows observed additional committed
+capacity for unscheduled Jobs. The report driver had not been submitted. This is
+an admission wait, not evidence of a new report task failure; no quota or admission
+policy was changed.
