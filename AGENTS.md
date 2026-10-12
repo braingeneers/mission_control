@@ -1,6 +1,12 @@
 # AGENTS.md
 
-- DANDI recovery pairs Workflows `20261009-0810a9ee6375`, Data Explorer
+- Workflows `20261012-817dc2b9c82b` adds durable cleanup after new launcher
+  failures and explicit Stop requests, with bounded diagnostics, UID-guarded
+  foreground deletion, visible cleanup state and fresh archive checks. Node
+  uncertainty retains capacity; recovery remains manual Clone. Recreate only
+  the paired Workflows services using `docs/workflows-task-cleanup-rollout.md`.
+  No migration is added; source/image publication does not prove hosted recreation.
+- DANDI recovery support is retained in the current Workflows pair, with Data Explorer
   `20261009-9cba05309fb5`, worker 0.5.0 and catalog version 0.6.0. Follow
   `docs/dandi-recovery-rollout.md`: recreate Workflows support first, archive the
   Data Explorer schema, then recreate the app for additive migration 0006.
