@@ -45,6 +45,20 @@
 
 ## Service Operations
 
+- The ndx-cell-culture 1.0.0 integration pins uploader
+  `20261013-9faf74983a00` and Data Explorer `20261013-3343733d68e4`.
+  It adds explicit variant origin authoring/export gates and coordinates
+  `nwb-projection-1.0.0-v2` with the DANDI worker. It retains historical
+  frozen-contract reconciliation. Task images and Workflows source definitions
+  advance separately; reload the source-synchronized Workflows catalog before
+  activating the new application contract. No Workflows app image change or
+  production metadata migration is included. Operator recreation remains
+  targeted to uploader/data-explorer, with the existing uploader verifier and
+  Data Explorer health check. The uploader source's
+  `docs/nwb-extension-1.0.0-rollout.md` records versions, preservation checks,
+  storage implications and the remaining legacy-inventory gap. Published pins
+  alone do not prove that these versions are running on the server.
+
 - Uploader release `20261005-4507b932386a` adds **Upload sequencing data** for
   FASTQ deliveries, count matrices, and provider reports under
   `s3://braingeneers/sequencing/<dataset>/original/{fastq,processed,reports}/`.

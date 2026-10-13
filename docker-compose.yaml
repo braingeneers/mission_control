@@ -764,7 +764,7 @@ services:
 
   # Braingeneers data uploader, promoted from uploader-dev.
   uploader:
-    image: braingeneers/braingeneers-data-uploader:20261005-4507b932386a
+    image: braingeneers/braingeneers-data-uploader:20261013-9faf74983a00
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
@@ -877,7 +877,7 @@ services:
 
   # Data Explorer dataset browser
   data-explorer:
-    image: braingeneers/data-explorer:20261009-9cba05309fb5
+    image: braingeneers/data-explorer:20261013-3343733d68e4
     container_name: data-explorer
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
