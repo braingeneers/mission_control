@@ -8,8 +8,11 @@
   No migration is added; source/image publication does not prove hosted recreation.
   After the operator's October 12 restart, authenticated HTTPS checks at 21:40 UTC
   verified readiness, the new cleanup field and an exact published frontend bundle
-  match. The Grant recovery clone still waited behind other batches at the full
-  200-Pod namespace quota; its weekly schedule remained enabled and unchanged.
+  match. The Grant recovery clone waited behind shared batches, then succeeded
+  at 00:20 UTC on October 13 with all six tasks exiting zero. All 13 published
+  files and the shared latest state passed digest checks; existing notification
+  deliveries were accepted. Its weekly schedule remained enabled and unchanged.
+  Successful report execution does not remove its audit/source-coverage warnings.
 - DANDI recovery support is retained in the current Workflows pair, with Data Explorer
   `20261009-9cba05309fb5`, worker 0.5.0 and catalog version 0.6.0. Follow
   `docs/dandi-recovery-rollout.md`: recreate Workflows support first, archive the

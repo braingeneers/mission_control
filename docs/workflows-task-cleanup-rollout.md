@@ -81,8 +81,41 @@ archived at 20:48 UTC on October 12. The replacement retained the launch setting
 notifications and workflow version 0.8.8; its initial admission wait was namespace
 pod capacity. Schedules and admission ceilings were not changed. The available
 mount/network warnings do not establish the driver's exact terminal cause.
-After recreation, the clone still waited for capacity: namespace quota showed
-200/200 Pods used by other batches, while Workflows observed additional committed
-capacity for unscheduled Jobs. The report driver had not been submitted. This is
-an admission wait, not evidence of a new report task failure; no quota or admission
-policy was changed.
+After recreation, the clone waited for capacity: namespace quota showed 200/200
+Pods used by other batches, while Workflows observed additional committed capacity
+for unscheduled Jobs. Separate RTsort validation Jobs carrying Workflows ownership
+labels temporarily added an unreserved-workflow admission wait. The operator asked
+that these independent workloads remain running. No external Job, quota or
+admission policy was changed.
+
+Capacity drained and the clone was admitted at 23:43 UTC on October 12, about
+3 hours 23 minutes after creation. It succeeded at 00:20 UTC on October 13, about
+37 minutes after admission. The collected trace records all six processes as
+`COMPLETED`, exit zero, with one task each; no active run Pods remained. The live
+diagnostic snapshots were available on the hosted backend. Rendering peaked at
+3.1 GB RSS in the trace; a same-UID read-only cgroup check observed about 3.2 GiB
+within the 4 GiB limit before it finished successfully.
+The final fresh admission observation showed zero reserved runs, reserved task
+slots and queued runs, with no hold. The weekly schedule still had its unchanged
+October 12 14:00 update timestamp and next occurrence on October 19 at 14:00 UTC.
+
+The evaluator completed all 674 selected opportunities: 646 cached assessments
+were reused and 28 were new. Three invalid model responses were recovered within
+31 API attempts. Ingestion pinned the evaluation date to October 12 even though
+evaluation finished after midnight UTC. The immutable publication is
+`s3://braingeneers/workflows/grant-opportunities-report/runs/2026-10-13T00-18-14Z/`.
+Independent streamed GETs verified all 13 file sizes and SHA-256 digests against
+the completion marker, including both PDFs, HTML, CSV, source/audit exports and
+provenance. The shared `state/latest.json` matched the published `next-state.json`
+digest. Workflows records both email notifications and the Slack notification as
+delivered on their first attempts; the notification service accepted delivery.
+This confirms submission, not receipt or reading in recipients' inboxes.
+
+The audit remains `traceable_with_warnings`: 39 assessments require evidence
+review, with zero incomplete evaluations. Foundation discovery enrolled four
+sources, quarantined 95 and rejected one; it included no opportunities and logged
+13 source warnings. NIH recurring-deadline extraction also recorded warnings.
+Execution and file integrity are verified; comprehensive grant coverage and the
+correctness of individual recommendations require review. This successful run did
+not exercise cleanup after a new production failure; failure-path confidence
+continues to come from the regression and isolated image checks above.
