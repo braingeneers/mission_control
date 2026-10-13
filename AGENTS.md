@@ -46,7 +46,7 @@
 ## Service Operations
 
 - The ndx-cell-culture 1.0.0 integration pins uploader
-  `20261013-9faf74983a00` and Data Explorer `20261013-3343733d68e4`.
+  `20261013-3a765b1ed3a4` and Data Explorer `20261013-3343733d68e4`.
   It adds explicit variant origin authoring/export gates and coordinates
   `nwb-projection-1.0.0-v2` with the DANDI worker. It retains historical
   frozen-contract reconciliation. Task images and Workflows source definitions
