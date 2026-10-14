@@ -9,8 +9,10 @@ HTTPS API diagnosis.
 Never SSH to or execute commands on `braingeneers.gi.ucsc.edu`. For every
 server-side action:
 
-1. Give the user the smallest exact command sequence directly in the chat. Link
-   a rollout document only as supporting detail; it does not replace instructions.
+1. For routine updates, briefly ask the operator to restart/update the affected
+   services and confirm that images are published and Compose pins are pushed.
+   Use the existing update procedure; give the smallest exact command sequence
+   directly in chat when needed or requested.
 2. Name the host and working repository when context could be ambiguous.
 3. State the expected evidence and any stopping condition.
 4. Wait for the operator's output before diagnosing the next step or claiming
@@ -19,13 +21,20 @@ server-side action:
 Do not turn a diagnostic request into a restart, pull, recreate, migration, or
 notification without explicit authorization.
 
+Do not create a rollout document for routine updates. Add extra steps only for
+concrete deployment dependencies or manual migrations, explaining the reason in
+chat. Create a separate document only when requested or when the required
+exceptional procedure is too complex for a short handoff.
+
 ## Targeted Service Operations
 
-Prefer one-service operations:
+When commands are needed, prefer targeted operations from the server's Mission
+Control checkout:
 
 ```bash
+git pull --ff-only
 docker compose pull SERVICE
-docker compose up -d --force-recreate SERVICE
+docker compose up -d --no-deps --force-recreate SERVICE
 docker compose ps SERVICE
 docker compose logs --tail=200 SERVICE
 ```
@@ -36,8 +45,9 @@ service-specific deployment verifier when the repository provides one.
 
 For restart-required application changes, finish validation, image publication
 and applicable Compose pin updates before handoff. State what is ready and what
-still needs the operator. Add ordering, backups or checkpoints when actual
-service dependencies or migrations require them, and explain their purpose.
+still needs the operator. Add ordering, backups or checkpoints only when actual
+deployment dependencies or manual migrations require them, and explain their
+purpose.
 
 Avoid `docker compose down` and whole-stack restarts during routine work. Proxy
 changes may require targeted proxy recreation in addition to the application.

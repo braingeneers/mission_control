@@ -12,7 +12,8 @@ Use this skill for services deployed through the `mission_control` repository on
 
 - Never SSH to, log in to, or execute commands on the production server or its
   aliases. Run production diagnosis only through approved HTTPS APIs. Give the
-  user or operator exact commands for server-side work and wait for the result.
+  user or operator concise instructions for server-side work, with exact commands
+  when needed or requested, and wait for the result.
 - Never create, patch, replace, or delete Kubernetes Secrets. Secret mutations
   are operator-owned; provide instructions without performing the mutation.
 - Do not run production-style Mission Control services locally unless the user
@@ -47,8 +48,9 @@ Classify what the user needs before selecting tools or deployment topology:
   visible state, navigation, screenshots, or interaction. If the user requests
   both data verification and UI verification, perform and report them
   separately; browser unavailability does not invalidate API evidence.
-- **Production host operation:** provide targeted commands for an operator to
-  run on `braingeneers.gi.ucsc.edu`; do not run them locally or over SSH.
+- **Production host operation:** provide concise operator instructions, with
+  targeted commands when needed, for `braingeneers.gi.ucsc.edu`; do not run them
+  locally or over SSH.
 - **Implementation or configuration change:** inspect the relevant deployment
   and owning-service sources, then choose the service route below.
 
@@ -126,12 +128,16 @@ For MCP services, also inspect `docs/mcp-onboarding.md`,
 
 - Match validation to the change and service route. Prefer existing contract
   tests and read-only health/status endpoints.
-- For production operations, supply the smallest exact command sequence and
-  state the expected evidence. Put the commands directly in the chat; a rollout
-  document is supporting detail. State whether the images are published and
-  Compose pins are pushed, and distinguish restart from pull/recreate. Include
-  extra stages only when actual dependencies or migrations require them. Wait
-  for the operator’s output before claiming success.
+- Default routine handoff to a brief operator request in chat: name the services
+  to restart/update and confirm images are published and Compose pins are pushed.
+  Use the existing targeted update and verification procedure; provide exact
+  commands inline when needed or requested. New images require pull/recreate;
+  `docker compose restart` keeps the existing container image.
+- Do not create a rollout document for routine updates. Add extra steps only for
+  concrete deployment dependencies or manual migrations and explain why in chat.
+  Create a separate document only when requested or when a required exceptional
+  procedure is too complex for a short handoff. Wait for the operator’s output
+  before claiming production success.
 - Report separately what was verified from source, API responses, browser UI,
   and operator-provided production output.
 - Escalate missing GI, GitHub, NRP, registry, identity-provider, or secret-admin

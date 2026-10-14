@@ -165,11 +165,15 @@
 - When service restart, pull, recreate, or deployment operations are needed, instruct the user to handle them on the `braingeneers` server instead of running them from a local workstation.
 - Unless the user explicitly says otherwise, finish restart-required application changes by
   validating and publishing the affected images, updating and pushing their applicable Compose
-  pins, and providing targeted pull/recreate/verify commands. Do not hand off a restart with only
-  source-code changes pushed; server-side restarts remain operator-owned.
-- Prefer direct targeted Compose pull/recreate commands and existing health checks
-  for routine image updates. Match rollout complexity to actual migration needs;
-  do not assume uninterrupted launch availability.
+  pins, and briefly requesting the operator update the affected services. Do not hand off a
+  restart with only source-code changes pushed; server-side restarts remain operator-owned.
+- For routine updates, name the services to restart/update and confirm images and pins are ready.
+  Use the existing targeted pull/recreate and verification procedure; give commands inline when
+  needed or requested. `docker compose restart` does not adopt a newly published image.
+- Do not create a rollout document for routine updates. Add extra steps only for concrete
+  deployment dependencies or manual migrations and explain the reason in chat. A separate
+  document is appropriate only when requested or when the required exceptional procedure is
+  too complex for a short handoff. Do not assume uninterrupted launch availability.
 - Diagnose protected Braingeneers web-service APIs from the local workstation with the standard
   service-account JWT. Prefer the operator-managed
   `~/.ssh/braingeneers_jwt_token.json` when present; it contains `access_token` and
