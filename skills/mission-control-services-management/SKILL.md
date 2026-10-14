@@ -20,6 +20,11 @@ Use this skill for services deployed through the `mission_control` repository on
   explicitly requests a local test.
 - Preserve user scope. Diagnosis does not authorize deployment, restart,
   migration, notification delivery, or another external mutation.
+- Workflow catalog **Reload definitions** at `/ops/workflows` has standing user
+  authorization: agents may do it whenever useful without confirmation or operator
+  handoff. This is a catalog UI action, distinct from a backend service restart or
+  host operation. If the browser is unavailable, use the same authenticated
+  `POST /api/admin/workflows/reload` action and verify the definitions and versions.
 - Routine local service-account JWT renewal within seven days of embedded
   expiry is expected credential maintenance: follow
   [access-and-auth.md](references/access-and-auth.md), renew without asking for

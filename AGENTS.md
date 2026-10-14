@@ -163,6 +163,11 @@
 - Do not run production-style `mission_control` services locally unless the user explicitly asks for a local test.
 - Services such as `mqtt-job-listener`, `maxwell-dashboard`, and other Docker Compose managed lab services are intended to run on `braingeneers.gi.ucsc.edu`.
 - When service restart, pull, recreate, or deployment operations are needed, instruct the user to handle them on the `braingeneers` server instead of running them from a local workstation.
+- Agents may reload the Workflows catalog through **Reload definitions** at `/ops/workflows`
+  whenever useful, without confirmation or operator handoff. This authorized UI action is
+  distinct from a backend service restart or host operation. If the browser is unavailable,
+  use the equivalent authenticated `POST /api/admin/workflows/reload`, then verify the expected
+  definitions and versions. Reload published workflow changes before handing off app restarts.
 - Unless the user explicitly says otherwise, finish restart-required application changes by
   validating and publishing the affected images, updating and pushing their applicable Compose
   pins, and briefly requesting the operator update the affected services. Do not hand off a

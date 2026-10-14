@@ -6,8 +6,8 @@ HTTPS API diagnosis.
 
 ## Operator Boundary
 
-Never SSH to or execute commands on `braingeneers.gi.ucsc.edu`. For every
-server-side action:
+Never SSH to or execute commands on `braingeneers.gi.ucsc.edu`. For host and
+service-management actions:
 
 1. For routine updates, briefly ask the operator to restart/update the affected
    services and confirm that images are published and Compose pins are pushed.
@@ -20,6 +20,14 @@ server-side action:
 
 Do not turn a diagnostic request into a restart, pull, recreate, migration, or
 notification without explicit authorization.
+
+Workflow catalog reload is an authorized application/UI action rather than a
+host operation or backend service restart. Agents may use **Reload definitions**
+at `/ops/workflows` whenever useful without confirmation or operator handoff.
+When the browser is unavailable, use its authenticated
+`POST /api/admin/workflows/reload` action, then verify definitions and versions
+with `GET /api/admin/workflows`. Reload published workflow changes yourself
+before handing off any required application service restart.
 
 Do not create a rollout document for routine updates. Add extra steps only for
 concrete deployment dependencies or manual migrations, explaining the reason in
