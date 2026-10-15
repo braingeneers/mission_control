@@ -53,10 +53,10 @@
   checks recorded status after an uncertain approval response without replaying
   approval. No migration is added. Recreate only `data-explorer`, then verify
   its health and served recovery script. Published pins alone do not prove hosted
-  recreation. The preceding layout image was verified over HTTPS after operator
-  recreation at 18:09:41 UTC on October 15, with migration
-  `0006_dandi_recovery` and a healthy publication database; the new pin still
-  requires operator recreation.
+  recreation. After the October 15 operator recreation, authenticated HTTPS
+  checks matched the final release's recovery script, HTML and CSS exactly.
+  Startup verification at 18:32:13 UTC confirmed migration
+  `0006_dandi_recovery` and a healthy publication database.
 
 - The ndx-cell-culture 1.0.0 integration pins uploader
   `20261013-3a765b1ed3a4` and Data Explorer `20261013-3343733d68e4`.
