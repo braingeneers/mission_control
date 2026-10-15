@@ -13,15 +13,19 @@
   files and the shared latest state passed digest checks; existing notification
   deliveries were accepted. Its weekly schedule remained enabled and unchanged.
   Successful report execution does not remove its audit/source-coverage warnings.
-- DANDI recovery support is retained in the current Workflows pair, with Data Explorer
-  `20261009-9cba05309fb5`, worker 0.5.0 and catalog version 0.6.0. Follow
-  `docs/dandi-recovery-rollout.md`: recreate Workflows support first, archive the
-  Data Explorer schema, then recreate the app for additive migration 0006.
-  Existing conflict gates are preserved. Agents prepare read-only evidence and
+- DANDI recovery uses migration 0006, worker 0.6.2 and catalog version 0.7.2.
+  Historical upload and adoption/inspection evidence retains its frozen known
+  materializer contract; new executable uploads require the current contract.
+  Worker/catalog updates use source reload without a Workflows app restart.
+  The original October 9 installation procedure is recorded in
+  `docs/dandi-recovery-rollout.md`; do not repeat its migration/archive sequence
+  for a worker-only update. Agents prepare read-only evidence and
   share its review link; only a signed-in researcher approves in Data Explorer.
   Recovery restores proven ownership, retains the original conflict and never
   resumes uploads. Future uploads need a fresh reviewed plan. Source/image
   publication is separate from hosted recreation and Sandbox acceptance.
+  Sandbox 218966 completed researcher approval and verification on October 15:
+  two confirmed uploads and one absent attempt, with the original result preserved.
 - DANDI target consolidation is retained: one `dandi-publication` entry has an
   explicit Sandbox/production target. Historical run views stay readable and
   retired Clone errors are visible. The October 8 no-migration release is recorded
@@ -44,6 +48,12 @@
 - Use `trash` instead of `rm`.
 
 ## Service Operations
+
+- Data Explorer `20261015-4dc8e0b6c399` fixes oversized recovery buttons and long
+  conflict-path overflow by stacking collection review content and keeping the
+  recovery control in its action row. The image includes legacy recovery tests;
+  no migration is added. Recreate only `data-explorer`, then verify its health
+  and served HTML/CSS. Published pins alone do not prove hosted recreation.
 
 - The ndx-cell-culture 1.0.0 integration pins uploader
   `20261013-3a765b1ed3a4` and Data Explorer `20261013-3343733d68e4`.
