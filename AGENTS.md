@@ -54,6 +54,9 @@
   recovery control in its action row. The image includes legacy recovery tests;
   no migration is added. Recreate only `data-explorer`, then verify its health
   and served HTML/CSS. Published pins alone do not prove hosted recreation.
+  After the October 15 operator recreation, HTTPS checks matched the release's
+  HTML and CSS exactly; startup verification at 18:09:41 UTC confirmed migration
+  `0006_dandi_recovery` and a healthy publication database.
 
 - The ndx-cell-culture 1.0.0 integration pins uploader
   `20261013-3a765b1ed3a4` and Data Explorer `20261013-3343733d68e4`.
