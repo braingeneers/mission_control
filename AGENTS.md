@@ -49,14 +49,14 @@
 
 ## Service Operations
 
-- Data Explorer `20261015-4dc8e0b6c399` fixes oversized recovery buttons and long
-  conflict-path overflow by stacking collection review content and keeping the
-  recovery control in its action row. The image includes legacy recovery tests;
-  no migration is added. Recreate only `data-explorer`, then verify its health
-  and served HTML/CSS. Published pins alone do not prove hosted recreation.
-  After the October 15 operator recreation, HTTPS checks matched the release's
-  HTML and CSS exactly; startup verification at 18:09:41 UTC confirmed migration
-  `0006_dandi_recovery` and a healthy publication database.
+- Data Explorer `20261015-40ceaf2f7e9e` includes the recovery layout fix and
+  checks recorded status after an uncertain approval response without replaying
+  approval. No migration is added. Recreate only `data-explorer`, then verify
+  its health and served recovery script. Published pins alone do not prove hosted
+  recreation. The preceding layout image was verified over HTTPS after operator
+  recreation at 18:09:41 UTC on October 15, with migration
+  `0006_dandi_recovery` and a healthy publication database; the new pin still
+  requires operator recreation.
 
 - The ndx-cell-culture 1.0.0 integration pins uploader
   `20261013-3a765b1ed3a4` and Data Explorer `20261013-3343733d68e4`.
