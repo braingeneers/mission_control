@@ -186,7 +186,7 @@ Uploader imports verified inspection seeds through
 optional at startup and use the trusted internal network. Saving collection
 details does not update DANDI until reviewed in Data Explorer.
 
-The general-collection release requires Data Explorer migration
+The initial general-collection installation requires Data Explorer migration
 `0005_general_dandi_collections`, publication worker `0.4.1`, and both DANDI
 workflow definitions `0.5.1`. Publish the worker, refresh the paired definitions,
 drain publication gates, archive the schema, and recreate Uploader and Data
@@ -204,10 +204,19 @@ and releases the gate, after which uploads need a fresh reviewed plan. Use the
 [staged recovery rollout](docs/dandi-recovery-rollout.md); no manual DANDI login,
 SQL gate edits or automatic mutation retries are part of this feature.
 
+The missing-result extension uses worker `0.6.4` and workflow `0.7.3` and keeps
+migration `0006_dandi_recovery`. It can reconstruct an upload that never saved
+its final report from the immutable request, complete journal and live draft,
+with the same researcher approval. Publish the worker and reload the catalog
+before updating Data Explorer. Existing recovery installations need only a
+targeted Data Explorer pull/recreate; no database migration or Workflows service
+restart is added. Verify hosted health and preserve existing gates until each
+approved recovery applies. Give routine operator instructions directly in chat.
+
 The service owns a `data_explorer` schema in shared `sql-db`. Its entrypoint
 runs Alembic before FastAPI and keeps SQLAlchemy table auto-create disabled.
 Unique immutable request and result objects live beneath
-`s3://braingeneers/services/data-explorer/dandi/sandbox/`. Data Explorer sends
+`s3://braingeneers/services/data-explorer/dandi/<sandbox|production>/`. Data Explorer sends
 schema-v2 launch messages to the optional Workflows MQTT ingress and reconciles
 request IDs through the internal Workflows API. It has no Compose dependency on
 MQTT or Workflows, so either integration can recover independently.
@@ -215,9 +224,9 @@ MQTT or Workflows, so either integration can recover independently.
 The credential-bearing `dandi-publication` task runs on NRP from the sibling
 `workflows` catalog. Data Explorer itself never receives a DANDI API key. The
 workflow expects the existing `s3-credentials` Secret keys `access_key` and
-`secret_key`, plus the operator-owned `dandi-api-key` Secret data key
-`dandi-sandbox-api-key`. The separate `dandi-api-key` data key is reserved for
-an explicit future production-DANDI configuration. Secret creation and changes
+`secret_key`, plus the operator-owned `dandi-api-key` Secret. Its selected target
+chooses data key `dandi-sandbox-api-key` or `dandi-api-key` together with fixed
+origins and manifest namespace. Secret creation and changes
 remain operator-owned.
 
 Uploader metadata is frozen through a revision-scoped exact NWB projection

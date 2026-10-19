@@ -1,5 +1,13 @@
 # Human-reviewed DANDI upload recovery release
 
+This document preserves the original October 9 installation and schema/archive
+procedure. The later missing-result extension uses worker 0.6.4 / workflow
+0.7.3 with no new migration: publish the worker, reload/verify the catalog, then
+pull/recreate only Data Explorer. Provide that routine handoff directly in chat;
+do not repeat the original Workflows recreation or database cutover below for
+an existing migration-0006 deployment. Deployment and researcher acceptance
+remain separate checks.
+
 The October 9 release adds recovery for interrupted shared `sync_collection`
 uploads. Checks read DANDI and immutable journals. A signed-in researcher reviews
 and approves the exact check in Data Explorer; fresh verification then imports

@@ -13,10 +13,16 @@
   files and the shared latest state passed digest checks; existing notification
   deliveries were accepted. Its weekly schedule remained enabled and unchanged.
   Successful report execution does not remove its audit/source-coverage warnings.
-- DANDI recovery uses migration 0006, worker 0.6.2 and catalog version 0.7.2.
+- The missing-result DANDI recovery release retains migration 0006 and uses
+  worker 0.6.4 / catalog version 0.7.3. Schema five pins original result presence
+  or absence and proves complete effects from immutable requests/journals and
+  the live draft; historical schema-four reviews still require their result.
   Historical upload and adoption/inspection evidence retains its frozen known
   materializer contract; new executable uploads require the current contract.
   Worker/catalog updates use source reload without a Workflows app restart.
+  Enable that worker/catalog before recreating Data Explorer for schema-v5 intake.
+  No migration is added. Verify hosted recreation and researcher acceptance
+  separately from image/source publication.
   The original October 9 installation procedure is recorded in
   `docs/dandi-recovery-rollout.md`; do not repeat its migration/archive sequence
   for a worker-only update. Agents prepare read-only evidence and
