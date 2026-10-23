@@ -764,7 +764,7 @@ services:
 
   # Braingeneers data uploader, promoted from uploader-dev.
   uploader:
-    image: braingeneers/braingeneers-data-uploader:20261013-3a765b1ed3a4
+    image: braingeneers/braingeneers-data-uploader:20261023-d43e22ed607e
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
