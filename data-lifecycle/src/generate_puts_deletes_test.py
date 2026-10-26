@@ -309,7 +309,7 @@ class TestGeneratePutAndDeleteLists(unittest.TestCase):
             def __exit__(self, *_args):
                 self.close()
 
-        def destination_opener(_url, _mode, transport_params=None):
+        def destination_opener(_url, _mode, transport_params=None, compression=None):
             self.assertTrue(transport_params['multipart_upload'])
             return Destination()
 
@@ -878,6 +878,7 @@ class TestStage4UploadSeam(unittest.TestCase):
         smart_open.assert_called_once_with(
             's3://bucket/object.bin',
             'rb',
+            compression='disable',
             transport_params={'client': source_client},
         )
 
@@ -895,7 +896,7 @@ class TestStage4UploadSeam(unittest.TestCase):
             def write(self, data):
                 writes.append(data)
 
-        def destination_opener(url, mode, transport_params):
+        def destination_opener(url, mode, transport_params, compression=None):
             self.assertEqual(mode, 'wb')
             self.assertEqual(transport_params['min_part_size'], 8)
             self.assertEqual(url, 's3://glacier-bucket/bucket/large-file.bin')
@@ -940,7 +941,7 @@ class TestStage4UploadSeam(unittest.TestCase):
             def write(self, _data):
                 raise SSLError(endpoint_url='https://example.invalid', error='EOF occurred in violation of protocol')
 
-        def destination_opener(_url, _mode, transport_params=None):
+        def destination_opener(_url, _mode, transport_params=None, compression=None):
             destination_calls.append('attempt')
             return FailingWriter()
 
@@ -990,7 +991,7 @@ class TestStage4UploadSeam(unittest.TestCase):
                 if self.should_fail:
                     raise SSLError(endpoint_url='https://example.invalid', error='EOF occurred in violation of protocol')
 
-        def destination_opener(_url, _mode, transport_params=None):
+        def destination_opener(_url, _mode, transport_params=None, compression=None):
             writer = FlakyWriter(should_fail=(attempts['count'] == 0))
             attempts['count'] += 1
             return writer

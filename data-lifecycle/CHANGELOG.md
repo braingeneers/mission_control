@@ -13,3 +13,4 @@
 2026-08-21 | v36 | move active workflow runtime and policy into mission_control/data-lifecycle and retire the web image
 2026-08-21 | v38 | improve retention PDF layout and publish compact date-grouped Slack report text
 2026-08-27 | v39 | replace the 9 GB Braingeneers/Anaconda base with a digest-pinned Python slim runtime, install only workflow dependencies and pinned command-line tools, and replace the sole `braingeneerspy` wrapper with the existing explicit NRP boto3 client
+2026-10-25 | v40 | copy stored object bytes with smart_open compression disabled on source and destination; cover compressed and ordinary objects with real stream-wrapper regression tests

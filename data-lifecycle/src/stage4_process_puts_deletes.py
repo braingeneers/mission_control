@@ -254,6 +254,8 @@ def open_source_object(source_url, mode):
     return smart_open_aws.open(
         source_url,
         mode,
+        # Back up stored bytes, irrespective of filename compression suffixes.
+        compression='disable',
         transport_params={'client': get_source_s3_client()},
     )
 
@@ -310,6 +312,7 @@ def stream_upload(
     with source_opener(source_url, 'rb') as fin, destination_opener(
         destination_url,
         'wb',
+        compression='disable',
         transport_params={
             'client': s3_client,
             'multipart_upload': True,

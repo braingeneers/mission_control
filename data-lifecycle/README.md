@@ -72,6 +72,11 @@ production Nextflow workflow launches the stages as separate Kubernetes tasks:
 5. `stage4_process_puts_deletes.py` uploads missing objects to Glacier with a
    destination `HeadObject` precheck and append-only activity log.
 
+Stage 4 disables automatic compression on both object streams: a `.gz`, `.zst`,
+or other compressed object is copied byte for byte without codec dependencies.
+Destination prechecks still skip existing scientific objects; this change does
+not audit or replace backups written by older images.
+
 Endpoint resolution remains `NRP_ENDPOINT`, then `ENDPOINT`, then
 `https://s3.braingeneers.gi.ucsc.edu`. Stage 2 and Stage 3 resolve
 `DATA_LIFECYCLE_CONFIG_PATH`; their default is the policy beside the scripts.

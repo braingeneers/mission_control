@@ -134,6 +134,7 @@ data-lifecycle-test: data-lifecycle-build
 		$(DATA_LIFECYCLE_IMAGE):$(DATA_LIFECYCLE_TAG) \
 		python -m unittest \
 			src.generate_puts_deletes_test \
+			tests.test_stage4_byte_preservation \
 			tests.test_generate_cleanup_report
 	docker run --rm \
 		$(DATA_LIFECYCLE_IMAGE):$(DATA_LIFECYCLE_TAG) \
