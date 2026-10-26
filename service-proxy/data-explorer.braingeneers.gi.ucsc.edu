@@ -1,0 +1,7 @@
+# Preserve researcher authentication for every normal Data Explorer route.
+include /etc/nginx/vhost.d/default;
+
+# Guarded DANDI admission belongs only to services on braingeneers-net.
+location ^~ /internal/dandi/ {
+    return 404;
+}
