@@ -131,6 +131,24 @@ Explorer is the sole user interface for retention renewal and `NOBACKUP`.
 
 ## Data Explorer DANDI publication
 
+Bounded agent batches use Data Explorer migration `0007_dandi_batch_safety` and
+guarded worker 0.6.5 / workflow 0.7.4. Researchers approve exact additions, source
+byte caps and expiry under **Batch approvals & history**; public drafts need an
+immediate-exposure acknowledgement. Failure pauses approval even if fresh evidence
+proves the worker never started and releases the collection gate. Agents cannot
+approve/resume campaigns, clone a privileged DANDI run, or authorize public access
+or a DOI. The history and JSON export retain actors, decisions and immutable proof.
+
+This coordinated update needs Data Explorer, Workflows backend and service-proxy
+recreation after pulling their pinned images/configuration. Finish active DANDI
+work and pause new submissions during cutover; bring up the proxy denial and guarded
+Workflows support before the new app accepts requests. `/internal/dandi/` must return
+404 at the HTTPS edge, including for authenticated callers. The backend calls
+`http://data-explorer:8000/internal/dandi/admit` on `braingeneers-net`; no extra
+credential or reciprocal startup dependency is needed. Keep the configured guarded
+worker image identical to the server-owned workflow catalog pin. Never downgrade
+the database after campaign data exists. Routine operator handoffs belong in chat.
+
 Data Explorer explains publication in two steps: prepare a DANDI draft from an
 exact NWB selection, then publish a fixed version with release notes. Users can
 choose raw ephys and derived spike/telemetry NWBs, create a public or private

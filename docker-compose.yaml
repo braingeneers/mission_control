@@ -130,6 +130,7 @@ services:
       - ./service-proxy/uploader-dev.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/uploader-dev.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/uploader-dev.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/uploader-dev.braingeneers.gi.ucsc.edu_location:ro
       - ./service-proxy/data-explorer.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/data-explorer.braingeneers.gi.ucsc.edu_location:ro
+      - ./service-proxy/data-explorer.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/data-explorer.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/mxvisuals.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/mxvisuals.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/mxvisuals-backend.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/mxvisuals-backend.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/spikelab.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/spikelab.braingeneers.gi.ucsc.edu:ro
@@ -877,7 +878,7 @@ services:
 
   # Data Explorer dataset browser
   data-explorer:
-    image: braingeneers/data-explorer:20261019-38b84a0b6222
+    image: braingeneers/data-explorer:20261026-91c0f3ce0928
     container_name: data-explorer
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -906,6 +907,9 @@ services:
       DATA_EXPLORER_DANDI_MATERIALIZATION_CACHE_PREFIX: "s3://braingeneerscache/data-explorer/dandi/materialized/v1/"
       DATA_EXPLORER_DANDI_WORKFLOW_PROFILE: "k8s,k8s_credentials"
       DATA_EXPLORER_WORKFLOWS_API_URL: "http://workflows-backend:8000"
+      DATA_EXPLORER_WORKFLOWS_QUIESCENCE_TIMEOUT_SECONDS: "30"
+      DATA_EXPLORER_DANDI_BATCH_SAFETY_ENABLED: "true"
+      DATA_EXPLORER_DANDI_GUARDED_WORKER_IMAGE: "braingeneers/dandi-publication:0.6.5@sha256:e2ecc249900d39e52a7967612dfe820700d2e3bd549c6130efbcd949ef07b456"
       DATA_EXPLORER_MQTT_BROKER_HOST: "mqtt"
       DATA_EXPLORER_MQTT_BROKER_PORT: "1883"
       DATA_EXPLORER_MQTT_TOPIC: "workflows/launch"
@@ -1010,7 +1014,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20261012-817dc2b9c82b
+    image: braingeneers/workflows-backend:20261026-dacc4ea5d6c8
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1039,6 +1043,8 @@ services:
       LAUNCHER_MOUNT_TIMEOUT_SECONDS: "1800"
       NOTIFICATION_DISPATCH_ENABLED: "true"
       NOTIFICATION_SERVICE_URL: "http://notification-service:8000"
+      DATA_EXPLORER_INTERNAL_URL: "http://data-explorer:8000"
+      DANDI_ADMISSION_TIMEOUT_SECONDS: "30"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/readyz"]
       interval: 10s
@@ -1056,7 +1062,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20261012-817dc2b9c82b
+    image: braingeneers/workflows-frontend:20261026-dacc4ea5d6c8
     container_name: workflows
     restart: unless-stopped
     expose:

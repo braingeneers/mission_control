@@ -89,3 +89,7 @@ docker run --rm \
     --volume "${script_dir}:/test:ro" \
     nginxproxy/nginx-proxy:latest \
     /test/test-uploader-auth.sh
+
+docker run --rm --entrypoint sh --add-host oauth2-proxy:127.0.0.1 \
+    --volume "${script_dir}:/etc/nginx/vhost.d:ro" --volume "${script_dir}:/test:ro" \
+    nginxproxy/nginx-proxy:latest /test/test-data-explorer-auth.sh

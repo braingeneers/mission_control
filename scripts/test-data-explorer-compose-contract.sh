@@ -67,3 +67,8 @@ if jq -e '.services["data-lifecycle"]' <<<"${compose_json}" >/dev/null; then
 fi
 
 echo "Data Explorer Compose contracts are valid."
+[[ "$(service_value '.environment.DATA_EXPLORER_DANDI_BATCH_SAFETY_ENABLED')" == "true" ]] || fail "DANDI batch safety must be enabled."
+[[ "$(service_value '.environment.DATA_EXPLORER_WORKFLOWS_QUIESCENCE_TIMEOUT_SECONDS')" == "30" ]] || fail "Writer evidence requires a separate 30 second deadline."
+[[ "$(service_value '.environment.DATA_EXPLORER_DANDI_GUARDED_WORKER_IMAGE')" == braingeneers/dandi-publication:* ]] || fail "Pin the guarded DANDI worker."
+[[ "$(jq -r '.services["workflows-backend"].environment.DATA_EXPLORER_INTERNAL_URL' <<<"${compose_json}")" == "http://data-explorer:8000" ]] || fail "Workflows must use internal DANDI admission."
+jq -e '.services["service-proxy"].volumes[] | select(.target == "/etc/nginx/vhost.d/data-explorer.braingeneers.gi.ucsc.edu" and .read_only == true)' <<<"${compose_json}" >/dev/null || fail "Mount the Data Explorer internal-route edge denial."
