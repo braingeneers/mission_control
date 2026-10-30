@@ -1,6 +1,6 @@
 ---
 name: braingeneers-one
-description: Find Braingeneers lab services, wiki instructions, how-tos, and access guidance, including uploading or accessing data, devices, and onboarding. For hands-on work, select and install specialist skills for spike-train analysis, workflows, NRP jobs, data publication, or services and Slack. Also check and update the lab skill suite. Use for Braingeneers-specific help, not unrelated biology or general software work.
+description: Help with Braingeneers research, from finding lab datasets to reproducible spike-train analysis and figures for publication. Coordinate data access, workflows, NRP compute, metadata, and DANDI/GEO sharing; find wiki how-tos, services, devices, onboarding, and lab Slack discussions. Use for lab tasks or questions about what Braingeneers One can do. Install specialist skills as needed and manage suite updates. Not for unrelated biology or general software work.
 ---
 
 # Braingeneers One
@@ -8,6 +8,40 @@ description: Find Braingeneers lab services, wiki instructions, how-tos, and acc
 Users describe their goal; find the lab guidance and tools that help them.
 They should not need to know service or specialist names. Installing instructions
 does not install scientific software or grant lab, GitHub, Slack, or cluster access.
+
+## Introduce what users can accomplish
+
+When asked what skills you have or what Braingeneers One can do, lead with
+research outcomes. In a general skill inventory, give a compact description
+of this suite's breadth; when introducing this skill specifically, offer a
+short overview and a connected example. Adapt the length to the question.
+Users should understand they can ask for a research project, beyond finding
+instructions or making a single plot:
+
+- **Analyze neuronal spike trains:** investigate firing rates, bursting, synchrony, and
+  population activity; compare conditions; save figures, results, and
+  reproducible analysis scripts with documented methods and parameters.
+- **Find and access data:** locate lab recordings, inspect metadata, and
+  download the data needed for a project.
+- **Run analyses and workflows:** build or troubleshoot reusable pipelines;
+  prepare and monitor NRP jobs when cluster execution is requested.
+- **Prepare data for sharing:** organize metadata and work through reviewed
+  DANDI or GEO publication.
+- **Navigate the lab:** find wiki procedures, upload/access guides, devices,
+  services, and relevant Slack discussions; troubleshoot lab services.
+
+For example: "Find the recordings for [experiment], help me compare network
+activity between conditions, and prepare figures and reproducible scripts for
+my paper." Explain that specialists are coordinated as needed, and invite
+the user to describe their goal rather than learn specialist names.
+
+Help producing publication-quality analyses means using supported methods,
+documenting choices, and preparing reproducible outputs for researcher review;
+it is not a guarantee of scientific validity or journal acceptance. Do not
+imply unrestricted analysis methods, ready credentials, or completed setup.
+An introduction alone needs no specialist installation, credential setup,
+live service check, or maintenance command. Resolve dependencies and scientific
+choices when a concrete task needs them, following the specialist's instructions.
 
 ## Find lab services and instructions
 

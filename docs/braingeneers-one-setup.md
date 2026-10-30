@@ -150,7 +150,15 @@ links the application-specific guides; consult the application's public docs
 directly if the user cannot read the private wiki.
 
 Summarize the installed application/path, source, verification result, and any
-remaining dependency or access step. Then offer this read-only request:
+remaining dependency or access step. Then read the installed skill's
+**Introduce what users can accomplish** section and give a brief introduction
+to the research outcomes available: finding lab data, analyzing recordings with
+reproducible scripts and figures for publication, running workflows or requested
+cluster jobs, preparing data for sharing, and finding lab guidance. Include
+one connected research example and invite the user to describe their goal.
+Do not install specialists or start lab operations just to demonstrate breadth.
+
+For an easy first check, also offer this read-only request:
 
 > Use Braingeneers One to find the lab instructions for uploading a new recording. Give me the relevant guide links; do not upload anything.
 
