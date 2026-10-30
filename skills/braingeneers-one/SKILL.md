@@ -1,15 +1,52 @@
 ---
 name: braingeneers-one
-description: Help with Braingeneers lab tasks by selecting and installing the lab's specialist skills for spike-train analysis, Nextflow workflows, NRP cluster jobs, data discovery and publication, or lab services and Slack. Also check and update the Braingeneers skill suite. Use for these lab tasks, not unrelated biology or general software work.
+description: Find Braingeneers lab services, wiki instructions, how-tos, and access guidance, including uploading or accessing data, devices, and onboarding. For hands-on work, select and install specialist skills for spike-train analysis, workflows, NRP jobs, data publication, or services and Slack. Also check and update the lab skill suite. Use for Braingeneers-specific help, not unrelated biology or general software work.
 ---
 
 # Braingeneers One
 
-Users describe their goal; you select the lab guidance. They should not need to
-know specialist names or manage their installations. Installing instructions
+Users describe their goal; find the lab guidance and tools that help them.
+They should not need to know service or specialist names. Installing instructions
 does not install scientific software or grant lab, GitHub, Slack, or cluster access.
 
+## Find lab services and instructions
+
+For "where", "how do I", access, onboarding, or unfamiliar lab topics, read
+[documentation discovery](references/discovery.md). Start with the
+[wiki's task routes and service directory](https://github.com/braingeneers/wiki/blob/main/README.md),
+search its relevant guides, and follow links to the owning documentation.
+Use this route even when no specialist covers the topic. The wiki also covers
+devices, experimental procedures, and other lab resources; the five specialists
+below are not a limit on what you can help someone find.
+
+Answer a documentation question directly with the relevant service link,
+concise source-backed steps, and prerequisites. Do not install a specialist,
+set up credentials, or call a protected service merely to explain a procedure.
+Private wiki/repository pages may require GitHub access; distinguish denied
+access from absent documentation and explain the appropriate support route.
+If the user asks you to perform work, load the relevant specialist before that
+action. A clear operational request can go straight to its specialist without
+an unrelated wiki search. Advice is not authorization to upload, change device
+state, submit jobs, or send messages.
+
+- **Uploading new lab data:** find dataset conventions and Uploader's current
+  user instructions through the data index. Distinguish ephys/imaging from
+  sequencing when the steps differ. Uploading experimental files is separate
+  from metadata authoring and DANDI/GEO publication; don't infer publication
+  intent from "upload". Clarify the destination if the request is ambiguous.
+- **Accessing data:** explain the appropriate browser, Python/S3, or cluster
+  route from the data guides. Browser browsing does not require cluster setup;
+  do not request API credentials for a simple explanation. Actual dataset
+  discovery, verification, and downloads use the Data Explorer specialist.
+- **Unfamiliar or undocumented tasks:** broaden the documentation search and
+  follow owning sources. State gaps or conflicting guidance, ask a focused
+  clarification when useful, and give the documented help route. Do not invent
+  a procedure or force the question into the nearest specialist.
+
 ## Route the request
+
+Use these specialists for hands-on work or technical guidance requiring their
+contracts, after deciding whether documentation alone answers the question.
 
 | Requested outcome | Skill to read |
 | --- | --- |
@@ -68,6 +105,8 @@ including this router, and caches a successful check. Briefly offer any updates;
 **apply updates only when the user requests them**. A request to check is not a
 request to update. `status` without `--daily` always checks immediately. If the
 check fails, say freshness is unknown; installed skills may still be used.
+For documentation-only help, do not make helper setup or a successful update
+check a prerequisite to answering; check when the prerequisites are available.
 
 An update request uses `update` for installed suite members only, or
 `update <skill-name> ...` for a subset. It does not install every absent skill.
