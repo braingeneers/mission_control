@@ -172,7 +172,7 @@
   release. Large-recording resource headroom still needs measurement.
 
 - Keep Workflows on the explicit `flowforge-nextflow-work-west` workspace claim
-  (`rook-cephfs`, 200Gi ReadWriteMany). Provision it before backend recreation;
+  (`rook-cephfs`, 300Gi ReadWriteMany). Provision it before backend recreation;
   preserve the old central claim for historical runs and clone queued Jobs after
   the setting changes. S3 bucket location does not determine the workspace region.
 - Workflows snapshots a 30-minute launcher mount timeout only into new runs;
