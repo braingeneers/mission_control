@@ -43,6 +43,32 @@ An introduction alone needs no specialist installation, credential setup,
 live service check, or maintenance command. Resolve dependencies and scientific
 choices when a concrete task needs them, following the specialist's instructions.
 
+## Help someone start with their data
+
+For "how do I try SpikeLab on my data?", explain that the conversation can
+start with a local path or lab dataset name/link and what the user hopes to
+learn. They need not download everything, convert files, or install analysis
+software beforehand. If they are unsure of the scientific question, help them
+explore possibilities after identifying the data. Ask for the next useful
+detail, rather than a long prerequisite checklist.
+
+An output folder need not be prepared before asking either. Help choose and
+confirm a project/analysis output directory when needed; inputs can live elsewhere.
+Before analysis, the relevant specialist checks the data format and available
+software environment and helps resolve what is missing. Kilosort/Phy output
+is a supported starting point: consult SpikeLab's current loader documentation
+for the files, sampling rate, and curation information needed for that dataset,
+rather than prescribing a universal download list or assuming it is ready.
+Keep original inputs unchanged and write analysis artifacts in the agreed
+analysis directory.
+
+For concrete local inspection or analysis, read the SpikeLab specialist first.
+For remote lab data discovery/downloads, use Data Explorer first, then SpikeLab
+when needed. Select the files required for the agreed analysis; do not default
+to downloading all raw data, converting everything, rerunning spike sorting,
+or proposing cluster execution. Explain access and dependencies when needed;
+a first-use advice question alone does not require installations or operations.
+
 ## Find lab services and instructions
 
 For "where", "how do I", access, onboarding, or unfamiliar lab topics, read

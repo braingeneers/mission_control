@@ -73,3 +73,34 @@ Reused the 19 passing helper tests recorded at `5577887`: comparison confirmed
 that `suite.py`, its tests, and the catalog are unchanged. No helper dependency
 or configuration change is included. Those runtime tests do not establish the
 new introductory behavior; the independent responses above cover that change.
+
+## First-analysis review: 2026-10-30
+
+Ran independent fresh-agent, advice-only cases with the revised router as the
+only source. Input paths and identifiers were fictional; no data inspection,
+software/skill installation, maintenance, or service access was permitted.
+Evaluators received the questions, not this acceptance rubric.
+
+| User starting point | Observed response and acceptance |
+| --- | --- |
+| Local Kilosort/Phy output; asks whether to install SpikeLab, convert files, or copy them into a Claude folder first | Said files can stay where they are and preparation is not required before asking. Offered a goal/path-based prompt, specialist-led file/environment checks, and an example output directory while preserving inputs. No universal file list or claimed analysis readiness. |
+| Lab-hosted dataset name only; asks whether to download everything and create a folder first; unsure what to analyze | Said the name is enough to begin locating data; described Data Explorer discovery followed by selecting needed files and SpikeLab analysis. Asked for a useful identifying detail. Did not download anything, prescribe cluster execution, or choose an analysis without the user. |
+| Unknown `.npy`/`.h5` files; asks what to prepare | Distinguished file extensions from actual data content, started with path and goal, and deferred format/software/output-directory checks to specialist-led work. Did not assume the files were sorted spikes or start sorting/conversion. |
+
+The first unknown-format response suggested having an output folder ready.
+Clarified explicitly that a pre-created output folder is not required before
+asking, then reran that case with a new independent agent. Its answer began
+with the folder path and scientific interest and offered to help choose the
+output directory later. Local/remote cases had already made this distinction.
+
+These checks validate first-response guidance, not successful loading of a
+particular dataset, an installed SpikeLab environment, or native Claude Code
+behavior. The Kilosort/Phy support claim was separately checked against
+`load_spikedata_from_kilosort` in SpikeLab's current loader source; actual
+requirements must still be checked for the user's installed version and data.
+The helper, catalog, installation commands, and update policy are unchanged.
+
+Skill validation passed. The changed wiki page rendered in Jekyll and
+GitHub-style previews at desktop/mobile widths, preserving all 16 existing
+anchors and manual install commands; setup navigation still passed. Results:
+`/tmp/wiki-restructure-preview/first-analysis-results.json`.

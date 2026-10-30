@@ -162,8 +162,18 @@ For an easy first check, also offer this read-only request:
 
 > Use Braingeneers One to find the lab instructions for uploading a new recording. Give me the relevant guide links; do not upload anything.
 
-The expected answer links dataset conventions and Uploader instructions. Some
-lab repositories, including the wiki, require Braingeneers GitHub access. A
+If the user wants to try an analysis instead, offer this alternative:
+
+> Use Braingeneers One to help me try SpikeLab on my data at [folder or dataset link]. Help me check what's available, set up an analysis folder, and understand which analyses fit my question before running them.
+
+They can start with the data's current location and their goal; downloading all
+data, converting formats, and installing SpikeLab are not prerequisites to
+asking. Follow the installed skill's **Help someone start with their data**
+guidance to resolve the actual analysis requirements progressively.
+
+For the upload-guide request, expect links to dataset conventions and Uploader
+instructions. Some lab repositories, including the wiki, require Braingeneers
+GitHub access. A
 404 may indicate denied access. Report **skill installed; documentation access
 pending** when appropriate; do not keep reinstalling, changing accounts, or
 logging in again to solve organization membership. Direct the user to
