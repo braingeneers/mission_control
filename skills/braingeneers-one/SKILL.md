@@ -98,6 +98,12 @@ state, submit jobs, or send messages.
   route from the data guides. Browser browsing does not require cluster setup;
   do not request API credentials for a simple explanation. Actual dataset
   discovery, verification, and downloads use the Data Explorer specialist.
+  For that hands-on work, missing sign-in is a setup step to guide through,
+  not a reason to stop at “API not set up” or switch to S3. Follow the
+  specialist's bundled sign-in helper: present the institutional login, help
+  connect the user's computer privately, verify access, and resume their task.
+  Users need only the academic account they use for Braingeneers web services;
+  do not assume they know what JWTs or service accounts are.
 - **Unfamiliar or undocumented tasks:** broaden the documentation search and
   follow owning sources. State gaps or conflicting guidance, ask a focused
   clarification when useful, and give the documented help route. Do not invent

@@ -51,110 +51,113 @@ documented `/api/...` endpoint. `oauth2-proxy` validates the token, and nginx
 removes it before forwarding the request to the application. MCP and true
 machine-api routes use different backend-validation contracts.
 
-### 1. Locate The Token
+### 1. Check Existing Sign-In
 
-Prefer the local file `~/.ssh/braingeneers_jwt_token.json` when present:
-
-```bash
-operator_token_file="${HOME}/.ssh/braingeneers_jwt_token.json"
-token_file=""
-if [ -f "${operator_token_file}" ]; then
-    token_file="${operator_token_file}"
-fi
-```
-
-If it is absent, discover the active `braingeneerspy` package path instead of
-assuming a checkout, Conda environment, Python version, or site-packages path:
+Use the bundled [sign-in helper](../scripts/authenticate.py) with an available
+Python 3 interpreter; it needs no third-party packages. `<SKILL>` below means
+this skill's absolute installed directory. Run this check without opening a browser:
 
 ```bash
-if [ -z "${token_file:-}" ]; then
-    token_file="$(python - <<'PY'
-from pathlib import Path
-
-try:
-    import braingeneers.iot
-except ImportError:
-    candidates = []
-else:
-    candidates = [
-        Path(package_path) / "service_account" / "config.json"
-        for package_path in braingeneers.iot.__path__
-    ]
-print(next(
-    (path for path in candidates if path.is_file()),
-    Path.home() / ".ssh" / "braingeneers_jwt_token.json",
-))
-PY
-)"
-fi
+python3 "<SKILL>/scripts/authenticate.py" --check
 ```
 
-Package discovery uses the active Python environment when `braingeneerspy` is
-installed. If neither location has a credential, or the package is unavailable,
-the default is `~/.ssh/braingeneers_jwt_token.json` for browser setup below.
-Keep the selected path through validation and renewal; do not silently fall
-back to another file because the selected token is empty, malformed, or expired.
+The helper prefers an existing `~/.ssh/braingeneers_jwt_token.json`, otherwise
+an existing active `braingeneerspy` package's `service_account/config.json`.
+With neither present, it selects `~/.ssh/braingeneers_jwt_token.json`. Honor an
+explicitly established user path with `--token-file /absolute/path` on every
+helper invocation. Keep that selection throughout setup, checking, API use and
+renewal; do not switch files because the selected one is expired or malformed.
+`--path` prints only the selected path, so the agent can set `token_file` for
+subsequent API requests without reading a credential into tool output.
 
-### 2. Browser Setup Or Interactive Renewal
+### 2. Guide First-Use Sign-In Through Completion
 
-For a missing, expired, or rejected credential, offer the user this direct link:
-[Generate a service-account token](https://service-accounts.braingeneers.gi.ucsc.edu/generate_token).
-They sign in through the normal browser flow. The complete JSON response belongs
-in the selected `token_file`, with owner-only permissions (`0600`). Have them
-enter it only in their local terminal or save it locally from the browser;
-never ask for it in chat or put it in a shell command or shell history.
-Validate the JSON and embedded expiry before replacing an existing file, using
-the atomic-save procedure in step 4.
+When a requested API task needs sign-in, actively walk the user through it.
+Do not stop at “API not set up,” require them to understand JWT/service accounts,
+or substitute S3 access for the requested Data Explorer operation. A purely
+explanatory question does not require authentication.
 
-Alternatively, from an environment containing `braingeneerspy`, offer:
+Use plain language, for example:
+
+> To find your datasets, first sign in with the academic account you use for
+> Braingeneers web services—UCSC or your institution.
+> [Sign in to Braingeneers](https://service-accounts.braingeneers.gi.ucsc.edu/generate_token).
+> I'll help connect this computer, then continue the search.
+
+Choose the least manual supported transfer, without promising browser abilities
+that have not been verified:
+
+- If browser tools can transfer the response privately to a local file without
+  putting it in chat, screenshots, tool output or logs, open the login page and
+  let the user complete institutional sign-in/MFA themselves. Import that local
+  response with the helper below. Do not extract credentials through an ordinary
+  browser snapshot or return them from a browser evaluation.
+- Otherwise use the bundled helper in **a terminal the user can actually type
+  into**. If agent terminals are not user-interactive, give the user the exact
+  command with the resolved absolute skill path to run in their own terminal.
+  First establish that this terminal runs in the same environment/filesystem
+  the agent can access; a path on the agent’s remote machine may not exist on
+  the user’s laptop. For a remote agent, use a user-accessible terminal in that
+  environment or a supported private file transfer. Never send the response
+  through chat to bridge computers. Do not claim setup completed until the
+  agent can check the selected file in its own environment.
+  Do not start an inaccessible agent PTY and wait for input. The helper opens
+  the login page and privately accepts the complete response copied from it:
+
+  ```bash
+  python3 "<SKILL>/scripts/authenticate.py"
+  ```
+
+  Tell the user to sign in, copy the entire response shown by the page, paste
+  into the helper's terminal prompt, and press Enter twice. The paste stays
+  hidden, including formatted multiline responses. They need not create a file,
+  choose a directory, or set permissions. Keep the clickable login link available
+  if a browser cannot open, including when the terminal runs remotely.
+- If terminal pasting is unavailable, ask them to save/download the complete
+  response locally using their browser and give **only its path**, never its
+  contents. The agent handles the import and destination:
+
+  ```bash
+  python3 "<SKILL>/scripts/authenticate.py" --import-file /absolute/path/to/response.json
+  ```
+
+The helper validates the response and embedded expiry, saves atomically with
+owner-only permissions, and preserves existing credentials on cancellation or
+failure. For a permissions-only problem, import the selected file itself to
+secure it without requiring another login. After a successful import from a
+separate downloaded file, tell the user that the download also contains their
+private sign-in and should be removed from Downloads using their normal trash.
+Never print it or ask them to paste it in chat, a shell command, or shell history.
+If canceled, pause dependent API work; do not treat cancellation as success.
+If institutional access is denied, explain that lab access may need approval
+and direct them to the lab's documented access/support route.
+
+The existing package command remains an alternative when the user prefers it:
 
 ```bash
 python -m braingeneers.iot.authenticate
 ```
 
-This command opens the same page and prompts for its complete JSON in the user's
-terminal. It saves the package's `service_account/config.json`, not the preferred
-`~/.ssh` file. If a different `token_file` was selected, validate the result and
-securely copy it to that selected path using the same atomic-save procedure;
-otherwise rediscover the package path. Ensure owner-only permissions, reload,
-and validate the selected file before continuing.
+It also opens the page and requires copying its response into the user's
+terminal; it does not capture the browser response automatically. It saves
+inside the active package, which may differ from the selected file. Import
+that package file into the selected destination using the bundled helper and
+verify permissions afterward. Do not install braingeneerspy just for sign-in.
 
-### 3. Validate Permissions And Embedded Expiry
+### 3. Verify And Resume
 
-The JSON wrapper contains `access_token` and `expires_at`, but the JWT's embedded
-`exp` claim is authoritative. Never print the token or file contents.
+Rerun `--check` on the selected file. It reports only the path, embedded expiry
+and whether renewal is due; it never displays the credential. The JWT's `exp`
+is authoritative; `expires_at` in the response wrapper does not override it.
+Local decoding checks structure/expiry, **not** signature or service access.
+Follow step 4 for a still-valid credential within seven days of expiry.
 
-```bash
-python - "${token_file}" <<'PY'
-import base64
-from datetime import datetime, timedelta, timezone
-import json
-from pathlib import Path
-import stat
-import sys
-
-token_path = Path(sys.argv[1])
-if stat.S_IMODE(token_path.stat().st_mode) & 0o077:
-    raise SystemExit("JWT file must have owner-only permissions.")
-
-token_data = json.loads(token_path.read_text(encoding="utf-8"))
-payload_part = token_data["access_token"].split(".")[1]
-payload_part += "=" * (-len(payload_part) % 4)
-payload = json.loads(base64.urlsafe_b64decode(payload_part))
-expires_at = datetime.fromtimestamp(payload["exp"], timezone.utc)
-print("JWT exp:", expires_at.isoformat())
-print("Declared expires_at:", token_data.get("expires_at", "missing"))
-remaining = expires_at - datetime.now(timezone.utc)
-if remaining <= timedelta(0):
-    raise SystemExit("JWT is expired; use browser setup or interactive renewal.")
-print("Automatic renewal due:", remaining <= timedelta(days=7))
-PY
-```
-
-The owner-only rule applies to either token location. Use embedded `exp` for
-all expiry decisions. A different wrapper `expires_at` alone is not a reason
-to renew; the wrapper may overstate the actual lifetime. Decoding claims checks
-expiry only; the protected service verifies the JWT's signature and access.
+Then make a documented read-only protected API request (for Data Explorer,
+`/api/sources`), with TLS verification enabled and redirects disabled. Confirm
+an expected JSON success response, not a login page; only then say the connection
+works and resume the user's original task. Do not stop after saving the file or
+ask for a new task. A freshly issued credential that still gets rejected needs
+access/admin help, not repeated login/renewal attempts.
 
 ### 4. Automatically Renew Within Seven Days
 
@@ -187,8 +190,9 @@ Attempt automatic renewal at most once per task. If it fails, preserve the
 original file and report a sanitized reason; continue authorized API requests
 while that credential remains valid and accepted. If a new token still expires
 within seven days, report its short lifetime rather than repeatedly renewing.
-For missing, malformed, expired, or rejected credentials, offer step 2. A fresh
-valid token that is still rejected requires access/admin help, not a renewal loop.
+For missing, malformed, expired, or rejected credentials, guide the user through
+step 2. A fresh valid token that is still rejected requires access/admin help,
+not a renewal loop.
 
 ### 5. Make A Read-Only Request
 

@@ -37,7 +37,10 @@ Classify what the user needs before selecting tools or deployment topology:
 
 - **Hosted service data or status:** use the documented HTTPS API from the local
   workstation with the standard service-account JWT. Read
-  [references/access-and-auth.md](references/access-and-auth.md).
+  [references/access-and-auth.md](references/access-and-auth.md). If sign-in is
+  missing or expired, guide institutional login using the bundled helper,
+  verify access, then resume the requested task. Do not leave the user with
+  “token missing” or ask them to paste credentials into chat.
 - **Slack conversations or notifications:** use `notification-service` to discover
   bot-joined conversations, read history/replies, and send requested messages or
   email. Read [references/notifications.md](references/notifications.md) and reuse
