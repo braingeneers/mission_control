@@ -1,0 +1,4 @@
+interface:
+  display_name: "Braingeneers One"
+  short_description: "One entry point for Braingeneers lab tasks"
+  default_prompt: "Use $braingeneers-one to help me with my lab task."

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "skills": [
+    {"name": "braingeneers-one", "repo": "braingeneers/mission_control", "path": "skills/braingeneers-one", "branch": "main", "role": "router"},
+    {"name": "spikelab-analysis-implementer", "repo": "braingeneers/SpikeLab", "path": "src/spikelab/agent/skills/spikelab-analysis-implementer", "branch": "main", "role": "specialist"},
+    {"name": "workflow-authoring", "repo": "braingeneers/workflows", "path": "skills/workflow-authoring", "branch": "main", "role": "specialist"},
+    {"name": "nrp-cluster", "repo": "braingeneers/mission_control", "path": "skills/nrp-cluster", "branch": "main", "role": "specialist"},
+    {"name": "data-explorer-cli-access", "repo": "braingeneers/data-explorer", "path": "skills/data-explorer-cli-access", "branch": "main", "role": "specialist"},
+    {"name": "mission-control-services-management", "repo": "braingeneers/mission_control", "path": "skills/mission-control-services-management", "branch": "main", "role": "specialist"},
+    {"name": "spikelab-map-updater", "repo": "braingeneers/SpikeLab", "path": "src/spikelab/agent/skills/spikelab-map-updater", "branch": "main", "role": "support"}
+  ]
+}
