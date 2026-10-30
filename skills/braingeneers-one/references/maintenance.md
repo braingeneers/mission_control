@@ -10,10 +10,13 @@ the interpreter/environment used for the helper, for example
 by the operating system. Explain a missing prerequisite and help the user set
 it up within their permissions. Do not use `sudo` or bypass managed Python policy.
 
-For repositories requiring GitHub authentication, use `gh auth login` and let
-the user complete interactive login. Do not request or print their token.
-Lab API credentials and SpikeLab/cluster software are separate prerequisites;
-follow the selected specialist when those become necessary.
+For initial installation or GitHub sign-in problems, follow the public
+[agent setup guide](https://github.com/braingeneers/mission_control/blob/main/docs/braingeneers-one-setup.md).
+It covers environment checks, preserving working authentication, HTTPS for
+fresh browser login, and human sign-in steps. SSH keys are not a prerequisite
+for the normal installation route. Lab API credentials and SpikeLab/cluster
+software are separate prerequisites; follow the selected specialist when those
+become necessary.
 
 ## Placement
 
