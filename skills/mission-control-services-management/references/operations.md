@@ -15,8 +15,9 @@ service-management actions:
    directly in chat when needed or requested.
 2. Name the host and working repository when context could be ambiguous.
 3. State the expected evidence and any stopping condition.
-4. Wait for the operator's output before diagnosing the next step or claiming
-   success.
+4. Wait for the operator to report completion, then verify through the service's
+   HTTPS deployment endpoint when available. Request host output only when the
+   service cannot establish the required deployment state or diagnosis needs it.
 
 Do not turn a diagnostic request into a restart, pull, recreate, migration, or
 notification without explicit authorization.
@@ -79,6 +80,23 @@ changes may require targeted proxy recreation in addition to the application.
 Distinguish evidence carefully: source inspection proves configuration, logs
 prove observed execution, a health check proves the service's defined health
 contract, and an API or destination listing proves resulting data.
+
+### Workflows paired deployment
+
+After the operator recreates `workflows-backend` and `workflows`, use the standard
+service-account JWT over HTTPS to compare backend
+`GET /api/admin/system-status` → `application_build` and frontend
+`GET /build-info.json` with the expected full source revision and release version.
+The owning Workflows repository provides
+`web-service/backend/scripts/verify-workflows-deployment.py`, which verifies both
+identities, readiness and enabled background-loop health. Use its documented
+Docker invocation and owner-only credential mount; do not paste JWTs into a browser.
+Successful HTTPS verification replaces routine requests for `docker inspect` output.
+Missing metadata on older builds, unknown identity, or mixed releases remain
+unverified; request targeted operator evidence when needed. Published pins and
+health alone do not prove deployment. Baked application metadata is independent
+of mutable catalog source revisions and scientific runner/task images, and does
+not report its own registry digest. UI rendering still requires browser evidence.
 
 ## Change Gates
 

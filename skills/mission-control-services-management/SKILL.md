@@ -144,8 +144,10 @@ For MCP services, also inspect `docs/mcp-onboarding.md`,
 - Do not create a rollout document for routine updates. Add extra steps only for
   concrete deployment dependencies or manual migrations and explain why in chat.
   Create a separate document only when requested or when a required exceptional
-  procedure is too complex for a short handoff. Wait for the operator’s output
-  before claiming production success.
+  procedure is too complex for a short handoff. After the operator reports completion,
+  prefer service-owned HTTPS build verification before claiming production success;
+  request host output when the service cannot establish the required state. See
+  [operations.md](references/operations.md#workflows-paired-deployment) for Workflows.
 - Report separately what was verified from source, API responses, browser UI,
   and operator-provided production output.
 - Escalate missing GI, GitHub, NRP, registry, identity-provider, or secret-admin
