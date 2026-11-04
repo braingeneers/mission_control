@@ -2,13 +2,26 @@
 
 ## Requirements
 
-The helper needs Python 3.8+, PyYAML, and GitHub CLI with `gh skill install`
+The helper needs Python 3.8+ and GitHub CLI with `gh skill install`
 (2.90.0+; currently preview). Check `gh skill install --help` rather than assuming
-a version number alone proves support. If `import yaml` fails, install PyYAML in
-the interpreter/environment used for the helper, for example
-`python3 -m pip install --user PyYAML`, or use a virtual environment when required
-by the operating system. Explain a missing prerequisite and help the user set
-it up within their permissions. Do not use `sudo` or bypass managed Python policy.
+a version number alone proves support. The YAML reader is bundled with the
+skill; no pip, separate Python packages, virtual environment, or compiler is
+needed. Its version, source checksum, license, and refresh procedure are recorded
+in [the bundled reader notice](../scripts/_vendor/PyYAML-NOTICE.md).
+
+Check the interpreter that will run the helper with `--version`. On macOS and
+Linux, try `python3`; on Windows, try `py -3` or `python`. Use whichever available
+command reports Python 3.8 or later, and quote script paths containing spaces.
+Do not change the user's default Python. If no suitable interpreter is
+available, help install Python through the environment's normal setup process
+within the user's permissions. Do not use `sudo` or bypass managed-machine
+policy. Missing Python or GitHub CLI does not prevent reading the instructions.
+
+Older installed helpers may still require external PyYAML. To upgrade one,
+use an existing compatible Python environment, or run the new self-contained
+helper from a verified upstream download with the installed `--skills-dir`
+explicitly selected. Preserve the normal source, local-edit, pin, and symlink
+checks; do not force replacement to get past an old prerequisite failure.
 
 For initial installation or GitHub sign-in problems, follow the public
 [agent setup guide](https://github.com/braingeneers/mission_control/blob/main/docs/braingeneers-one-setup.md).
@@ -74,7 +87,10 @@ skills or relying on terminal output parsing. See
 [updates](https://cli.github.com/manual/gh_skill_update).
 
 If a local installation is skipped, it remains readable for the requested task.
-Explain the reason, preserve it, and offer the appropriate owner-managed update
+Translate helper results into the plain-language messages described in SKILL.md;
+structured statuses and technical reasons are diagnostics for the agent, not
+text to paste into the answer. Explain any necessary next step, preserve the
+installation, and offer the appropriate owner-managed update
 (for example, reviewing changes and pulling a clean symlinked checkout).
 Do not use force or clear a pin to silence a warning. No automatic background
 job or scheduled updater is created.

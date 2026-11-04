@@ -5,6 +5,7 @@ import argparse
 import base64
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -15,10 +16,18 @@ import tempfile
 import time
 from urllib.parse import quote
 
+# Load the bundled pure Python reader independently of site-packages or an
+# already imported 'yaml'. Imports must not add files to verified skill trees.
+_yaml_spec = importlib.util.spec_from_file_location(
+    "_braingeneers_one_yaml", Path(__file__).parent / "_vendor/yaml/__init__.py")
+yaml = importlib.util.module_from_spec(_yaml_spec)
+sys.modules[_yaml_spec.name] = yaml
+_previous_dont_write_bytecode = sys.dont_write_bytecode
 try:
-    import yaml
-except ImportError:
-    sys.exit("The helper needs PyYAML in this Python environment. See references/maintenance.md.")
+    sys.dont_write_bytecode = True
+    _yaml_spec.loader.exec_module(yaml)
+finally:
+    sys.dont_write_bytecode = _previous_dont_write_bytecode
 
 
 ONE = Path(__file__).resolve().parents[1]

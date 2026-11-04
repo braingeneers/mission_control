@@ -5,6 +5,9 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -42,7 +45,8 @@ class MaintenanceTest(unittest.TestCase):
         key = (name, version)
         if key not in self.sources:
             files = {"SKILL.md": f"---\nname: {name}\ndescription: Example\n---\n\nInstructions {version}.\n".encode(),
-                     "references/help.txt": f"Help {version}".encode()}
+                     "references/help.txt": f"Help {version}".encode(),
+                     "scripts/_vendor/yaml/loader.py": b"# Bundled reader fixture\n"}
             tree = suite.hashlib.sha1((name + str(version)).encode()).hexdigest()
             self.sources[key] = (tree, files)
         return self.sources[key]
@@ -175,7 +179,7 @@ class MaintenanceTest(unittest.TestCase):
         self.assertEqual(suite.fingerprint(self.root / "example"), before)
 
     def test_local_edits_and_extra_files_prevent_enrollment(self):
-        for relative in ("SKILL.md", "references/help.txt", "new.txt"):
+        for relative in ("SKILL.md", "references/help.txt", "new.txt", "scripts/_vendor/yaml/loader.py"):
             with self.subTest(relative=relative), tempfile.TemporaryDirectory(dir=self.base) as other:
                 manager = suite.Suite(Path(other), self.base / (relative.replace("/", "-") + "-state"), self.catalog)
                 folder = self.write_install(Path(other), "example", 1)
@@ -234,6 +238,17 @@ class MaintenanceTest(unittest.TestCase):
         self.assertEqual(rows[1]["status"], "skipped / freshness unknown")
         self.assertEqual(rows[2]["status"], "current")
 
+    def test_invalid_or_unsafe_yaml_does_not_claim_current_or_hide_other_results(self):
+        self.write_install(self.root, "missing", 1)
+        folder = self.write_install(self.root, "example", 1)
+        for header in ("name: [unclosed", "name: !!python/tuple [1, 2]"):
+            with self.subTest(header=header):
+                (folder / "SKILL.md").write_text("---\n" + header + "\n---\nInstructions\n")
+                result = self.manager.status()
+                self.assertFalse(result["complete"])
+                self.assertEqual(result["results"][1]["status"], "skipped / freshness unknown")
+                self.assertEqual(result["results"][2]["status"], "current")
+
     def test_state_cannot_be_reused_for_another_root(self):
         self.manager.save()
         with self.assertRaisesRegex(suite.Failure, "different skills directory"):
@@ -283,6 +298,78 @@ class MaintenanceTest(unittest.TestCase):
         with patch.object(Path, "rename", fail_staged_move), self.assertRaises(OSError):
             self.manager.install("example", update=True)
         self.assertEqual(suite.fingerprint(self.root / "example"), before)
+
+
+class PortabilityTest(unittest.TestCase):
+    def test_bundled_reader_without_site_packages_or_pip(self):
+        # -I -S disables user paths and all site-packages. An existing 'yaml'
+        # module must not divert imports away from the bundled reader.
+        program = '''
+import importlib.util, json, runpy, sys, types
+assert importlib.util.find_spec("pip") is None
+assert importlib.util.find_spec("yaml") is None
+sys.modules["yaml"] = types.ModuleType("yaml")
+before = sys.dont_write_bytecode
+helper = runpy.run_path(sys.argv[1], run_name="portability_test")
+reader = helper["yaml"]
+assert sys.dont_write_bytecode == before
+assert reader.__version__ == "6.0.3"
+assert not reader.__with_libyaml__
+header, body = helper["frontmatter"](b"---\\nname: example\\ndescription: >\\n  Multiple lines\\n  of text\\nmetadata:\\n  nested: {flag: true}\\n---\\nBody\\n")
+assert header["description"] == "Multiple lines of text\\n"
+assert header["metadata"]["nested"]["flag"] is True
+assert reader.safe_load(reader.safe_dump(header)) == header
+print(json.dumps({"reader": reader.__file__, "body": body}))
+'''
+        with tempfile.TemporaryDirectory(prefix="braingeneers portability ") as temporary:
+            copy = Path(temporary) / "skill with spaces"
+            shutil.copytree(SCRIPT.parents[1], copy, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            before = suite.fingerprint(copy)
+            result = subprocess.run([sys.executable, "-I", "-S", "-c", program,
+                                     str(copy / "scripts/suite.py")], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(Path(json.loads(result.stdout)["reader"]).relative_to(copy).as_posix(),
+                             "scripts/_vendor/yaml/__init__.py")
+            self.assertEqual(suite.fingerprint(copy), before)
+
+    def test_cli_without_packages_or_github_cli_preserves_skill_contents(self):
+        with tempfile.TemporaryDirectory(prefix="braingeneers cli ") as temporary:
+            base = Path(temporary)
+            root = base / "skills with spaces"
+            copy = root / "braingeneers-one"
+            shutil.copytree(SCRIPT.parents[1], copy, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            file = copy / "SKILL.md"
+            header, body = suite.frontmatter(file.read_bytes())
+            header["metadata"] = {"github-repo": "https://github.com/braingeneers/mission_control",
+                                  "github-path": "skills/braingeneers-one", "github-tree-sha": "a" * 40}
+            file.write_text("---\n" + suite.yaml.safe_dump(header) + "---\n" + body)
+            before = suite.fingerprint(copy)
+            empty_path = base / "empty path"
+            empty_path.mkdir()
+            result = subprocess.run([sys.executable, "-I", "-S", str(copy / "scripts/suite.py"),
+                                     "--skills-dir", str(root),
+                                     "--state-dir", str(base / "state with spaces"), "status"],
+                                    env={**suite.os.environ, "PATH": str(empty_path)},
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            output = json.loads(result.stdout)
+            self.assertFalse(output["complete"])
+            self.assertEqual(output["results"][0]["status"], "skipped / freshness unknown")
+            self.assertIn("GitHub CLI unavailable", output["results"][0]["reason"])
+            self.assertEqual(suite.fingerprint(copy), before)
+            self.assertFalse((base / "state with spaces/running.lock").exists())
+
+    def test_github_failures_are_bounded_and_do_not_expose_command_output(self):
+        for failure in (FileNotFoundError(), subprocess.TimeoutExpired("gh", 180)):
+            with self.subTest(failure=failure), patch.object(suite.subprocess, "run", side_effect=failure):
+                with self.assertRaisesRegex(suite.Failure, "unavailable or timed out"):
+                    suite.command(["gh", "api", "example"])
+        response = subprocess.CompletedProcess(["gh"], 1, "private output", "private error")
+        with patch.object(suite.subprocess, "run", return_value=response):
+            with self.assertRaises(suite.Failure) as caught:
+                suite.command(["gh", "api", "example"])
+        self.assertIn("repository access", str(caught.exception))
+        self.assertNotIn("private", str(caught.exception))
 
 
 if __name__ == "__main__":

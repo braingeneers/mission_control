@@ -1,0 +1,2 @@
+# Preserve the bundled upstream Python files byte for byte.
+yaml/*.py whitespace=-blank-at-eof,-blank-at-eol

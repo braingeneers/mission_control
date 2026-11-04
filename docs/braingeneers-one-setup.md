@@ -120,12 +120,14 @@ Read `SKILL.md` at the reported installation path. Confirm its name is
 `braingeneers/mission_control`, source path `skills/braingeneers-one`, and an
 upstream Git tree hash. Do not treat command success alone as proof of placement.
 
-Use an available Python 3.8+ interpreter with PyYAML. Check the interpreter you
-will actually use with `import yaml`; `python` and `python3` may be different
-environments. If needed, prepare a suitable environment using the installed
-[maintenance instructions](../skills/braingeneers-one/references/maintenance.md#requirements).
-Use a virtual environment outside the skill directory when system Python is
-managed. Do not bypass its package policy or change the user's default Python.
+Use an available Python 3.8+ interpreter. On macOS and Linux, check
+`python3 --version`; on Windows, check `py -3 --version` or `python --version`.
+Use the command that reports a suitable version. The helper includes its YAML
+reader, so no pip installation, extra Python packages, or virtual environment
+is needed. If Python is unavailable, follow the installed
+[maintenance instructions](../skills/braingeneers-one/references/maintenance.md#requirements)
+to help with normal setup without changing the user's default Python or
+bypassing managed-machine restrictions.
 
 Run the installed helper, substituting the actual interpreter and path:
 
@@ -136,8 +138,11 @@ python3 "<installed-skill-directory>/scripts/suite.py" status
 It verifies source integrity and freshness. A fresh router-only installation
 should report Braingeneers One current and specialists not installed. A previous
 installation can legitimately have specialists present; do not remove them.
-Report unknown freshness, skipped checks, or missing helper prerequisites
-accurately, and distinguish these from whether the skill's files are installed.
+Explain skipped checks or missing prerequisites in plain language, separately
+from whether the skill's files are installed. For example: "Braingeneers One
+is installed. I couldn't check whether newer instructions are available, but
+you can use the installed instructions." Add a specific next step only when
+user action is necessary; keep raw statuses and package details for troubleshooting.
 Do not install specialists merely to make a setup check pass.
 
 ## 6. Confirm discovery and give the user a first question

@@ -4,6 +4,44 @@ Review the public setup guide with these starting conditions. Judge the action
 and verified result, not exact response wording. Preserve the user's real
 accounts, keys, installed skills, and project settings during evaluation.
 
+## Self-contained checker review: 2026-11-04
+
+The reader is now bundled; the older PyYAML setup advice in the historical
+review below no longer applies to the current helper.
+
+- All 23 maintenance tests passed on Linux with Python 3.10.12 and 3.14.4.
+  Python 3.8 syntax compatibility was checked statically, not by running 3.8.
+  Isolated subprocesses disabled
+  site-packages and user Python paths; neither pip nor an external YAML reader
+  was available. Parsing, safe loading, and the actual status command ran from
+  paths containing spaces. A preloaded unrelated `yaml` module did not divert
+  the helper from its bundled reader.
+- Tests verified that imports/status added no files to the copied skill,
+  that changes to bundled reader files block enrollment, and that malformed
+  or unsafe YAML cannot produce a successful check. Existing update, cache,
+  local-edit, pin, symlink, failed-download, and rollback protections passed.
+- Missing GitHub CLI, timeout, network failure, and denied-request paths retain
+  unsuccessful results without exposing command output. These failure tests
+  use isolated paths or mocks, not changes to real authentication.
+- The bundled pure Python files and license were copied from PyYAML 6.0.3's
+  published source archive after checking its SHA-256. The vendor notice records
+  provenance, the omitted optional extension adapter, and the refresh procedure.
+  The skill validator passed using the bundled reader.
+- Native macOS and Windows execution was not available. Interpreter guidance
+  covers their usual commands; Linux tests do not prove native compatibility.
+
+Beginner-facing behavior was reviewed against the skill and setup guide:
+
+| Situation | Reviewed response behavior |
+| --- | --- |
+| An update check fails during an export review | Say that newer instructions could not be checked and the installed instructions remain usable; continue the export review and describe its evidence separately. Do not paste raw statuses or imply the export was checked by this maintenance command. |
+| GitHub access needs user action | Explain the known access problem and guide the required sign-in/access step in everyday language. Do not infer an authentication failure from an unspecified network error. |
+| Python is absent during setup | Explain that the computer needs Python to run the checker and guide normal setup using the maintenance reference. Do not ask a beginner to install PyYAML or modify a managed Python environment. |
+| A user asks for the technical cause | Explain the actual diagnostic and relevant environment details; plain-language defaults do not hide requested troubleshooting information. |
+
+This is a source/decision walkthrough and executable helper validation, not an
+independent model evaluation or proof that every assistant follows the wording.
+
 ## Review: 2026-10-30
 
 | Starting condition | Expected agent behavior | Evidence |

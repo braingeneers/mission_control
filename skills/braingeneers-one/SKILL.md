@@ -170,7 +170,15 @@ idle, before starting specialist operations. It checks installed suite members,
 including this router, and caches a successful check. Briefly offer any updates;
 **apply updates only when the user requests them**. A request to check is not a
 request to update. `status` without `--daily` always checks immediately. If the
-check fails, say freshness is unknown; installed skills may still be used.
+check fails, explain briefly in plain language, for example: "I couldn't check
+whether newer Braingeneers instructions are available. I can still help using
+the instructions already installed." State any effect on the user's task
+accurately; an unavailable update check does not verify or invalidate the
+task's evidence. Avoid terms such as "freshness unknown", package names, and
+raw helper output in routine user-facing messages. Give technical details
+when requested or needed for troubleshooting. If user action is needed,
+explain the specific next step in everyday language; otherwise continue the
+requested work without turning maintenance into a setup detour.
 For documentation-only help, do not make helper setup or a successful update
 check a prerequisite to answering; check when the prerequisites are available.
 
