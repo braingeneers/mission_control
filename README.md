@@ -982,3 +982,9 @@ the catalog and Uploader, and then restore intake. A direct NRP preview is not
 acceptance of the Data Explorer-to-Workflows path. FTP needs explicit approval of
 the exact reviewed package; metadata saves, packaging, website submission, and
 GSE recording are separate dataset actions.
+
+
+Automatic DANDI campaign and combined recovery deployment uses the paired
+Workflows/Data Explorer pins and additive Data Explorer migrations documented in
+[the campaign rollout](docs/dandi-campaign-rollout.md). Existing approvals remain
+manual until researcher opt-in; only the operator recreates production services.

@@ -66,6 +66,13 @@ if jq -e '.services["data-lifecycle"]' <<<"${compose_json}" >/dev/null; then
     fail "retired data-lifecycle web service must be absent"
 fi
 
+[[ "$(service_value '.environment.DATA_EXPLORER_PUBLIC_URL')" == "https://data-explorer.braingeneers.gi.ucsc.edu" ]] \
+    || fail "Campaign review links must use the hosted Data Explorer origin."
+[[ "$(service_value '.environment.DATA_EXPLORER_NOTIFICATION_SERVICE_URL')" == "http://notification-service:8000" ]] \
+    || fail "Campaign milestones must use the internal Notification Service."
+[[ "$(service_value '.depends_on["notification-service"] // empty')" == "" ]] \
+    || fail "Notification outages must not prevent Data Explorer startup."
+
 echo "Data Explorer Compose contracts are valid."
 [[ "$(service_value '.environment.DATA_EXPLORER_DANDI_BATCH_SAFETY_ENABLED')" == "true" ]] || fail "DANDI batch safety must be enabled."
 [[ "$(service_value '.environment.DATA_EXPLORER_WORKFLOWS_QUIESCENCE_TIMEOUT_SECONDS')" == "30" ]] || fail "Writer evidence requires a separate 30 second deadline."
