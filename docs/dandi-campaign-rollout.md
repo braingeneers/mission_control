@@ -1,9 +1,12 @@
 # Explicit automatic DANDI campaigns
 
-November 6 contention correction: Data Explorer is now pinned to
-`20261106-8ab237e1b69b` (source `8ab237e1b69bbeb622aae02b34fc8c0f20df9eed`).
-A competing planner receives a busy response without pausing an approved
-campaign. Genuine drift and uncertain remote effects still require review.
+November 6 review-loading correction: Data Explorer is now pinned to
+`20261106-ca0d67045be8` (source `ca0d67045be8e475463d33f1ea67935a1472c2bf`).
+Linked campaign reviews load directly and remain open during same-collection
+startup checks. The chooser requests compact summaries; read failures offer
+bounded retry or sign-in guidance. This includes the earlier contention fix:
+a competing planner receives busy without pausing an approved campaign.
+Genuine drift and uncertain remote effects still require review.
 Recreate only `data-explorer` for this correction; no migration, Workflows,
 worker, catalog or Secret change is needed. Existing paused campaigns stay
 paused until a researcher reviews and resumes their remaining work. The
