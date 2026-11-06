@@ -1,12 +1,15 @@
 # Explicit automatic DANDI campaigns
 
 November 6 review-loading correction: Data Explorer is now pinned to
-`20261106-ca0d67045be8` (source `ca0d67045be8e475463d33f1ea67935a1472c2bf`).
+`20261106-b6e8a60d92a1` (source `b6e8a60d92a1700062fb251896b2c53d139e9ede`).
 Linked campaign reviews load directly and remain open during same-collection
 startup checks. The chooser requests compact summaries; read failures offer
 bounded retry or sign-in guidance. This includes the earlier contention fix:
 a competing planner receives busy without pausing an approved campaign.
 Genuine drift and uncertain remote effects still require review.
+Initial dataset-list failures now retry once and remain inline without covering
+an independent campaign review. The campaign script participates in the existing
+asset-versioning policy. This does not stop an already admitted upload worker.
 Recreate only `data-explorer` for this correction; no migration, Workflows,
 worker, catalog or Secret change is needed. Existing paused campaigns stay
 paused until a researcher reviews and resumes their remaining work. The
