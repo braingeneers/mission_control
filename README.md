@@ -247,6 +247,12 @@ chooses data key `dandi-sandbox-api-key` or `dandi-api-key` together with fixed
 origins and manifest namespace. Secret creation and changes
 remain operator-owned.
 
+Worker 0.6.7 / catalog 0.7.7 updates Data Explorer's exact guarded-worker
+environment pin while retaining its UI image. Activate and verify the matching
+catalog first, then recreate only `data-explorer` to apply the environment.
+No migration or Uploader update is required. See the
+[worker qualification and activation procedure](https://github.com/braingeneers/workflows/blob/main/workflow-sources/dandi-publication/docs/legacy-reference-alias-qualification.md).
+
 Uploader metadata is frozen through a revision-scoped exact NWB projection
 index. The workflow uploads a source NWB directly when it already matches that
 projection; otherwise it writes a self-contained metadata-enriched copy below
