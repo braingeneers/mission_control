@@ -51,6 +51,22 @@ Use this skill when working on compute pipelines that run as Kubernetes jobs on 
 - Max concurrent jobs should not exceed 400.
 - `backoffLimit` and `restartPolicy` policy choices should reflect single-attempt jobs.
 
+## Resource sizing and utilization
+
+The rules above, as numbers a monitor can check, are also in [references/utilization-policy.json](references/utilization-policy.json);
+the two must agree:
+
+- GPU utilization stays above 40% of the request on GPU jobs.
+- Resource limits stay within 20% of requests.
+- No more than 400 concurrent jobs.
+
+A monitor (for example `nrp-util-check`, or the `nrp-watchdog` skill built on it) reads that file and checks the GPU floor and the
+job cap; the 20% limit rule is documented only; the monitor does not check it. Utilization is a
+fraction of the pod's **request**, averaged over the last 10 minutes of NRP's own metrics.
+
+A person or lab may add stricter rules in an optional local override that is never part of this repo (see the monitor's
+`references/utilization.md`); a local file can add checks or lower these numbers, not loosen them.
+
 ## Reference Loading
 
 Read only the files needed for your task:
@@ -95,6 +111,7 @@ Before submission, ask for or confirm:
 ### 4) Monitor and debug
 
 - Use `/.agent/workflows/monitor-job.md`.
+- For approved work that will run unattended, register it with the `nrp-watchdog` skill (when installed) instead of polling.
 - Capture job/pod status and recent logs after submission.
 - Delete finished/failed jobs when requested.
 

@@ -1,0 +1,14 @@
+{
+  "runners": ["claude", "codex"],
+  "models": {
+    "triage":      {"claude": "haiku",  "codex": "gpt-6.1-sol"},
+    "repair":      {"claude": "sonnet", "codex": "gpt-6.1-sol"},
+    "repair_auth": {"claude": "sonnet", "codex": "gpt-6.1-sol"},
+    "task":        {"claude": "sonnet", "codex": "gpt-6.1-sol"},
+    "pod":         {"claude": "sonnet", "codex": "gpt-6.1-sol"}
+  },
+  "limits": {
+    "task": {"turns": 60, "budget": 6.0, "timeout": 2700}
+  },
+  "followup_ladder": ["triage", "repair", "repair"]
+}

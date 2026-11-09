@@ -76,7 +76,7 @@ For "where", "how do I", access, onboarding, or unfamiliar lab topics, read
 [wiki's task routes and service directory](https://github.com/braingeneers/wiki/blob/main/README.md),
 search its relevant guides, and follow links to the owning documentation.
 Use this route even when no specialist covers the topic. The wiki also covers
-devices, experimental procedures, and other lab resources; the five specialists
+devices, experimental procedures, and other lab resources; the specialists
 below are not a limit on what you can help someone find.
 
 Answer a documentation question directly with the relevant service link,
@@ -119,6 +119,7 @@ contracts, after deciding whether documentation alone answers the question.
 | Load, analyze, visualize, or export neuronal spike trains with SpikeLab | `spikelab-analysis-implementer` |
 | Build, understand, debug, or make Recipes from lab Nextflow workflows; investigate a workflow run | `workflow-authoring` |
 | Build images for, submit, monitor, or troubleshoot NRP Nautilus batch jobs, including hosted LLMs or Brave Search | `nrp-cluster` |
+| Follow approved NRP work unattended (staged Jobs, exact success markers, utilization checks, repair, continuing the approved plan) | `nrp-watchdog` |
 | Find, search, verify, or download datasets; author Uploader metadata; prepare DANDI/GEO publication or shared collections | `data-explorer-cli-access` |
 | Find/read Slack conversations or send requested replies/email; diagnose, develop, or package Mission Control services and protected APIs | `mission-control-services-management` |
 
@@ -205,4 +206,6 @@ Preserve user scope and all specialist review and access requirements:
   operator-owned; never SSH to the production server. Service diagnosis does
   not imply deployment or a restart.
 - Cluster execution retains credential, resource, and workload policies.
+- Unattended follow-up registers only work the user approved. It does not widen that approval, install the scheduler,
+  or message anyone beyond the one owner notification without the user's say-so.
   Never print credentials or treat installing the suite as granting access.
