@@ -1,0 +1,4 @@
+interface:
+  display_name: "NRP Watchdog"
+  short_description: "Follow approved NRP work unattended and continue the plan"
+  default_prompt: "Use $nrp-watchdog to register my approved NRP work as a task, declare what happens when it finishes, and verify it is being followed."

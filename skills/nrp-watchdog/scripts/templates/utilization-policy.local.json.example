@@ -1,0 +1,8 @@
+{
+  "max_concurrent_jobs": 40,
+  "lab_floor": 0.4,
+  "cpu_band": [0.2, 2.0],
+  "memory_band": [0.2, 1.5],
+  "small_pod_exempt": {"cpu": 1, "memory_bytes": 2000000000},
+  "account_block_after_violating_pods": 4
+}

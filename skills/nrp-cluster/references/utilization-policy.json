@@ -1,0 +1,7 @@
+{
+  "version": "2026-11-09",
+  "description": "The numbers the nrp-cluster skill states, in machine-readable form: GPU utilization above gpu_floor of the request on GPU jobs, limits within limit_to_request_tolerance of requests, at most max_concurrent_jobs jobs at once. A monitor (for example nrp-util-check) reads this file; the skill text and this file must agree. A person or lab may add stricter rules in an optional local override.",
+  "gpu_floor": 0.40,
+  "limit_to_request_tolerance": 0.20,
+  "max_concurrent_jobs": 400
+}
