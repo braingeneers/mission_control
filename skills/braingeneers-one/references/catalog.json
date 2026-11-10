@@ -7,6 +7,9 @@
     {"name": "nrp-cluster", "repo": "braingeneers/mission_control", "path": "skills/nrp-cluster", "branch": "main", "role": "specialist"},
     {"name": "data-explorer-cli-access", "repo": "braingeneers/data-explorer", "path": "skills/data-explorer-cli-access", "branch": "main", "role": "specialist"},
     {"name": "mission-control-services-management", "repo": "braingeneers/mission_control", "path": "skills/mission-control-services-management", "branch": "main", "role": "specialist"},
+    {"name": "summarize-codebase", "repo": "braingeneers/code_paper_skills", "path": "skills/summarize-codebase", "branch": "main", "role": "specialist"},
+    {"name": "paper-map", "repo": "braingeneers/code_paper_skills", "path": "skills/paper-map", "branch": "main", "role": "specialist"},
+    {"name": "figure-style", "repo": "braingeneers/code_paper_skills", "path": "skills/figure-style", "branch": "main", "role": "specialist"},
     {"name": "spikelab-map-updater", "repo": "braingeneers/SpikeLab", "path": "src/spikelab/agent/skills/spikelab-map-updater", "branch": "main", "role": "support"}
   ]
 }
