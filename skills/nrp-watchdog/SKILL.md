@@ -90,3 +90,4 @@ submitter.
 - [Utilization](references/utilization.md): the checker, shared numbers, optional local rules, strikes.
 - [Install](references/install.md): installing, the owner settings, the scheduler.
 - [Known issues](references/known-issues.md): what is broken or unproven.
+- [v3 plan](references/v3-plan.md): agreed next design (rename to nrp-monitor, tiered Haiku/Sonnet/manager escalation, one coordinator thread); not built yet.

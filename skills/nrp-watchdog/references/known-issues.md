@@ -132,3 +132,10 @@ launchd actually runs (`~/.local/bin/nrp-watchdog`) is still the old script unti
   The offline test used a fake agent that ran commands directly.
 - How much policy is baked into the script beyond the skip limit (now a setting) and the Job cap (now from the policy).
 - Several tasks have no `origin` recorded, so their completions have nowhere to point.
+
+## Seen live 2026-11-10 (T71 step 6 fan-out, braindance_proj)
+- False STUCK: a pod flagged "stuck creating 142 min" at the moment it started; the fix agent correctly left it running, but the
+  task then went NEEDS_OWNER (owner had to `task resume --skip`). A "no fix needed" verdict should close the event, not page the owner.
+- One task per plan step: a second TASK.json for the same step is refused, so per-cell tasks had to be merged into one.
+- Queue time counts against activeDeadlineSeconds: GPU pods Pending for hours needed manual deadline extensions.
+- Every pod exit woke the coordinator chat (12 large-context wakes for clerk work); v3 plan moves that to the script with one wake per step.
