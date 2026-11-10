@@ -1,0 +1,213 @@
+{
+  "_comment": "Example: faithful configuration port for braindance_proj",
+  "areas": {
+    "predictor/nrp/": [
+      "Predictor: Models and Training",
+      "Neural activity foundation models: cached datasets/dataloaders \u2192 model definitions (Mamba, transformer) \u2192 NRP training jobs \u2192 checkpoints and diagnostics."
+    ],
+    "predictor/analysis/": [
+      "Predictor: Analysis",
+      "Evaluate trained predictors: checkpoints + recordings \u2192 fine-tuning, perturbation, transfer and behavior analyses \u2192 metrics tables."
+    ],
+    "predictor/figures/": [
+      "Predictor: Figures",
+      "Predictor paper figures: derived metrics/embeddings \u2192 per-panel plotting scripts \u2192 figure files."
+    ],
+    "predictor/paper2_ood/": [
+      "Predictor: Out-of-Distribution (Paper 2)",
+      "Out-of-distribution generalization study for the predictor models."
+    ],
+    "predictor/": [
+      "Predictor: Other",
+      "Remaining predictor project code."
+    ],
+    "predictor_v3/utils/catalog/": [
+      "Predictor v3: Catalog",
+      "Curated CSVs + NWB headers \u2192 versioned catalog \u2192 RecordingSet (organoid_id is the leakage unit)."
+    ],
+    "predictor_v3/utils/data/": [
+      "Predictor v3: Shards",
+      "Sorted NWB \u2192 RecordingData (BrainDance) \u2192 binned counts + artifact-aligned stim \u2192 BLKZ2 shards + MANIFEST.csv."
+    ],
+    "predictor_v3/utils/model/": [
+      "Predictor v3: Model and Inference",
+      "models.yaml registry \u2192 strict checkpoint load \u2192 InferenceSpec \u2192 engine.run \u2192 latents; extract jobs write the latent cache."
+    ],
+    "predictor_v3/utils/infer/": [
+      "Predictor v3: Model and Inference",
+      "models.yaml registry \u2192 strict checkpoint load \u2192 InferenceSpec \u2192 engine.run \u2192 latents; extract jobs write the latent cache."
+    ],
+    "predictor_v3/utils/train/": [
+      "Predictor v3: Training",
+      "TrainConfig presets \u2192 shard manifest dataloader \u2192 MambaConvPredictor training with resume \u2192 checkpoints."
+    ],
+    "predictor_v3/utils/jobs/": [
+      "Predictor v3: NRP Jobs and Images",
+      "`python -m predictor_v3.cli job` (dry-run default) \u2192 sized Job YAML on the pinned image \u2192 entry.run_job; Kaniko builds the base/overlay images."
+    ],
+    "predictor_v3/utils/docker/": [
+      "Predictor v3: NRP Jobs and Images",
+      "`python -m predictor_v3.cli job` (dry-run default) \u2192 sized Job YAML on the pinned image \u2192 entry.run_job; Kaniko builds the base/overlay images."
+    ],
+    "predictor_v3/utils/toolkit/": [
+      "Predictor v3: Analysis Toolkit",
+      "Load models, submit latent jobs, pull cached latents (sidecar-verified) for fast analyses."
+    ],
+    "predictor_v3/analyses/": [
+      "Predictor v3: Analysis Toolkit",
+      "Load models, submit latent jobs, pull cached latents (sidecar-verified) for fast analyses."
+    ],
+    "predictor_v3/": [
+      "Predictor v3: Other",
+      "predictor_v3 CLI, settings and gates; see docs/GETTING_STARTED.md."
+    ],
+    "rt_sort_3d/": [
+      "RT-Sort 3D Spike Sorting",
+      "Learned spike-embedding sorter replacing RT-Sort's sequence stage: detections \u2192 embeddings \u2192 unit assignment."
+    ],
+    "rt_sort/": [
+      "RT-Sort",
+      "Original RT-Sort experiments and wrappers."
+    ],
+    "sort/": [
+      "Sorting Utilities",
+      "Spike sorting helper scripts."
+    ],
+    "busy_bee/": [
+      "Busy Bee Experiments",
+      "Busy Bee closed-loop experiment code, including NRP RT-Sort jobs."
+    ],
+    "busy_bee_analysis/": [
+      "Busy Bee Analysis",
+      "Analysis of Busy Bee recordings."
+    ],
+    "busybee_analysis2/": [
+      "Busy Bee Analysis 2",
+      "Second-pass Busy Bee analyses."
+    ],
+    "ml_learning/fly/": [
+      "ML Learning: Fly (NeuroMechFly)",
+      "Organoid-drives-fly odor taxis: FlyOdorEnv (FlyGym 2.x, 200 ms read windows, L/R odor in \u2192 L/R descending drive out) \u2192 policies/episodes \u2192 EpisodeLog \u2192 offline cinematic render or LiveFeed \u2192 real-time viewer. Next: rig phase (see ml_learning/fly/HANDOFF.md)."
+    ],
+    "ml_learning/ant/": [
+      "ML Learning: Ant (MuJoCo Ant-v5)",
+      "Organoid drives a MuJoCo Ant through a frozen 3-D PCA of its activity (baseline + causal sweep): vx/vy/heading offset rate code in, linear REINFORCE/PPO policy out, episode summaries for a tetanus controller; built on the fly rig loop (fr_loop setup_rig/PulseStream); live/replay viewer, log replay check."
+    ],
+    "ml_learning/": [
+      "ML Learning (Cartpole)",
+      "Machine-learning readouts and training for cartpole and related tasks."
+    ],
+    "cartpole_v1/": [
+      "Cartpole Experiments",
+      "Cartpole v1 closed-loop experiments."
+    ],
+    "cartpole_v1_analysis/": [
+      "Cartpole Experiments",
+      "Cartpole v1 analyses."
+    ],
+    "cartpole_v2/": [
+      "Cartpole Experiments",
+      "Cartpole v2 closed-loop experiments."
+    ],
+    "cartpole_artificial/": [
+      "Cartpole Experiments",
+      "Cartpole with artificial/simulated networks."
+    ],
+    "interact_cartpole/": [
+      "Cartpole Experiments",
+      "Interactive cartpole tools."
+    ],
+    "rl_training/": [
+      "Cartpole Experiments",
+      "Reinforcement-learning training scripts."
+    ],
+    "braindance_figs/": [
+      "BrainDance Paper Figures",
+      "BrainDance paper figures: derive_data scripts \u2192 figure panels \u2192 assembled figures."
+    ],
+    "figs/": [
+      "Legacy Paper Figures",
+      "Earlier paper figure scripts."
+    ],
+    "software_paper/": [
+      "BrainDance Paper Figures",
+      "Software paper figures and assets."
+    ],
+    "fife/": [
+      "FIFE",
+      "FIFE project experiments and analysis."
+    ],
+    "math_of_mind/": [
+      "Math of Mind",
+      "Math of Mind project."
+    ],
+    "math_of_mind2/": [
+      "Math of Mind",
+      "Math of Mind follow-up."
+    ],
+    "stream_demo/": [
+      "Streaming Demo",
+      "Streaming demonstration apps."
+    ],
+    "tetanus_v1/": [
+      "Tetanus / Plasticity",
+      "Tetanus stimulation experiments."
+    ],
+    "tetanus_v1_analysis/": [
+      "Tetanus / Plasticity",
+      "Tetanus analyses."
+    ],
+    "tetanus_v2_analysis/": [
+      "Tetanus / Plasticity",
+      "Tetanus v2 analyses."
+    ],
+    "opto/": [
+      "Optogenetics",
+      "Optogenetic stimulation experiments."
+    ],
+    "drugs/": [
+      "Drug Experiments",
+      "Pharmacology experiments."
+    ]
+  },
+  "area_fallback": "Other: {top}",
+  "brief_dirs": [
+    "braindance_figs",
+    "derive_data",
+    "diagrams",
+    "example_plots",
+    "figs",
+    "figures",
+    "narrative",
+    "notebooks_py",
+    "plots",
+    "scratch",
+    "scratch2"
+  ],
+  "skipped_dirs": [
+    "Code_Scraps",
+    "__pycache__",
+    "archive",
+    "archived",
+    "build",
+    "checkpoints",
+    "deprecated",
+    "dist",
+    "generated",
+    "legacy",
+    "node_modules",
+    "old",
+    "outputs",
+    "site-packages",
+    "third_party",
+    "vendor",
+    "vendored",
+    "wandb"
+  ],
+  "library": "braindance",
+  "library_note": "BrainDance library \u2014 see `.code-summaries/` in the BrainDance repository",
+  "import_rewrites": {
+    "proj": ""
+  },
+  "split_packages": false
+}
