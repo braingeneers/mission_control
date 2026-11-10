@@ -46,3 +46,19 @@ may_touch: tools/nrp-watchdog/, docs/agents/
 **Open questions:** whether the monitor may launch a fan-out on its own when the profile is inside the plan's rules (my recommendation:
 yes, those rules are already approved); how a non-T3 harness binds to "the coordinator thread" (Codex/Claude Code session ids vs T3 threads);
 one subscription per tier or failover between them.
+
+## Start here (handoff for the build session, 2026-11-10)
+- Approved by Hunter 2026-11-10: "I think that this all sounds good as a plan!" and push straight to main (no PR needed). Build v3 in
+  this repo, `skills/nrp-watchdog/` renamed to `skills/nrp-monitor/`, commit and push to main.
+- State: v2 merged to main (60a779b) and installed live on Hunter's laptop (`~/.local/bin/nrp-*`, launchd every 5 min, state in
+  `~/.local/state/nrp-watchdog/`). Live tasks are running on it (t72 validation build, finch, lit-map): keep it working through the
+  rename (compat alias `nrp-watchdog` -> `nrp-monitor`, same state dir or a migration) and install only after tests pass.
+- Tests: `cd skills/nrp-watchdog/scripts && python -m pytest -q tests` (249 passed, 1 skipped at 1aea3fa, ~3 min).
+  Repo tests: `python -m pytest -q tests` (1 pre-existing failure on main, test_skill_authenticate paste test).
+- Suggested order: (1) rename + compat; (2) per-step aggregate wake from the script (monitor sends the T3 webhook, bound to the plan's
+  coordinator thread), drop per-Job callback Secrets; (3) Tier-0 rules: auto deadline extension for Pending, node-fault exclusion,
+  OOM resize, cleanup, fan-out from a profile inside the plan's sizing rules; (4) Haiku triage tier with a fixed action menu
+  ("no fix needed" closes the event, never NEEDS_OWNER); (5) per-tier backend config (Claude Code / Codex / T3, several subscriptions);
+  (6) several tasks per plan step.
+- Answer the open questions with Hunter before (2) and (5).
+- Delegation: Sonnet/Sol agents for coding and tests (Hunter's preference); keep the build session small and relay with a handoff.
