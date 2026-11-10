@@ -76,7 +76,7 @@ For "where", "how do I", access, onboarding, or unfamiliar lab topics, read
 [wiki's task routes and service directory](https://github.com/braingeneers/wiki/blob/main/README.md),
 search its relevant guides, and follow links to the owning documentation.
 Use this route even when no specialist covers the topic. The wiki also covers
-devices, experimental procedures, and other lab resources; the five specialists
+devices, experimental procedures, and other lab resources; the specialists
 below are not a limit on what you can help someone find.
 
 Answer a documentation question directly with the relevant service link,
@@ -121,6 +121,9 @@ contracts, after deciding whether documentation alone answers the question.
 | Build images for, submit, monitor, or troubleshoot NRP Nautilus batch jobs, including hosted LLMs or Brave Search | `nrp-cluster` |
 | Find, search, verify, or download datasets; author Uploader metadata; prepare DANDI/GEO publication or shared collections | `data-explorer-cli-access` |
 | Find/read Slack conversations or send requested replies/email; diagnose, develop, or package Mission Control services and protected APIs | `mission-control-services-management` |
+| Map or refresh a code repository's `.code-summaries/` navigation index before reading its source | `summarize-codebase` |
+| Trace a manuscript figure, caption, number, or paragraph to its builder, data, and render; keep paper figures in sync with code | `paper-map` |
+| Style, check, or assemble publication figures (legends, whitespace, role-based text sizes, the Styler) | `figure-style` |
 
 For a combined request, load the specialists needed for the next action. For
 example, finding a dataset and analyzing it uses Data Explorer followed by
