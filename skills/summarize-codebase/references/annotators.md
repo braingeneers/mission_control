@@ -15,7 +15,7 @@ Use the `Agent` tool with an available cheap model. Task text:
 `Follow <WORK>/PROMPT.md for batches: full_000 brief_001`.
 Wait for children to finish before resuming refresh.sh.
 
-## Hunter's T3 route
+## T3 / Antigravity route (example)
 
 Use `delegate_task` with provider `antigravity`, model `gemini-3.8-flash`, async,
 one child per approximately five batches. Task text:
