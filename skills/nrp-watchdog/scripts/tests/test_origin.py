@@ -88,8 +88,8 @@ class Stub(http.server.BaseHTTPRequestHandler):
 
 class O(unittest.TestCase):
     setUp, tearDown = tt.T.setUp, tt.T.tearDown
-    wd, tool, manifest, add, task, cl, set_job, plan, pushes, prompts, run_pass = (
-        tt.T.wd, tt.T.tool, tt.T.manifest, tt.T.add, tt.T.task, tt.T.cl, tt.T.set_job, tt.T.plan, tt.T.pushes, tt.T.prompts, tt.T.run_pass)
+    wd, tool, manifest, add, add_unattributed, task, cl, set_job, plan, pushes, prompts, run_pass = (
+        tt.T.wd, tt.T.tool, tt.T.manifest, tt.T.add, tt.T.add_unattributed, tt.T.task, tt.T.cl, tt.T.set_job, tt.T.plan, tt.T.pushes, tt.T.prompts, tt.T.run_pass)
 
     def fail(self, job="t1-a"):
         self.set_job(job, state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
@@ -125,9 +125,8 @@ class O(unittest.TestCase):
         self.assertIn("<rt-sort-3d>", out)
 
     def test_missing_origin_warns_stores_none_and_falls_back_to_goal_and_repo(self):
-        rc, out, err = self.add(mode="watch", code={"repo": str(self.repo), "subdir": "job"})
+        rc, out, err = self.add_unattributed(mode="watch", code={"repo": str(self.repo), "subdir": "job"})
         self.assertEqual(rc, 0, err)
-        self.assertIn("has no origin", err)
         self.assertIsNone(self.task()["origin"])
         self.run_pass()
         self.fail()
@@ -140,14 +139,29 @@ class O(unittest.TestCase):
         rc, out, _ = self.wd("origin", "task", "t1")
         self.assertIn("origin not recorded", out)
 
-    def test_require_flag_refuses_missing_origin(self):
-        self.env["NRP_WATCHDOG_REQUIRE_ORIGIN"] = "1"
-        rc, out, err = self.add()
+    def test_task_add_without_origin_is_refused_with_how_to_pass_it(self):
+        rc, out, err = self.wd_add_no_origin()
         self.assertEqual(rc, 1)
-        self.assertIn("task refused" if "task refused" in err else "refused", err)
+        self.assertIn("task refused", err)
+        self.assertIn("has no origin", err)
+        self.assertIn("--origin-title/--origin-link", err)               # says how to pass it
+        self.assertIn('"origin": {"title"', err)
         self.assertFalse((self.state / "tasks" / "t1").exists())
         rc, out, err = self.add(origin=RT)
         self.assertEqual(rc, 0, err)
+
+    def test_task_add_origin_flags_satisfy_the_requirement(self):
+        f = self.tmp / "t1.json"
+        self.assertEqual(self.wd_add_no_origin()[0], 1)
+        rc, out, err = self.wd("task", "add", str(f), "--origin-title", "flag chat", "--origin-link", RT["link"])
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(self.task()["origin"]["title"], "flag chat")
+
+    def wd_add_no_origin(self):
+        stages = [{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": ["s3://braingeneersdev/alice/test/t1/a.txt"]}]
+        f = self.tmp / "t1.json"
+        f.write_text(json.dumps({"name": "t1", "goal": "test task t1", "approved": "Sam 2026-11-05 in chat: go", "notes": "x", "stages": stages}))
+        return self.wd("task", "add", str(f))
 
     def test_flags_override_json_and_bad_link_is_refused(self):
         rc, out, err = self.add(origin={"title": "old", "link": RT["link"]})
@@ -169,7 +183,7 @@ class O(unittest.TestCase):
         self.assertIn("origin.link", err)
 
     def test_backfill_is_metadata_only_needs_evidence_and_refuses_overwrite(self):
-        self.add(mode="watch")
+        self.add_unattributed(mode="watch")
         self.run_pass()
         self.fail()
         self.run_pass()
@@ -202,7 +216,7 @@ class O(unittest.TestCase):
         self.assertIn("no task named nosuch", err)
 
     def test_backfill_waits_for_the_runners_state_lock(self):
-        self.add(mode="watch")
+        self.add_unattributed(mode="watch")
         lock = open(self.state / "state.lock", "a+")
         fcntl.flock(lock, fcntl.LOCK_EX)
         p = subprocess.Popen([str(self.bin / "nrp-watchdog"), "origin", "task", "t1", "--title", "x", "--link", RT["link"], "--evidence", "e"],
@@ -250,7 +264,7 @@ class O(unittest.TestCase):
         self.assertTrue(text.startswith("*origin not recorded* (task t1: test task t1)"), text)
 
     def _text_for_unrecorded_task(self):
-        self.add(mode="watch")
+        self.add_unattributed(mode="watch")
         env = dict(self.env, NRP_WATCHDOG_STATE=str(self.state))
         code = ("import importlib.machinery as m,sys;w=m.SourceFileLoader('w',sys.argv[1]).load_module();print(w.slack_text('boom', ['task:t1']))")
         r = subprocess.run([sys.executable, "-c", code, SCRIPT], capture_output=True, text=True, env=env)
@@ -258,7 +272,7 @@ class O(unittest.TestCase):
         return r.stdout
 
     def test_digest_labels_old_events_with_a_backfilled_origin(self):
-        self.add(mode="watch")
+        self.add_unattributed(mode="watch")
         rc, out, _ = self.wd("digest")
         self.assertIn("[t1 · origin not recorded]", out)
         self.wd("origin", "task", "t1", "--title", RT["title"], "--link", RT["link"], "--evidence", "verified")

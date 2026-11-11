@@ -143,8 +143,9 @@ class P(Base):
         self.assertEqual(rc, 0, err)
         self.assertEqual(self.task("t1")["on_done"]["from_step"], "1")
         self.assertEqual(self.plan_state()["ledger"]["1"][0]["task"], "t1")
-        rc, _, err = self.add_step("t1b", "1")                       # same step while t1 is live
-        self.assertIn("already running", err)
+        rc, _, err = self.add_step("t1b", "1")                       # v3: a second task for the same step while t1 is live is allowed
+        self.assertEqual(rc, 0, err)
+        self.assertEqual([e["task"] for e in self.plan_state()["ledger"]["1"]], ["t1", "t1b"])
 
     # ------------------------------------------------------------------ flag off (default)
     def test_flag_off_records_but_starts_nothing(self):

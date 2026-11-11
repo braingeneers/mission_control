@@ -11,6 +11,25 @@
 - When a task finishes: record it, start the continuation (`on_done`, `followup`) if declared, otherwise list it in the
   digest as `no-continuation`. A task with no (or a thin) handoff is also listed, as `no-handoff` (see handoff.md).
 
+## Tier 0 rules (no model, before any agent)
+
+Applied to a failed stage of an `auto` task before a fix agent is started. Each resubmit goes through the same checks as an agent's
+(retry cap, class budget, GPU approval date, manifest rules); a rule that cannot decide, or whose resubmit is refused, leaves the
+manifest untouched and hands the failure to the ladder below. Tier 0 resubmits are recorded with `by tier0` in the task's attempts and show "(Tier 0 rule)" in `task show`.
+
+- **OOM**: the OOMKilled container's memory limit becomes `max(observed peak, limit it hit) x 1.3`, rounded up (peak = max working
+  set since submit from NRP's Prometheus; no number, no change). The request keeps the limit within the shared
+  `limit_to_request_tolerance` (20%). Once per stage; above `tier0_mem_cap_gi` (config.json, default 128) or a second OOM goes to the agents.
+- **Known node fault** (pod status/conditions or the log tail of a single-pod Job show an Xid/uncorrectable ECC, no CUDA device,
+  nvidia-container-cli, sandbox or volume-mount failure, NodeLost, ContainerStatusUnknown): the node is added to the manifest's
+  `kubernetes.io/hostname NotIn` anti-affinity and the stage resubmitted. At most 3 nodes per stage; the same failure signature again
+  goes to the agents.
+- **Long Pending** (no container started 30 minutes after submit): the scheduler's PodScheduled message is recorded once in the
+  task events and the digest (`pending`), again when it changes or after 6 hours, with the node restrictions of our own manifest
+  (for example a GPU allow-list) when the message blames affinity/selector. Read-only: nothing is resubmitted or extended.
+- **Finished Jobs** are deleted only after every `done_s3` marker is verified by an exact `head-object`; a succeeded Job whose marker is
+  missing is kept (class `outputs`) for diagnosis.
+
 ## Escalation ladder
 
 A failure is handled by the cheapest thing that can fix it; a person hears about it only after that has failed, with one

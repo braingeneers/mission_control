@@ -133,9 +133,19 @@ launchd actually runs (`~/.local/bin/nrp-watchdog`) is still the old script unti
 - How much policy is baked into the script beyond the skip limit (now a setting) and the Job cap (now from the policy).
 - Several tasks have no `origin` recorded, so their completions have nowhere to point.
 
+## v3 changes in the repo (2026-11-11; Tested with fake kubectl/aws/claude and a stub Prometheus, not seen live)
+- `nrp-task reship` packs every declared code dir (`code.pkg_dir`, `code.extra_pkg_dirs`) with the real `codeship.build` layout; the
+  identical-code no-op check covers all of them. `nrp-watchdog task code NAME ...` declares them for a task registered without (ft-tables-w6).
+  Not verified on a live pv3 Job: that a pod imports the reshipped `finetune`/`bwb` (the layout equals `--ship-code`'s by construction).
+  An absolute `pkg_dir`/extra dir is read live at reship time, so a changed checkout changes the hash even when the clone did not.
+- `task add` without `origin` is refused (continuations only warn). Chains and legacy `add` still only warn.
+- Tier 0 rules (OOM x1.3, node-fault exclusion, long-Pending reason): operations.md. The node-fault pattern list is fixed in the script
+  (`NODE_FAULT_RE`); extend it as new faults are seen. The OOM rule needs NRP's Prometheus; without a number it does nothing.
+- Several tasks per plan step; the step is done when all are (tasks.md).
+
 ## Seen live 2026-11-10 (T71 step 6 fan-out, braindance_proj)
 - False STUCK: a pod flagged "stuck creating 142 min" at the moment it started; the fix agent correctly left it running, but the
   task then went NEEDS_OWNER (owner had to `task resume --skip`). A "no fix needed" verdict should close the event, not page the owner.
-- One task per plan step: a second TASK.json for the same step is refused, so per-cell tasks had to be merged into one.
+- One task per plan step: a second TASK.json for the same step was refused, so per-cell tasks had to be merged into one. (Fixed in v3, above.)
 - Queue time counts against activeDeadlineSeconds: GPU pods Pending for hours needed manual deadline extensions.
 - Every pod exit woke the coordinator chat (12 large-context wakes for clerk work); v3 plan moves that to the script with one wake per step.

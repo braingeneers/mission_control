@@ -153,6 +153,7 @@ class AddCheck(Base):
         sub.mkdir(parents=True)
         (sub / 'notes.md').write_text(handoff_text())
         spec = {'name': 't1', 'goal': 'test task t1', 'approved': 'Sam 2026-11-05 in chat: go', 'digest_only': 'nothing else is pending',
+                'origin': {'title': 'test chat', 'link': 't3-thread://v2/test-env/test-thread'},
                 'handoff': 'notes.md', 'stages': [{'id': 'a', 'job': 't1-a', 'manifest': h.manifest('t1-a'),
                                                    'done_s3': ['s3://braingeneersdev/alice/test/t1/a.txt']}]}
         f = sub / 'TASK.json'

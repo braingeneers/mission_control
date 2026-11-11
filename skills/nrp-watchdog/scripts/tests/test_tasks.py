@@ -16,6 +16,8 @@ HERE = Path(__file__).resolve().parent.parent
 SCRIPT = os.environ.get("WATCHDOG", str(HERE / "nrp-watchdog"))
 USER = "http://cilogon.org/serverE/users/100000"
 
+TEST_ORIGIN = {"title": "test chat", "link": "t3-thread://v2/test-env/test-thread"}
+
 FAKE_KUBECTL = r'''#!/usr/bin/env python3
 import json, os, sys, time
 d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fake"); a = sys.argv[1:]
@@ -31,12 +33,14 @@ def jobobj(n, j):
     if j.get("reason"): st["conditions"] = [{"type": "Failed", "status": "True", "reason": j["reason"]}]
     return {"metadata": {"name": n, "annotations": {"nrp.ai/username": "%s"}}, "spec": dict({"activeDeadlineSeconds": j.get("deadline", 3600)}, **({"completions": j["completions"]} if "completions" in j else {})), "status": st}
 def pods(n, j):
-    if "term" not in j and "started" not in j and "wait" not in j: return []
+    if not any(k in j for k in ("term", "started", "wait", "node", "pod_status")): return []
     cs = {"state": {}}
     if j.get("term"): cs["state"]["terminated"] = dict(j["term"], startedAt=ts(j.get("started", time.time() - 300)))
     elif j.get("wait"): cs["state"]["waiting"] = {"reason": j["wait"], "message": "fake"}
     elif j.get("started"): cs["state"]["running"] = {"startedAt": ts(j["started"])}
-    return [{"metadata": {"name": n + "-abc"}, "status": {"containerStatuses": [cs]}}]
+    pod = {"metadata": {"name": n + "-abc"}, "spec": {"nodeName": j["node"]} if j.get("node") else {}, "status": {"containerStatuses": [cs]}}
+    pod["status"].update(j.get("pod_status", {}))
+    return [pod]
 if a[:2] == ["get", "jobs"]:
     print(json.dumps({"items": [jobobj(n, j) for n, j in cl["jobs"].items()]}))
 elif a[:2] == ["get", "job"]:
@@ -196,11 +200,21 @@ class T(unittest.TestCase):
     def add(self, name="t1", stages=None, **kw):
         stages = stages or [{"id": "a", "job": name + "-a", "manifest": self.manifest(name + "-a"),
                              "done_s3": ["s3://braingeneersdev/alice/test/%s/a.txt" % name]}]
+        kw.setdefault("origin", TEST_ORIGIN)                 # v3: `task add` refuses a task without an origin chat
         spec = dict({"name": name, "goal": "test task " + name, "approved": "Sam 2026-11-05 in chat: go",
                      "notes": "a fake task", "stages": stages}, **kw)
         f = self.tmp / (name + ".json")
         f.write_text(json.dumps(spec))
         return self.wd("task", "add", str(f))
+
+    def add_unattributed(self, name="t1", **kw):
+        """A task registered before v3 (no origin): add with one, then strip it, since `task add` now refuses a missing origin."""
+        rc, out, err = self.add(name, **kw)
+        p = self.state / "tasks" / name / "task.json"
+        t = json.loads(p.read_text())
+        t["origin"] = None
+        p.write_text(json.dumps(t))
+        return rc, out, err
 
     def task(self, n="t1"):
         return json.loads((self.state / "tasks" / n / "task.json").read_text())
@@ -558,7 +572,7 @@ class T(unittest.TestCase):
 
     def test_reship_points_spec_at_the_clones_code(self):
         # a pv3-shaped repo: predictor_v3/utils/jobs/codeship.py is the real module (stdlib only)
-        real = HERE.parents[1] / "predictor_v3" / "utils" / "jobs" / "codeship.py"
+        real = Path(__file__).resolve().parent / "fixtures" / "codeship_pv3.py"      # vendored real packer
         if not real.exists():
             self.skipTest("codeship.py not found")
         pkg = self.repo / "predictor_v3"

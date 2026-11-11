@@ -37,8 +37,8 @@ and never start an agent whose only job is to wait.
    plan on), `followup` (a one-shot read-only report), or `digest_only` with a reason nothing else is pending. A task
    with none of these only lands in the digest and nothing acts on it; do not hand back unattended work that still has
    requested analysis, review or delivery remaining.
-5. **Record the origin**: the chat or ticket the work came from (`origin.title`, `origin.link`). It is attribution, not
-   a callback.
+5. **Record the origin** (required: `task add` refuses a task without it): the chat or ticket the work came from (`origin.title`,
+   `origin.link`, or `--origin-title/--origin-link`). It is attribution, not a callback.
 6. **Register and verify**: `nrp-watchdog task add TASK.json`, then `nrp-watchdog task show NAME` and
    `nrp-watchdog status`. Report what is registered and what will and will not resume on its own.
 7. **Write the handoff before you return.** Once the monitor is started, copy `scripts/templates/handoff.md` and fill
@@ -56,7 +56,9 @@ submitter.
 ## What the watchdog does on its own
 
 - Submits stages whose conditions hold (`after`, `after_s3`), checks success with an exact S3 `head-object` per key
-  (never a prefix listing), saves logs, deletes only its own finished Jobs.
+  (never a prefix listing), saves logs, deletes only its own finished Jobs after the markers are verified.
+- Applies fixed Tier 0 rules before any agent: OOM resubmit at observed peak x1.3, exclusion of a node with a known fault, and the
+  scheduler's reason for a long Pending; see [operations](references/operations.md).
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).

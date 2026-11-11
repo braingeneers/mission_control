@@ -9,15 +9,25 @@ Required: `name` (lowercase letters, digits and `-`, at most 40), `goal`, `appro
 
 - `approved`: the user's approval in their own words with the date. Not a summary of your own judgment.
 - `notes` (at most 4 KB): what a fresh agent needs: how the Job works, what a good result looks like, where outputs go.
-- `code`: `{repo, subdir?, commit?}`. Registers a clone the fix agents may edit on a branch `watchdog/<task>`.
+- `code`: `{repo, subdir?, commit?, pkg_dir?, extra_pkg_dirs?}`. Registers a clone the fix agents may edit on a branch `watchdog/<task>`.
+  For pv3 Jobs that run shipped code, `nrp-task reship` packs **every code dir the task declares**: the `predictor_v3` package
+  (`pkg_dir`, else `subdir` when it is `predictor_v3`, else `<clone>/predictor_v3`) plus each `extra_pkg_dirs` entry, packed beside it
+  exactly as `--ship-code` with `PV3_CODE_EXTRA_PACKAGES` did at submission (`finetune/...`, `bwb/...` next to `predictor_v3/...`).
+  A relative extra dir is inside `repo` (cloned with the task, so agents can fix it); an absolute or `~` one is another checkout, read in
+  place at reship (not editable by agents). At most 8, each a distinct package name, no `..`. Declare them for a task registered without
+  them with `nrp-watchdog task code NAME --pkg-dir DIR --extra-pkg-dir finetune --extra-pkg-dir bwb`.
 - `namespace` (default `braingeneers`), `mode` (`auto`: agents repair and resubmit, `watch`: any failure goes to the
   person), `max_retries` (0-10, default 4), `label`.
-- `origin`: `{title, link, assistant?, collaborator?}` of the chat or ticket the work came from (attribution only).
-  Missing origin is a warning (`NRP_WATCHDOG_REQUIRE_ORIGIN=1` makes it a refusal).
+- `origin` (**required** for `task add`): `{title, link, assistant?, collaborator?}` of the chat or ticket the work came from. Without it
+  the task is refused (v3; an alert would name no chat and wake nobody). Pass it in the file or with `--origin-title/--origin-link`.
+  A continuation registered by a continue agent inherits its parent's origin (only a warning if the parent had none).
 - Continuation, at least one of (a task with none is a warning, or a refusal with
   `NRP_WATCHDOG_REQUIRE_CONTINUATION=1`):
   - `on_done`: `{"plan": "path/PLAN.md#plan-id", "from_step": "N"}`. The plan section needs a run header with the
     approved range and stops. A continue agent checks the step's "done when" and may register the next approved step.
+    **Several tasks may share one step** (per-cell fan-outs): register each with the same `from_step`. The step is done when all of
+    its tasks are (cancelled ones do not count; one that needs the owner holds it), and its continuation runs once, when the last
+    one finishes; the others are closed as `COVERED`. A continue agent may register several tasks for the next step in one run.
   - `followup`: text (at most 2 KB) saying what a one-shot read-only agent should report when the task is done.
   - `digest_only`: a reason (8-300 characters) nothing else is pending.
 - `handoff`: path to the markdown handoff the registering agent writes from `scripts/templates/handoff.md` (absolute,
@@ -60,7 +70,7 @@ Derive the deadline from measured runtime with margin; the queue counts toward i
 
 ## Commands
 
-`nrp-watchdog task list`, `task show NAME`, `task handoff NAME FILE`, `task watch NAME`, `task resume NAME` (continue after a person decided,
+`nrp-watchdog task list`, `task show NAME`, `task code NAME` (declare reship's code dirs), `task handoff NAME FILE`, `task watch NAME`, `task resume NAME` (continue after a person decided,
 `--gpu-ok-until DATE` after extending a GPU approval), `task cancel NAME`, `status`, `digest --hours N`,
 `origin task NAME --title .. --link ..` (add or fix attribution later). Agents use `nrp-task`, a wrapper that validates
 every argument; it is their only shell tool for task work.
