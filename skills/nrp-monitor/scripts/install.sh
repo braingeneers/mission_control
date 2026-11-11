@@ -7,7 +7,7 @@
 #
 # One-time, idempotent migration from the former name (runs before anything else is copied):
 #   - the old launchd label is booted out, then waits up to NRP_MONITOR_MIGRATE_WAIT seconds (default 300) for the pass lock;
-#     timeout aborts without moving state, leaving the old scheduler unloaded. Its plist is archived after successful migration;
+#     timeout aborts without moving state and reloads the old scheduler. Its plist is archived after successful migration;
 #   - ~/.local/state/nrp-watchdog (a real dir, with nrp-monitor absent) is moved to ~/.local/state/nrp-monitor and a symlink
 #     nrp-watchdog -> nrp-monitor is left, so absolute paths saved by older runs stay valid; paths inside the JSON state are also rewritten;
 #   - if the old label was loaded, the new one is loaded too (even without --launchd) so monitoring never silently stops.
@@ -54,7 +54,10 @@ if [ "$migrate_state" = 1 ] || [ "$old_loaded" = 1 ] || [ -e "$old_plist" ]; the
     echo "migration: booted out the old launchd label $old_label"
   fi
   if ! wait_lock "$lockfile" "$wait_s"; then
-    echo "ABORTED: pass lock $lockfile is still held after ${wait_s}s; state was not moved. Old scheduler remains unloaded; retry install.sh when the pass finishes." >&2
+    if [ "$old_loaded" = 1 ] && [ -f "$old_plist" ]; then
+      launchctl bootstrap "gui/$uid" "$old_plist" 2>/dev/null && echo "migration: reloaded the old launchd label $old_label so monitoring continues" >&2
+    fi
+    echo "ABORTED: pass lock $lockfile is still held after ${wait_s}s; state was not moved and the old scheduler was reloaded. Retry install.sh when the pass finishes." >&2
     exit 1
   fi
   if [ "$migrate_state" = 1 ]; then

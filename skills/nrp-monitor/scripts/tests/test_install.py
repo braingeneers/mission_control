@@ -138,7 +138,7 @@ if a[0] == 'bootstrap': loaded.write_text(Path(a[2]).stem)
         self.assertNotIn('migration:', r.stdout)
         self.assertEqual((self.home/'launchctl.log').read_text().count('bootstrap'), 1)
 
-    def test_refuses_locked_state_after_unloading_scheduler(self):
+    def test_refuses_locked_state_and_reloads_old_scheduler(self):
         import fcntl
         (self.home/'loaded').write_text(self.label)
         with (self.old/'lock').open('w') as lock:
@@ -149,7 +149,9 @@ if a[0] == 'bootstrap': loaded.write_text(Path(a[2]).stem)
         self.assertTrue(self.old.is_dir())
         self.assertFalse(self.old.is_symlink())
         self.assertFalse(self.new.exists())
-        self.assertEqual((self.home/'loaded').read_text(), 'unloaded')
+        # monitoring must not silently stop: the old label is loaded again (when its plist exists)
+        self.assertEqual((self.home/'loaded').read_text(), self.label)
+        self.assertIn('reloaded', r.stderr)
 
     def test_unloaded_migration_does_not_load_without_flag(self):
         r = self.run_install()
