@@ -536,7 +536,7 @@ def clean_env():
 # directories) and an execpolicy rules file generated from the same allowlist: a matching command may use the network,
 # anything else stays in the sandbox. Unlike Claude's dontAsk, a Codex agent can still READ any file the user can.
 AGENTS_CFG, RUNNER_STATE = STATE / "agents.json", STATE / "runners.json"
-KNOWN_RUNNERS = ("claude", "codex", "gemini")
+KNOWN_RUNNERS = ("claude", "codex", "gemini", "agy")
 GEMINI_TIERS = ("triage",)             # the gemini runner only runs the read-only verdict tier (see exec_gemini); config naming it elsewhere is refused
 THINKING_LEVELS = ("lowest", "low", "medium", "high")
 TIERS = ("pod", "triage", "repair", "repair_auth", "task")
@@ -572,8 +572,8 @@ def check_backend(tier, i, b):
     r = b.get("runner")
     if r not in KNOWN_RUNNERS:
         raise ValueError("%s.runner: one of %s" % (w, "/".join(KNOWN_RUNNERS)))
-    if r == "gemini" and tier not in GEMINI_TIERS:
-        raise ValueError("%s: the gemini runner is limited to the %s tier (a read-only verdict); use claude or codex for %s" % (w, "/".join(GEMINI_TIERS), tier))
+    if r in ("gemini", "agy") and tier not in GEMINI_TIERS:
+        raise ValueError("%s: this runner is limited to the %s tier (a read-only verdict); use claude or codex for %s" % (w, "/".join(GEMINI_TIERS), tier))
     out = {"runner": r}
     if b.get("model") is not None:
         if not isinstance(b["model"], str) or not re.fullmatch(r"[A-Za-z0-9._:/-]{1,64}", b["model"]):
@@ -670,7 +670,7 @@ def tier_backends(tier):
     if cfg["tiers"].get(tier):
         return [dict(b) for b in cfg["tiers"][tier]]
     return [dict({"runner": r}, **({"model": cfg["models"][tier][r]} if cfg["models"].get(tier, {}).get(r) else {}))
-            for r in cfg["runners"] if r != "gemini" or tier in GEMINI_TIERS]
+            for r in cfg["runners"] if r not in ("gemini", "agy") or tier in GEMINI_TIERS]
 
 
 def spec_model(spec, runner):
@@ -731,7 +731,8 @@ def auth_hit(rc, out, err):
             rc = rc or (1 if j.get("is_error") or j.get("error") else 0)
         except ValueError:
             pass
-    return bool(rc) and bool(AUTH_ANY.search(text[-600:] + "\n" + (err or "")[-600:]))
+    return bool(rc) and bool(AUTH_ANY.search(text + "\n" + (err or "")) or re.search(
+        r"IneligibleTierError|UNSUPPORTED_CLIENT|no longer supported for Gemini Code Assist", out + "\n" + (err or ""), re.I))
 
 
 def reset_time(text):
@@ -977,7 +978,78 @@ def exec_gemini(spec, prompt, cwd, timeout, env):
         shutil.rmtree(str(home), ignore_errors=True)
 
 
-RUNNER_EXEC = {"claude": exec_claude, "codex": exec_codex, "gemini": exec_gemini}
+# Antigravity hooks use camelCase toolCall payloads, unlike Claude hooks.
+# The gate is a separate immutable copy in the per-run workspace, never agent-authored.
+AGY_GATE = r'''import json, re, shlex, sys
+from pathlib import Path
+cfg = json.loads(Path(sys.argv[1]).read_text())
+call = json.load(sys.stdin).get("toolCall", {})
+args = call.get("args") or {}
+ok = False
+if call.get("name") == "run_command":
+    cmd = args.get("CommandLine", "")
+    # No shell composition, expansion, redirection, or escaped/newline tokens.
+    if not re.search(r"[;&|<>`$\\\n\r]", cmd):
+        words = shlex.split(cmd)
+        for rule in cfg:
+            m = re.fullmatch(r"Bash\((nrp-task (?:show|logs|describe|util|s3).*?)(?::\*)?\)", rule)
+            if m:
+                prefix = shlex.split(m.group(1))
+                ok |= words[:len(prefix)] == prefix
+elif call.get("name") == "view_file":
+    raw = args.get("AbsolutePath", "")
+    if raw and ".." not in Path(raw).parts:
+        path = Path(raw).resolve()
+        for rule in cfg:
+            m = re.fullmatch(r"Read\(/(/.*?)/\*\*\)", rule)
+            if m:
+                root = Path(m.group(1)).resolve()
+                ok |= path.is_relative_to(root)
+print(json.dumps({"decision": "allow" if ok else "deny", "reason": "nrp-monitor read-only allowlist"}))
+'''
+
+
+def agy_workspace(home, allowed):
+    hooks = home / ".agents"
+    hooks.mkdir(parents=True)
+    (hooks / "allow.json").write_text(json.dumps(allowed))
+    (hooks / "gate.py").write_text(AGY_GATE)
+    import shlex
+    command = " ".join(shlex.quote(x) for x in (sys.executable, str(hooks / "gate.py"), str(hooks / "allow.json")))
+    (hooks / "hooks.json").write_text(json.dumps({"nrp-monitor": {"PreToolUse": [
+        {"matcher": "*", "hooks": [{"type": "command", "command": command, "timeout": 10}]}]}}))
+
+
+def exec_agy(spec, prompt, cwd, timeout, env):
+    if spec["tier"] != "triage":
+        return "error", "", "agy is read-only triage only", 1
+    WORK.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="agy-run-", dir=str(WORK)) as td:
+        home = Path(td)
+        agy_workspace(home, spec["allowed"])
+        argv = ["agy", "--print", prompt, "--mode", "plan", "--effort", "low",
+                "--output-format", "json", "--model", (spec.get("backend") or {}).get("model") or "gemini-3.8-flash-low"]
+        try:
+            r = subprocess.run(argv, cwd=str(home), env=env, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return "timeout", "", "", None
+        if limit_hit(r.returncode, r.stdout, r.stderr):
+            return "limit", r.stdout, r.stderr, r.returncode
+        if auth_hit(r.returncode, r.stdout, r.stderr):
+            return "auth", r.stdout, r.stderr, r.returncode
+        text, failed = r.stdout.strip(), bool(r.returncode)
+        try:
+            j = json.loads(text)
+            text = str(j.get("result") or j.get("response") or j.get("error") or "")
+            failed = failed or bool(j.get("is_error") or j.get("error"))
+        except ValueError:
+            pass
+        if spec["json"]:
+            text = json.dumps({"result": text, "is_error": failed, "runner": "agy"})
+        return "ok", text, r.stderr, r.returncode
+
+
+RUNNER_EXEC = {"claude": exec_claude, "codex": exec_codex, "gemini": exec_gemini, "agy": exec_agy}
 
 
 def backend_name(b):
@@ -2761,10 +2833,27 @@ def wake_argv(target):
     return ["codex", "exec", "resume", "--all", "--skip-git-repo-check", target["session"], "-"]     # prompt on stdin; no --ephemeral (it must persist)
 
 
+def claude_session_open(session):
+    """Conservative guard: headless resume forks when the coordinator is interactive."""
+    try:
+        r = subprocess.run(["ps", "-axo", "command="], capture_output=True, text=True, timeout=10)
+        if r.returncode:
+            return True  # cannot prove the session closed
+        for line in r.stdout.splitlines():
+            if "claude" in line and re.search(r"(?:--resume(?:=|\s+)|--session-id(?:=|\s+))" + re.escape(session) + r"(?:\s|$)", line):
+                return True
+        root = Path.home() / ".claude" / "projects"
+        return any(now() - p.stat().st_mtime < 300 for p in root.glob("*/%s.jsonl" % session))
+    except (OSError, subprocess.TimeoutExpired):
+        return True
+
+
 def wake_session(target, text, timeout=None):
     """Resume the owner's own claude / codex session non-interactively with the wake text, so it lands in that chat's history (never a new
     thread). Raises WakeError with a short reason; the caller counts it toward WAKE_MAX_TRIES."""
     h = target["harness"]
+    if h == "claude" and claude_session_open(target["session"]):
+        raise WakeError("claude coordinator session is open or recently active; deferred to avoid a fork")
     cwd = target.get("cwd") if target.get("cwd") and os.path.isdir(target["cwd"]) else str(Path.home())
     if shutil.which(h, path=clean_env().get("PATH")) is None:
         raise WakeError("%s is not installed on this machine" % h)
@@ -3479,14 +3568,21 @@ def do_submit(n, sid, reason, by):
     if gx:
         return False, gx + ". Report STOPPED; do not resubmit."
     st_ = job_state(s["job"], ns)
-    if st_ in ("running", "pending") and not (retry and f["cls"] in ("util", "infra")):
+    if st_ in ("running", "pending", "error"):
         return False, "Job %s is still %s" % (s["job"], st_)
-    if st_ not in ("missing", "error"):
+    if st_ in ("ok", "FAILED"):
         save_task_logs(t, s, "before resubmit")
         d = kubectl("-n", ns, "delete", "job", s["job"], "--wait=true", "--timeout=180s", timeout=240)
         if d.returncode and "NotFound" not in d.stderr:
             return False, "could not delete old Job %s: %s" % (s["job"], d.stderr.strip()[:150])
-    res = apply_manifest(ns, s["manifest"])
+    # Shared exclusions live only in the submitted copy: expiry must restore capacity.
+    doc = manifest_doc(s["manifest"])
+    for node in bad_nodes():
+        exclude_node(doc, node)
+    with tempfile.TemporaryDirectory(prefix="nrp-submit-") as td:
+        path = str(Path(td) / "job.json")
+        manifest_write(path, doc)
+        res = apply_manifest(ns, path)
     if res == "blocked":
         def b(t):
             t["status"] = "blocked"
@@ -3947,14 +4043,43 @@ def thanos_peak_mem(ns, job, container, since_ts):
     """Peak working-set bytes of the Job's pods (one container) since `since_ts`, from NRP's Prometheus; None when unavailable."""
     window = max(300, int(now() - since_ts) + 120)
     expr = 'max(max_over_time(container_memory_working_set_bytes{namespace="%s",pod=~"%s-.*",container="%s"}[%ds]))' % (ns, job, container, window)
+    res = thanos_query(expr)
+    return float(res[0]["value"][1]) if res else None
+
+
+def thanos_query(expr):
     try:
         with urllib.request.urlopen(THANOS_URL + "?" + urllib.parse.urlencode({"query": expr}), timeout=60) as r:
             d = json.load(r)
-        res = d["data"]["result"]
-        return float(res[0]["value"][1]) if d.get("status") == "success" and res else None
+        return d["data"]["result"] if d.get("status") == "success" else []
     except Exception as e:
-        log("tier0: thanos peak query failed: %s: %s" % (type(e).__name__, str(e)[:120]))
-        return None
+        log("tier0: thanos query failed: %s" % type(e).__name__)
+        return []
+
+
+def bad_nodes():
+    return {n: r for n, r in read_json(STATE / "bad-nodes.json", {}).items() if r.get("expires", 0) > now()}
+
+
+def record_bad_node(node, why, fault=None):
+    with state_lock():
+        nodes = read_json(STATE / "bad-nodes.json", {})
+        if fault and (nodes.get(node) or {}).get("fault") == fault:
+            return
+        nodes[node] = {"last_fault": now(), "expires": now() + 86400, "reason": why[:200], "fault": fault}
+        write_json(STATE / "bad-nodes.json", nodes)
+
+
+def bad_node_lines():
+    return ["excluded node %s until %s (last fault %s)" % (n, iso_at(r["expires"]), iso_at(r["last_fault"]))
+            for n, r in sorted(bad_nodes().items())]
+
+
+def vanished_nodes(t, s):
+    window = max(300, int(now() - (s.get("submitted") or now() - 86400)) + 120)
+    expr = 'max_over_time(kube_pod_info{namespace=%s,pod=~%s}[%ds])' % (
+        json.dumps(t["namespace"]), json.dumps(re.escape(s["job"]) + "-.*"), window)
+    return sorted({r["metric"]["node"] for r in thanos_query(expr) if r.get("metric", {}).get("node")})
 
 
 def job_pods(ns, job):
@@ -4029,6 +4154,15 @@ def node_fault_of(t, s, f):
         m = NODE_FAULT_RE.search(text)
         if m and node:
             return node, m.group(0)
+    if not pods:
+        # Historical placement alone is not a fault. Restrict inference to a vanished
+        # failed pod with no useful diagnostics, or explicit node-fault evidence.
+        evidence = NODE_FAULT_RE.search(tail + " " + str(f.get("detail", "")))
+        if evidence or (f.get("cls") in ("infra", "unknown") and (not tail.strip() or re.search(
+                r"kubectl failed|NotFound|No resources found|no pods found|timed out waiting", tail, re.I))):
+            nodes = vanished_nodes(t, s)
+            if len(nodes) == 1:
+                return nodes[0], evidence.group(0) if evidence else "failed pod vanished without diagnostics"
     return None
 
 
@@ -4054,12 +4188,13 @@ def tier0_node(t, s, f):
     if not hit:
         return None
     node, why = hit
+    record_bad_node(node, why, "%s/%s/%s" % (t["name"], s["id"], f.get("ts", s.get("submitted"))))
     excluded = [x for x in t.get("tier0") or [] if x.get("stage") == s["id"] and x.get("rule") == "node"]
     if len(excluded) >= NODE_EXCLUDE_MAX or any(x.get("node") == node for x in excluded):
         return None
     try:
         doc = manifest_doc(s["manifest"])
-        exclude_node(doc, node)
+        # The shared expiring list is applied by do_submit, not persisted here.
     except Exception:
         return None
     return doc, "known node fault on %s (%s) -> node excluded, resubmitted (Tier 0 rule)" % (node, why[:60]), {"rule": "node", "node": node}
@@ -4073,13 +4208,14 @@ def tier0_fix(n, a):
         f = (t or {}).get("failure")
         if not f or t["mode"] != "auto" or a.dry_run or f.get("cls") not in ("resources", "infra", "code", "unknown"):
             return False
-        if f["sig"] in [x["sig"] for x in t["attempts"] if x["stage"] == f["stage"]]:
-            return False                                       # the same failure again after a retry: not a rule's call
         s = tstage(t, f["stage"])
         if not s.get("manifest"):
             return False
+        node_rule = tier0_node(t, s, f)  # record a fresh fault even if the retry budget is used
+        if f["sig"] in [x["sig"] for x in t["attempts"] if x["stage"] == f["stage"]]:
+            return False
         for rule in (tier0_node, tier0_oom):
-            r = rule(t, s, f)
+            r = node_rule if rule is tier0_node else rule(t, s, f)
             if not r:
                 continue
             doc, reason, rec = r
@@ -5331,6 +5467,7 @@ def render_digest(hours):
                 pass
     lines = ["# nrp-monitor digest, last %dh (%s)" % (hours, iso()),
              "Sent by the monitor script, not by one chat: each task/chain below names the chat that owns it (origin) when recorded."]
+    lines.extend(bad_node_lines())
     nh = needs_owner()
     lines.append("\n## Needs the owner (%d)" % len(nh))
     lines += ["- %s (%s): %s  -> `nrp-monitor task show %s`" % (n, origin_plain(t.get("origin"), "goal: " + t.get("goal", "")[:60]),
@@ -5452,8 +5589,20 @@ def cmd_task_stage(a):
         sys.exit("no task %s" % a.name)
     if not any(s["id"] == a.stage for s in t["stages"]):
         sys.exit("task %s has no stage %s (stages: %s)" % (a.name, a.stage, ", ".join(s["id"] for s in t["stages"])))
+    nodes = getattr(a, "exclude_node", None) or []
+    if not a.resumable and not nodes:
+        sys.exit("nothing to change: pass --resumable or --exclude-node NODE")
+    for node in nodes:
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}", node):
+            sys.exit("invalid node name")
+    if nodes:
+        doc = manifest_doc(tstage(t, a.stage)["manifest"])
+        for node in nodes:
+            exclude_node(doc, node)
+        manifest_write(tstage(t, a.stage)["manifest"], doc)
     if not a.resumable:
-        sys.exit("nothing to change: pass --resumable")
+        print("stage %s: excluded %s" % (a.stage, ", ".join(nodes)))
+        return 0
 
     def mark(t):
         tstage(t, a.stage)["resumable"] = True
@@ -5683,10 +5832,15 @@ def reship_dirs(code):
 
 
 def cmd_tool(a):
+    if any(x in ("--help", "-h") for x in a.rest):
+        print("Usage: NRP_TASK=<name> nrp-task show|logs JOB|describe JOB|util JOB|s3 ls URI|reship JOB|submit JOB --reason TEXT\n"
+              "Coordinator chats must select a task with NRP_TASK; use nrp-monitor task list to find it.")
+        return 0
     n = os.environ.get("NRP_TASK", "")
     t = task_load(n)
     if not t:
-        sys.exit("nrp-task: NRP_TASK is not set to a known task")
+        sys.exit("nrp-task: use NRP_TASK=<name> nrp-task ...; live tasks: " + ", ".join(
+            n for n in task_names() if (task_load(n) or {}).get("status") in TASK_LIVE))
     argv, ns = a.rest, t["namespace"]
     jobs = {s["job"]: s for s in t["stages"]}
     usage = ("nrp-task show | logs JOB [--tail N] | describe JOB | util JOB | s3 ls URI | s3 cat URI | configmap NAME [--from SUBDIR] | "
@@ -6073,7 +6227,7 @@ def cmd_chain_wait(a):
 
 # ---- setup: choose each tier's backend from the subscriptions the user has (writes agents.json) ----------------------
 # Tier 1 (triage) and Tier 2 (fixer) are configurable; Tier 3 is always the coordinator chat and there is no separate Opus tier.
-SUBSCRIPTIONS = ("claude", "codex", "gemini", "t3")          # t3 only changes what is explained: it is a harness for the coordinator chat, not a runner
+SUBSCRIPTIONS = ("claude", "codex", "gemini", "agy", "t3")          # t3 only changes what is explained: it is a harness for the coordinator chat, not a runner
 SETUP_TIERS = (("triage", "Tier 1 triage (reads one event, answers benign / no fix / escalate)"),
                ("task", "Tier 2 fixer (edits manifests and code, resubmits)"))
 SETUP_DEFAULT_MODEL = {("claude", "triage"): "haiku", ("claude", "task"): "sonnet", ("codex", "triage"): "gpt-6.1-sol", ("codex", "task"): "gpt-6.1-sol",
@@ -6089,6 +6243,8 @@ def suggest_tiers(have):
     triage when available (its only tier), Sonnet for the fixer; the other available runner is listed after as the failover."""
     tiers = {}
     tri = []
+    if "agy" in have:
+        tri.append({"runner": "agy", "model": "gemini-3.8-flash-low"})
     if "gemini" in have:
         tri.append({"runner": "gemini", "model": SETUP_DEFAULT_MODEL[("gemini", "triage")], "thinking": "lowest"})
     for r in ("claude", "codex"):
@@ -6131,7 +6287,7 @@ def setup_config(old, tiers):
     runners = []
     for tier in ("task", "triage"):
         for b in tiers.get(tier, []):
-            if b["runner"] != "gemini" and b["runner"] not in runners:
+            if b["runner"] not in ("gemini", "agy") and b["runner"] not in runners:
                 runners.append(b["runner"])
     if runners:
         cfg["runners"] = runners
@@ -6304,6 +6460,8 @@ def cmd_agents(a):
 
 
 def cmd_status(a):
+    for line in bad_node_lines():
+        print(line)
     hb = heartbeat_age()
     chains = [chain_load(n) for n in chain_names()]
     live = [c for c in chains if c and c["status"] in LIVE]
@@ -6529,6 +6687,7 @@ def main():
     x.add_argument("name")
     x.add_argument("stage")
     x.add_argument("--resumable", action="store_true")
+    x.add_argument("--exclude-node", action="append", help="persist an explicit node exclusion for this stage")
     x.set_defaults(f=cmd_task_stage)
     x = tk.add_parser("resume", help="after the owner (or the coordinator chat) decides: clear NEEDS_OWNER / WITH_COORDINATOR, resubmit the failed stage (edit tasks/<t>/manifests first), budgets restart")
     x.add_argument("name")
