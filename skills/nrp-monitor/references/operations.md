@@ -21,8 +21,13 @@ manifest untouched and hands the failure to the ladder below. Tier 0 resubmits a
   set since submit from NRP's Prometheus; no number, no change). The request keeps the limit within the shared
   `limit_to_request_tolerance` (20%). Once per stage; above `tier0_mem_cap_gi` (config.json, default 128) or a second OOM goes to the agents.
 - **Known node fault** (pod status/conditions or the log tail of a single-pod Job show an Xid/uncorrectable ECC, no CUDA device,
-  nvidia-container-cli, sandbox or volume-mount failure, NodeLost, ContainerStatusUnknown): the node is added to the manifest's
-  `kubernetes.io/hostname NotIn` anti-affinity and the stage resubmitted. At most 3 nodes per stage; the same failure signature again
+  nvidia-container-cli, sandbox or volume-mount failure, NodeLost, ContainerStatusUnknown): the node is recorded in a shared fault list and the stage resubmitted with
+  `kubernetes.io/hostname NotIn` node affinity. Every task submission uses the shared list;
+  each node expires 24 hours after the last observed fault, with new faults refreshing expiry.
+  Status and digest show active nodes and expiry. A vanished pod with empty/unavailable diagnostics
+  uses historical Thanos `kube_pod_info` placement since submit; ambiguous multi-node results
+  are left to the agents. The submitted copy receives automatic exclusions so expiry allows
+  the node again without editing manifests. At most 3 nodes per stage; the same failure signature again
   goes to the agents.
 - **Long Pending** (no container started 30 minutes after submit): the scheduler's PodScheduled message is recorded once in the
   task events and the digest (`pending`), again when it changes or after 6 hours, with the node restrictions of our own manifest
@@ -68,9 +73,12 @@ The task's `origin` says how to reach its chat: `harness` t3 (the task's webhook
 `codex` (a Codex session id), plus the session's `cwd`. Register with `--origin-harness claude|codex [--origin-session ID] [--origin-cwd DIR]`
 (without `--origin-session` the id is read from `CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID` of the shell that runs the command, only when the
 harness is named; a delegated child session gets a warning) or `nrp-monitor origin task NAME --harness ... --session ... --evidence ...`.
-Delivery never starts a thread: for `claude` the monitor runs `claude -p --resume ID` in the chat's directory, for `codex` `codex exec resume
+For a closed session, for `claude` the monitor runs `claude -p --resume ID` in the chat's directory, for `codex` `codex exec resume
 ID -` (prompt on stdin), so the wake lands in that chat's history. The Claude wake may run only `nrp-monitor task show|resume|cancel|needs-owner`,
-`digest` and `status`. A failed delivery counts toward `WAKE_MAX_TRIES` exactly like a failed webhook (an escalation falls back to
+`digest` and `status`. Before Claude resume, the monitor checks for a running process naming the session or
+transcript activity within five minutes. An open/recent session is deferred, never reported
+as delivered, because headless resume can fork an unseen sibling. Uncertain process inspection
+also defers. These deferrals count toward `WAKE_MAX_TRIES` exactly like a failed webhook (an escalation falls back to
 `NEEDS_OWNER`; a done/failure wake is dropped with a digest `fault` line).
 
 **What wakes the chat:** (1) once when a plan step finishes (several tasks of one step send one wake, from the last task to finish, naming
@@ -129,3 +137,7 @@ The digest has a "With the coordinator chat, owner not notified" section next to
 When a task with `on_done` finishes, one continue agent reads the outputs and the plan, checks the step's "done when",
 and registers the next approved step as a new task (which carries its own `on_done`). It cannot pass the plan's approved
 range, a named stop, or the files the plan lets it touch. Night code goes on a branch for review, never to main.
+
+Terminal Job replacement is separate from normal successful-stage cleanup: an explicitly
+resumed/retried stage saves diagnostics, deletes its old Failed/Complete Job and submits again.
+Running/pending Jobs are never deleted by the submit path; unknown status fails closed.

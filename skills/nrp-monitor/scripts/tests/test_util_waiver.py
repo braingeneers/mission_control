@@ -360,6 +360,8 @@ class Refused(Base):
         h = self.h
         self.started()
         self.inject()
+        # Replacement is permitted only once the old Job is terminal.
+        h.set_job('t1-a', state='FAILED')
         man = h.task()['stages'][0]['manifest']
         self.agent(report='RESUBMITTED', result='RESUBMITTED: resized',
                    extra_cmds=[['sh', "sed -i '' 's/512Mi/1Gi/g' %s" % man], ['nrp-task', 'submit', 't1-a', '--reason', 'oversized -> 1Gi']])

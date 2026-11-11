@@ -117,3 +117,13 @@ Current live choice: Gemini Flash with lowest thinking then Haiku for triage; Co
 ```sh
 nrp-monitor setup --non-interactive --triage gemini:gemini-3.8-flash:lowest,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
 ```
+
+## Coordinator commands
+
+A coordinator chat selects its task explicitly: `NRP_TASK=<name> nrp-task reship JOB`,
+`NRP_TASK=<name> nrp-task show`. Find names with `nrp-monitor task list`.
+`nrp-task --help` and `nrp-task reship --help` work without `NRP_TASK`.
+To persist a stage-specific exclusion: `nrp-monitor task stage NAME STAGE --exclude-node NODE`
+(repeatable). Automatic node exclusions are shared and expire 24 hours after the last fault.
+The optional Antigravity `agy` runner is triage-only; select it through setup, e.g.
+`--triage agy:gemini-3.8-flash-low,claude:haiku`. Changing source does not change live config.

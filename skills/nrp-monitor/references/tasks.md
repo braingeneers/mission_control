@@ -91,3 +91,14 @@ the full size within the plan's approved limits and explicitly registers it. Do 
 behind profile stages.
 
 `nrp-monitor task stage NAME STAGE --resumable` marks an existing stage via task_txn and logs an event. Use only when rerunning skips finished items.
+
+## Coordinator use of nrp-task
+
+Outside a monitor-spawned agent, choose a task with `NRP_TASK=<name> nrp-task ...`.
+For example `NRP_TASK=my-task nrp-task reship my-job`. Use `nrp-monitor task list`
+for names; help needs no environment variable (`nrp-task reship --help`).
+`nrp-monitor task stage NAME STAGE --exclude-node NODE` adds a persistent explicit
+exclusion to that stage's manifest. Repeat the flag for several nodes. This is separate
+from the shared automatic fault list whose entries decay after 24 hours.
+Resume/submission saves logs and deletes leftover terminal Jobs before applying;
+it refuses running or pending Jobs and refuses an uncertain status check.

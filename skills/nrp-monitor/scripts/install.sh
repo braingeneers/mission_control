@@ -19,7 +19,7 @@ user=$(id -un)
 base="$HOME/.local/state"
 state="$base/nrp-monitor"
 old_state="$base/nrp-watchdog"
-label=${NRP_MONITOR_LABEL:-${NRP_WATCHDOG_LABEL:-edu.ucsc.$user.nrp-monitor}}   # set NRP_MONITOR_LABEL to keep an agent you already loaded under another label
+label=${NRP_MONITOR_LABEL:-edu.ucsc.$user.nrp-monitor}   # set NRP_MONITOR_LABEL to keep an agent you already loaded under another label
 old_label=edu.ucsc.$user.nrp-watchdog
 plist="$HOME/Library/LaunchAgents/$label.plist"
 old_plist="$HOME/Library/LaunchAgents/$old_label.plist"
@@ -42,21 +42,65 @@ wait_lock() {   # wait_lock FILE SECONDS: 0 once free, 1 when still held after S
 }
 agent_loaded() { command -v launchctl >/dev/null 2>&1 && launchctl print "gui/$uid/$1" >/dev/null 2>&1; }
 
+# Inspect Label values as well as filenames: custom labels need migration too.
+old_labels=$(python3 - "$HOME/Library/LaunchAgents" "$old_label" "${NRP_WATCHDOG_LABEL:-}" <<'PYLABELS'
+import pathlib, plistlib, subprocess, sys
+labels = {sys.argv[2]}
+if sys.argv[3].endswith('.nrp-watchdog'): labels.add(sys.argv[3])
+for p in pathlib.Path(sys.argv[1]).glob('*.plist'):
+    try: label = plistlib.loads(p.read_bytes()).get('Label', '')
+    except Exception: label = p.stem
+    if label.endswith('.nrp-watchdog') and all(c.isalnum() or c in '._-' for c in label): labels.add(label)
+try:
+    for line in subprocess.check_output(['launchctl', 'list'], text=True, stderr=subprocess.DEVNULL).splitlines():
+        label = line.split()[-1] if line.split() else ''
+        if label.endswith('.nrp-watchdog') and all(c.isalnum() or c in '._-' for c in label): labels.add(label)
+except (OSError, subprocess.CalledProcessError): pass
+print(' '.join(sorted(labels)))
+PYLABELS
+)
+legacy_plist() {
+  python3 - "$HOME/Library/LaunchAgents" "$1" <<'PYPATH'
+import pathlib, plistlib, sys
+root, label = pathlib.Path(sys.argv[1]), sys.argv[2]
+for p in root.glob('*.plist'):
+    try: matched = plistlib.loads(p.read_bytes()).get('Label') == label
+    except Exception: matched = p.stem == label
+    if matched:
+        print(p); break
+else: print(root / (label + '.plist'))
+PYPATH
+}
+loaded_labels=""
 old_loaded=0
-agent_loaded "$old_label" && old_loaded=1
+for candidate in $old_labels; do
+  if agent_loaded "$candidate"; then old_loaded=1; loaded_labels="$loaded_labels $candidate"; fi
+done
+# Any legacy plist triggers migration, including an unloaded custom label.
+for candidate in $old_labels; do
+  candidate_plist=$(legacy_plist "$candidate")
+  if [ -e "$candidate_plist" ]; then
+    old_label=$candidate; old_plist=$candidate_plist
+  fi
+done
 migrate_state=0
 if [ -d "$old_state" ] && [ ! -L "$old_state" ] && [ ! -e "$state" ] && [ ! -L "$state" ]; then migrate_state=1; fi
 if [ "$migrate_state" = 1 ] || [ "$old_loaded" = 1 ] || [ -e "$old_plist" ]; then
   [ "$migrate_state" = 1 ] && lockfile="$old_state/lock" || lockfile="$state/lock"
   wait_s=${NRP_MONITOR_MIGRATE_WAIT:-300}
   if [ "$old_loaded" = 1 ]; then
-    launchctl bootout "gui/$uid/$old_label" || { echo "ABORTED: cannot unload $old_label; state was not moved." >&2; exit 1; }
-    echo "migration: booted out the old launchd label $old_label"
+    for candidate in $loaded_labels; do
+    launchctl bootout "gui/$uid/$candidate" || { echo "ABORTED: cannot unload $old_label; state was not moved." >&2; exit 1; }
+    echo "migration: booted out the old launchd label $candidate"
+    done
   fi
   if ! wait_lock "$lockfile" "$wait_s"; then
-    if [ "$old_loaded" = 1 ] && [ -f "$old_plist" ]; then
-      launchctl bootstrap "gui/$uid" "$old_plist" 2>/dev/null && echo "migration: reloaded the old launchd label $old_label so monitoring continues" >&2
+    for candidate in $loaded_labels; do
+    candidate_plist=$(legacy_plist "$candidate")
+    if [ -f "$candidate_plist" ]; then
+      launchctl bootstrap "gui/$uid" "$candidate_plist" 2>/dev/null && echo "migration: reloaded the old launchd label $old_label so monitoring continues" >&2
     fi
+    done
     echo "ABORTED: pass lock $lockfile is still held after ${wait_s}s; state was not moved and the old scheduler was reloaded. Retry install.sh when the pass finishes." >&2
     exit 1
   fi
@@ -115,11 +159,14 @@ for d, _, files in os.walk(root):
 print("migration: rewrote the old state path in %d JSON file(s)" % done)
 PYMIGRATE
   fi
+  for candidate in $old_labels; do
+  old_label=$candidate; old_plist=$(legacy_plist "$candidate")
   if [ -e "$old_plist" ] && [ "$old_plist" != "$plist" ]; then
     mkdir -p "$state"
     mv "$old_plist" "$state/$old_label.plist.migrated"
     echo "migration: removed the old plist from ~/Library/LaunchAgents (kept as $state/$old_label.plist.migrated)"
   fi
+  done
 fi
 
 mkdir -p "$HOME/.local/bin" "$state/templates" "$HOME/Library/LaunchAgents"

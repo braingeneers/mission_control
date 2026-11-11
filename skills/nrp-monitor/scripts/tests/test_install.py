@@ -162,3 +162,24 @@ if a[0] == 'bootstrap': loaded.write_text(Path(a[2]).stem)
         r = self.run_install('--launchd')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual((self.home/'loaded').read_text(), self.label.replace('watchdog','monitor'))
+
+    def test_custom_loaded_label_is_migrated(self):
+        custom = 'edu.ucsc.hschweig.nrp-watchdog'
+        self.plist.rename(self.plist.with_name(custom + '.plist'))
+        (self.home/'loaded').write_text(custom)
+        r = self.run_install()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse((self.plist.parent/(custom+'.plist')).exists())
+        self.assertTrue((self.new/(custom+'.plist.migrated')).exists())
+        self.assertIn(custom, (self.home/'launchctl.log').read_text())
+        self.assertEqual((self.home/'loaded').read_text(), 'edu.ucsc.'+self.user+'.nrp-monitor')
+
+    def test_custom_plist_label_can_differ_from_filename(self):
+        import plistlib
+        custom='edu.ucsc.other.nrp-watchdog'
+        self.plist.write_bytes(plistlib.dumps({'Label':custom}))
+        different=self.plist.with_name('custom-name.plist');self.plist.rename(different)
+        r=self.run_install()
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertFalse(different.exists())
+        self.assertTrue((self.new/(custom+'.plist.migrated')).exists())

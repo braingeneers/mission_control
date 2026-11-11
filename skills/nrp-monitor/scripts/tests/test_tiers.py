@@ -421,7 +421,7 @@ class InstallSh(unittest.TestCase):
         self.assertFalse((self.state / "agents.json").exists())
 
     def test_with_a_terminal_it_runs_setup_once_and_then_leaves_the_file_alone(self):
-        rc, out = self.tty("\n\n\n\n")                                  # accept: subscriptions, Tier 1, Tier 2, write
+        rc, out = self.tty("claude,gemini\n\n\n\n")                                  # accept: subscriptions, Tier 1, Tier 2, write
         self.assertEqual(rc, 0, out)
         cfg = json.loads((self.state / "agents.json").read_text())
         self.assertEqual(cfg["tiers"]["triage"][0]["runner"], "gemini")
