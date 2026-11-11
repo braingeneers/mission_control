@@ -33,6 +33,12 @@ change the runtime, Dockerfile, tests or base image from the source commit above
 Earlier development images were not published. No raw runtime/server evidence
 is claimed or required to reproduce the isolated tests.
 
+Final integration merged concurrent NRP-monitor changes in `6ae5614`. An exact
+comparison against deployment commit `320d6c6` found no changes to this service,
+Makefile, Compose configuration, proxy files or affected contract tests. The
+completed image tests and full repository gate above therefore retain their
+original scope; no runtime check was repeated for that unrelated skills merge.
+
 ## Operator acceptance still outstanding
 
 This release has **not** been deployed by the assistant. The operator must pull
