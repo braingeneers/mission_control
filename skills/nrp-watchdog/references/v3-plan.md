@@ -1,6 +1,6 @@
 # v3: rename to nrp-monitor, tiered escalation, one coordinator thread  <!-- plan:nrp-monitor-v3 -->
 
-Status: design agreed with Hunter 2026-11-10, NOT built. Source of truth for the monitor is this skill (mission_control skills/nrp-watchdog); the copy in braindance_proj/tools/nrp-watchdog is stale. Review answers still open: questions in "Open questions" below, plus the PR #7 questions (repo location, delete-after-two-flags).
+Status: design agreed with Hunter 2026-11-10. Built so far (2026-11-11): the task ladder (Tier 1 Haiku, Tier 2 Sonnet, Tier 3 coordinator chat via `WITH_COORDINATOR`, `task needs-owner`) and the Tier 0 deadline rules; see operations.md. Not built: the rest. Source of truth for the monitor is this skill (mission_control skills/nrp-watchdog); the copy in braindance_proj/tools/nrp-watchdog is stale. Review answers still open: questions in "Open questions" below, plus the PR #7 questions (repo location, delete-after-two-flags).
 **Central question:** can the script do almost all monitoring, with models woken only for judgement, all in the plan's own thread?
 **What changes with the answer:** models stop polling and doing clerk work (12 manager wakes for one T71 fan-out, 2026-11-10);
 Hunter hears only when he is truly needed.

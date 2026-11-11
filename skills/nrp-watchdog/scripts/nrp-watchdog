@@ -20,8 +20,11 @@ v2 (owner decision 2026-11-05, design docs/design.md): approved work is a TASK.
   Stage fields: job, manifest, done_s3, after (stage ids), after_s3 (s3:// URIs that must ALL exist before the stage is submitted: a gate on
   another task's success marker; `task show` lists them as waiting-on).
   A pass submits ready stages, checks done_s3, saves logs and deletes finished Jobs, classifies a failure (resources, util,
-  code, queue, infra, outputs, unknown, slow, repeated) and starts ONE fresh Sonnet fix agent (templates/task_agent.md)
-  within the retry budget. Retries are silent. NEEDS_OWNER (slow, repeated signature, budget used, agent STOP, blocked 6 h)
+  code, queue, infra, outputs, unknown, slow, repeated) and runs the escalation ladder: Tier 0 script rules (incl. deadline extension,
+  queue-time credit, one 2x resubmit of a `resumable` stage), Tier 1 Haiku triage (templates/task_triage.md; BENIGN / NO_FIX_NEEDED close
+  the event), Tier 2 ONE fresh Sonnet fix agent (templates/task_agent.md) within the retry budget, Tier 3 the task's coordinator chat
+  (status WITH_COORDINATOR, an `escalation` webhook event; the chat runs `task resume` or `task needs-owner`). Retries are silent.
+  NEEDS_OWNER (the chat's `task needs-owner`, no webhook / undeliverable or unanswered wake, watch-only, GPU approval, blocked 6 h)
   sends ONE push: a Slack DM to the owner (notification-service, ~/.ssh/braingeneers_jwt_token.json) plus a Claude
   PushNotification, and a macOS banner only if both fail. Everything else goes to digest.log. Pod checks: strike 1 is
   recorded by the script (resize advice, silent); strike 2 / STUCK goes to the task's fix agent, or for a pod outside any
@@ -1430,6 +1433,7 @@ def fetch_jobs(ns):
     for j in json.loads(r.stdout).get("items", []):
         m = j["metadata"]
         out[m["name"]] = {"state": classify_job(j), "start": parse_ts(j.get("status", {}).get("startTime")),
+                          "deadline": (j.get("spec") or {}).get("activeDeadlineSeconds"),
                           "ours": m.get("annotations", {}).get("nrp.ai/username") == USER_ANN}
     return out
 
@@ -2047,6 +2051,15 @@ TASK_CACHE = Path(os.environ.get("NRP_TASK_CACHE") or Path.home() / ".cache/nrp-
 TASK_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 CLASS_BUDGET = {"resources": 3, "util": 3, "code": 3, "queue": 2, "infra": 2, "outputs": 1, "unknown": 1}
 TASK_LIVE = ("running", "retrying", "blocked")
+TASK_HELD = ("NEEDS_OWNER", "WITH_COORDINATOR")      # not advanced by a pass: waiting on the owner, or on the task's coordinator chat (Tier 3)
+WAKE_MAX_TRIES = 6                                   # a coordinator wake that fails this many passes (~30 min) falls back to NEEDS_OWNER
+COORD_STALE_S = 24 * 3600                            # a delivered wake nobody answered for this long falls back to NEEDS_OWNER
+# Tier 0 deadline rules (no model). activeDeadlineSeconds counts from Job start INCLUDING time spent Pending.
+DEADLINE_EXT_MAX = 2                                 # in-place extensions for a Job that is still progressing near its deadline
+DEADLINE_PEND_EXT_MAX = 8                            # in-place extensions that keep a still-Pending Job alive near its deadline
+DEADLINE_CREDIT_MIN_S = 10 * 60                      # Pending time shorter than this is not credited back
+DEADLINE_RESUBMITS_MAX = 1                           # a dead stage is resubmitted with 2x deadline this many times (resume-capable stages only)
+TRIAGE_CLASSES_ALWAYS = ("unknown", "slow")          # Tier 1 (Haiku) always looks at these; other classes only while the Job is alive or done
 TASK_MODEL, TASK_TURNS, TASK_BUDGET, TASK_TIMEOUT = "sonnet", "60", "6.00", 2700   # alias "sonnet" followed the newest Sonnet: claude-sonnet-5-5 under this scrubbed env on 2026-11-05
 CODE_PYTHON = Path(OWNER["code_python"]) if OWNER.get("code_python") else None   # config.json "code_python": interpreter for `nrp-task code-test` (needs pytest) and `reship`; default = the one running this script
 BLOCK_ESCALATE_S = 6 * 3600
@@ -2346,11 +2359,11 @@ def handoff_prompt(t):
     return "\n\n".join(out)
 
 
-def queue_task_webhook(t, kind):
-    """Called inside the task transaction, so the event and transition are atomic."""
+def queue_task_webhook(t, kind, **extra):
+    """Called inside the task transaction, so the event and transition are atomic. `extra` (the Tier 3 `summary`) joins the event."""
     if (STATE / "webhooks" / t["name"]).exists():
         generation = uuid.uuid4().hex
-        event = {"task": t["name"], "event_type": kind, "event_id": generation, "generation": generation}
+        event = dict({"task": t["name"], "event_type": kind, "event_id": generation, "generation": generation}, **extra)
         t.setdefault("webhook_outbox", []).append(event)
         return event["event_id"]
 
@@ -2389,6 +2402,25 @@ class NoWebhookRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def wake_failed(n, event, why):
+    """A webhook delivery failed. Count it on the event; when the task waits on its coordinator chat (Tier 3) and the wake keeps failing,
+    give the wake up and fall back to NEEDS_OWNER so the escalation is never silently lost."""
+    out = {}
+
+    def f(t):
+        eid = event.get("event_id")
+        if not any(e.get("event_id") == eid for e in t.get("webhook_outbox") or []):
+            return False
+        tries = t.setdefault("wake_tries", {})                 # counted beside the outbox, so the delivered payload stays exactly the event
+        tries[eid] = out["tries"] = tries.get(eid, 0) + 1
+        if t.get("status") == "WITH_COORDINATOR" and out["tries"] >= WAKE_MAX_TRIES:
+            t["webhook_outbox"] = [e for e in t.get("webhook_outbox") or [] if e.get("event_type") != "escalation"]
+            out["reason"] = t.get("reason", "")
+    task_txn(n, f)
+    if out.get("reason") is not None:
+        escalate(n, "the coordinator chat could not be woken (delivery failed %d passes in a row: %s). %s" % (out["tries"], why, out["reason"]))
+
+
 def process_task_webhooks(a, st):
     if a.dry_run:
         return
@@ -2409,9 +2441,11 @@ def process_task_webhooks(a, st):
                 if isinstance(e, urllib.error.URLError) and not isinstance(e, urllib.error.HTTPError):
                     why += " (%s)" % type(e.reason).__name__
                 log("task %s webhook delivery failed: %s; will retry" % (n, why))
+                wake_failed(n, event, why)
                 break
             def ack(t):
                 t["webhook_outbox"] = [e for e in t.get("webhook_outbox", []) if e.get("event_id") != event["event_id"]]
+                (t.get("wake_tries") or {}).pop(event["event_id"], None)
             task_txn(n, ack)
 
 
@@ -2429,7 +2463,7 @@ def task_of_job(job):
     """(task name, stage id) of a live task whose stage runs Job `job`."""
     for n in task_names():
         t = task_load(n)
-        if t and t["status"] in TASK_LIVE + ("NEEDS_OWNER",):
+        if t and t["status"] in TASK_LIVE + TASK_HELD:
             for s in t["stages"]:
                 if s["job"] == job and s["state"] in ("running", "failed"):
                     return n, s["id"]
@@ -2724,8 +2758,14 @@ def validate_task(raw, warn, plan_gpu=None):
         if gok is not None and not (isinstance(gok, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", gok)):
             bad.append("%s: gpu_ok_until = YYYY-MM-DD (the last day of the owner's GPU OK)" % w)
             gok = None
+        res = s.get("resumable")
+        if res is not None and not isinstance(res, bool):
+            bad.append("%s: resumable = true only when re-running the stage skips items whose outputs already exist (Tier 0 then resubmits it once with 2x deadline after a timeout)" % w)
+            res = None
         stage = {"id": sid, "job": job, "manifest": os.path.expanduser(m) if isinstance(m, str) else None,
                  "after": after, "done_s3": d3, "state": st0, "attempt": 1}
+        if res:
+            stage["resumable"] = True
         if a3:
             stage["after_s3"] = a3
         if gok:
@@ -2810,7 +2850,7 @@ def task_add_raw(raw, src_file, by="session", parent=None):
         busy = {}
         for o in task_names():
             ot = task_load(o)
-            if o != n and ot and ot["status"] in TASK_LIVE + ("NEEDS_OWNER",):
+            if o != n and ot and ot["status"] in TASK_LIVE + TASK_HELD:
                 busy.update({s["job"]: o for s in ot["stages"] if s["state"] != "done"})
         for cn in chain_names():
             c = chain_load(cn)
@@ -3014,6 +3054,7 @@ def do_submit(n, sid, reason, by):
             t["failure"] = None
         s2.update(state="running", submitted=now())
         s2.pop("pod_started", None)
+        s2["dl"] = {"resubmits": (s2.get("dl") or {}).get("resubmits", 0)}      # a new Job gets fresh deadline tracking (Tier 0, deadline_watch)
         s2.pop("util_deleted", None)
         t.pop("pending", None)
         t["status"] = "retrying" if retry or t["status"] == "retrying" else "running"
@@ -3039,6 +3080,233 @@ def escalate(n, reason, a=None):
              a.dry_run if a else False, refs=["task:" + n])
 
 
+def coordinator_summary(t, reason):
+    """The short text a Tier 3 wake carries: what happened, and where to look. No logs, no secrets."""
+    n, f = t["name"], t.get("failure") or {}
+    bits = ["NRP task %s needs its coordinator chat (the owner is NOT notified unless you say so): %s" % (n, reason)]
+    if f:
+        bits.append("Event: stage %s [%s] %s." % (f.get("stage"), f.get("cls"), (f.get("detail") or "")[:200]))
+    bits.append("Look: `nrp-watchdog task show %s`; saved logs %s; fix log (handoff) %s." % (n, f.get("logs") or "(none)", task_dir(n) / "handoff.md"))
+    bits.append("Then: fix it and `nrp-watchdog task resume %s --note TEXT` (resubmits the failed stage, budgets restart), or `nrp-watchdog task cancel %s`, "
+                "or only if the owner is truly needed `nrp-watchdog task needs-owner %s --reason TEXT` (sends the one DM)." % (n, n, n))
+    return " ".join(bits)[:1600]
+
+
+def to_coordinator(n, reason, a=None):
+    """Tier 3: wake the task's coordinator chat (its webhook; same machinery as the done/failure wakes) with a short summary and pointers.
+    The task goes to WITH_COORDINATOR, not NEEDS_OWNER: the owner is told only if the chat runs `task needs-owner`. With no webhook
+    configured for the task there is nobody to wake, so the owner is told instead (NEEDS_OWNER) and nothing is lost. A wake that cannot
+    be delivered (wake_failed) or an answer that never comes (check_coordinator_waits) falls back the same way."""
+    reason = " ".join(reason.split())
+    if not (STATE / "webhooks" / n).exists():
+        escalate(n, "%s [no coordinator webhook is configured for this task, so the owner is told]" % reason[:290], a)
+        return
+    out = {}
+
+    def f(t):
+        if t["status"] in TASK_HELD:
+            return False
+        t["status"], t["reason"], t["coordinator_since"] = "WITH_COORDINATOR", reason[:400], now()
+        t["coordinator_wakes"] = t.get("coordinator_wakes", 0) + 1
+        out["event"] = queue_task_webhook(t, "escalation", summary=coordinator_summary(t, reason))
+        tev(t, "WITH_COORDINATOR (Tier 3, wake queued): " + reason)
+    if task_txn(n, f):
+        digest("coordinator", "woke the coordinator chat: %s" % reason[:260], n)
+        PASS["coordinator"] = PASS.get("coordinator", 0) + 1
+
+
+def check_coordinator_waits(a):
+    """A WITH_COORDINATOR task whose wake was delivered but never answered for COORD_STALE_S goes to the owner."""
+    if a.dry_run:
+        return
+    for n in task_names():
+        t = task_load(n) or {}
+        if t.get("status") == "WITH_COORDINATOR" and now() - t.get("coordinator_since", now()) > COORD_STALE_S:
+            escalate(n, "the coordinator chat did not answer for %s. %s" % (ago(t["coordinator_since"]), t.get("reason", "")), a)
+
+
+# ---- Tier 0 timeouts (no model): extend a progressing Job in place, credit queue time, resubmit a resume-capable stage once at 2x ----
+def patch_deadline(ns, job, secs):
+    r = kubectl("-n", ns, "patch", "job", job, "--type=merge", "-p", json.dumps({"spec": {"activeDeadlineSeconds": int(secs)}}))
+    return r.returncode == 0, (r.stderr or r.stdout).strip()[:150]
+
+
+def log_signature(ns, job):
+    """Hash of the Job's last log lines: it changes between two passes only when the pod is still writing."""
+    r = kubectl("-n", ns, "logs", "job/" + job, "--all-containers", "--tail=20", timeout=60)
+    lines = [l for l in (r.stdout or "").splitlines() if l.strip()][-20:] if r.returncode == 0 else []
+    return hashlib.sha1("\n".join(lines).encode()).hexdigest()[:16] if lines else None
+
+
+def pod_waiting_error(ns, job):
+    """A pod stuck on an error (image pull, bad config) is not queueing: its deadline is not extended."""
+    r = kubectl("-n", ns, "get", "pods", "-l", "job-name=" + job, "-o", "json")
+    for p in json.loads(r.stdout or "{}").get("items", []) if r.returncode == 0 else []:
+        for cs in p.get("status", {}).get("containerStatuses", []) or []:
+            w = (cs.get("state") or {}).get("waiting") or {}
+            if w.get("reason") in ("ImagePullBackOff", "ErrImagePull", "InvalidImageName", "CreateContainerConfigError", "CreateContainerError"):
+                return w["reason"]
+    return None
+
+
+def deadline_watch(n, s, info):
+    """Tier 0 for one running stage whose Job is Running or Pending. activeDeadlineSeconds counts from the Job's start, Pending time
+    included, so: (1) once the pod has started after a long queue, credit the queue time (deadline = original + queue wait); (2) a pod that
+    is still Pending near its deadline is kept alive (deadline = elapsed + original), a limited number of times, unless it is stuck on an
+    error; (3) a pod that is still progressing near its deadline (its log tail changed between two passes) gets one more original
+    deadline in place, at most DEADLINE_EXT_MAX times. A Job that is not progressing is left to expire and enters the ladder."""
+    dl, js = info.get("deadline"), info.get("start")
+    if not dl or not js:
+        return
+    ns, sid, job, t_now = task_load(n)["namespace"], s["id"], s["job"], now()
+    d = dict(s.get("dl") or {})
+    before = json.dumps(d, sort_keys=True)
+    orig = d.setdefault("orig", dl)
+    remaining = js + dl - t_now
+    margin = min(max(0.2 * orig, 900), 3600)
+    started = s.get("pod_started")
+    new, why, bump, notes = None, "", None, []
+    if started:
+        credit = max(0, started - js)
+        if "credit" not in d:
+            d["credit"] = credit if credit >= DEADLINE_CREDIT_MIN_S else 0
+        want = orig + d["credit"] + d.get("exts", 0) * orig
+        if want > dl:
+            new, why = want, "credited %d min the pod waited Pending (it counts toward activeDeadlineSeconds)" % (d["credit"] // 60)
+        elif remaining < 2 * margin:
+            sig = log_signature(ns, job)
+            prev, d["sig"] = d.get("sig"), sig
+            moving = bool(sig and prev and sig != prev)
+            if remaining < margin and moving and d.get("exts", 0) < DEADLINE_EXT_MAX:
+                new, bump = dl + orig, "exts"
+                why = "still progressing (log advanced between passes): extension %d of %d" % (d.get("exts", 0) + 1, DEADLINE_EXT_MAX)
+            elif remaining < margin and moving and not d.get("capped"):
+                d["capped"] = True
+                notes.append("deadline in %d min and the Job still progresses, but all %d extensions were used" % (remaining // 60, DEADLINE_EXT_MAX))
+            elif remaining < margin and sig and sig == prev and not d.get("stalled"):
+                d["stalled"] = True
+                notes.append("deadline in %d min and the Job's log did not advance between passes: no extension" % (remaining // 60))
+    elif remaining < margin and d.get("pend", 0) < DEADLINE_PEND_EXT_MAX and (t_now - js) + orig > dl and not pod_waiting_error(ns, job):
+        new, bump = (t_now - js) + orig, "pend"
+        why = "pod still Pending near the deadline: kept alive (extension %d of %d)" % (d.get("pend", 0) + 1, DEADLINE_PEND_EXT_MAX)
+    if new:
+        ok, err = patch_deadline(ns, job, new) if d.get("patch_fail", 0) < 3 else (False, "gave up after 3 failed patches")
+        if ok:
+            if bump:
+                d[bump] = d.get(bump, 0) + 1
+            notes.append("%s: activeDeadlineSeconds %d -> %d s, %s" % (job, dl, new, why))
+            digest("deadline-extended", notes[-1], n)
+        else:
+            d["patch_fail"] = d.get("patch_fail", 0) + 1
+            notes.append("%s: could not extend activeDeadlineSeconds (%s)" % (job, err))
+    if notes or json.dumps(d, sort_keys=True) != before:
+        def save_dl(t):
+            tstage(t, sid)["dl"] = d
+            for m in notes:
+                tev(t, m)
+        task_txn(n, save_dl)
+
+
+def stage_resumable(s):
+    """True only when the stage says so (`resumable: true` in TASK.json) or its manifest passes an explicit skip-existing/resume flag.
+    Nothing is inferred beyond that: a stage that restarts from scratch must not be resubmitted blindly."""
+    if s.get("resumable") is True:
+        return True
+    try:
+        return bool(re.search(r"--(skip-existing|resume)\b", Path(s["manifest"]).read_text()))
+    except (OSError, TypeError, KeyError):
+        return False
+
+
+def tier0_timeout(n, f):
+    """A stage died of DeadlineExceeded while running. If it resumes by skipping finished items, resubmit it once with 2x deadline
+    (the task's manifest copy is edited); otherwise (or when that was already done) False: the failure enters the ladder at Tier 1."""
+    t = task_load(n)
+    s = tstage(t, f["stage"])
+    done = (s.get("dl") or {}).get("resubmits", 0)
+    if done >= DEADLINE_RESUBMITS_MAX or not stage_resumable(s):
+        return False
+    try:
+        text = Path(s["manifest"]).read_text()
+        m = re.search(r"(?m)^(\s*activeDeadlineSeconds:\s*)(\d+)\s*$", text)
+        old = int(m.group(2))
+    except (OSError, AttributeError, ValueError):
+        return False
+    Path(s["manifest"]).write_text(text[:m.start(2)] + str(old * 2) + text[m.end(2):])
+    ok, msg = do_submit(n, f["stage"], "Tier 0: deadline %ds passed while running and the stage resumes by skipping finished items; resubmitted with 2x deadline (%d s)" % (old, old * 2), "watchdog")
+    if not ok:
+        Path(s["manifest"]).write_text(text)
+        log("task %s: Tier 0 resubmit refused: %s" % (n, msg[:200]))
+        return False
+    task_txn(n, lambda t: tstage(t, f["stage"]).update(dl={"resubmits": done + 1}))
+    digest("deadline-resubmit", "%s ran into its %d s deadline; resumable stage resubmitted once with %d s" % (f["job"], old, old * 2), n)
+    PASS["retries"] = PASS.get("retries", 0) + 1
+    return True
+
+
+# ---- Tier 1 (Haiku triage) ----
+TRIAGE_VERDICT_RE = re.compile(r"^[ \t>*_`#-]*(BENIGN|NO_FIX_NEEDED|ESCALATE)\b[ \t*_`]*:?[ \t*_`]*(.*)$", re.M)
+TRIAGE_CLOSE = ("BENIGN", "NO_FIX_NEEDED")
+
+
+def triage_verdict(text):
+    """(verdict, text) from the LAST verdict line of Haiku's answer. Anything else fails closed to ESCALATE."""
+    ms = list(TRIAGE_VERDICT_RE.finditer(text or ""))
+    if not ms:
+        return "ESCALATE", "no verdict line in the triage answer"
+    return ms[-1].group(1), " ".join(ms[-1].group(2).replace("*", "").replace("`", "").split())[:300]
+
+
+def triage_wanted(t, f):
+    """Tier 1 looks at an event when a benign answer is possible: the Job is still alive or finished, or the class is one the script cannot
+    pin down (unknown, slow). A plain terminal failure the rules already classified (OOM, traceback, image pull) goes straight to Tier 2.
+    Util failures never go to Tier 1: Tier 2's UTIL_OK waiver is their 'no fix needed' path, with the script's own checks."""
+    if f.get("cls") == "util":
+        return False
+    return f.get("cls") in TRIAGE_CLASSES_ALWAYS or job_state(f["job"], t["namespace"]) in ("running", "pending", "ok")
+
+
+def triage_prompt(t):
+    f = t["failure"] or {}
+    tpl = (TPL / "task_triage.md").read_text()
+    rep = {"name": t["name"], "goal": t["goal"], "origin": origin_plain(t.get("origin")), "ns": t["namespace"], "notes": t["notes"] or "(none)",
+           "cls": f.get("cls", "?"), "stage": f.get("stage", "?"), "job": f.get("job", "?"), "sig": f.get("sig", "?"), "detail": f.get("detail", ""),
+           "logs": f.get("logs") or "(none saved)", "dir": str(task_dir(t["name"])),
+           "stages": "\n".join("  - %s job=%s state=%s" % (s["id"], s["job"], s["state"]) for s in t["stages"]),
+           "attempts": "\n".join("  - %s [%s] %s -> %s" % (x["job"], x["cls"], x["detail"][:120], x["fix"][:120]) for x in t["attempts"][-5:]) or "  (none)"}
+    for k, v in rep.items():
+        tpl = tpl.replace("{%s}" % k, v)
+    return tpl
+
+
+def close_failure(n, f, why):
+    """Close a triaged event as benign. The script decides, not the verdict: the Job must be alive or done, or the stage's outputs present.
+    Returns (ok, refusal)."""
+    t = task_load(n)
+    s = tstage(t, f["stage"])
+    st_ = job_state(f["job"], t["namespace"])
+    present = all(s3_exists(u, {}) is True for u in s["done_s3"])
+    if st_ not in ("running", "pending", "ok") and not present:
+        return False, "Job %s is %s and the stage's outputs are missing" % (f["job"], st_)
+
+    def c(t):
+        cur = t.get("failure")
+        if not cur or cur.get("ts") != f.get("ts"):
+            return False
+        s2 = tstage(t, f["stage"])
+        if present and st_ not in ("running", "pending"):
+            s2.update(state="done", done_ts=now())
+        else:
+            s2["state"] = "running"
+        s2.pop("util_deleted", None)
+        t["failure"] = None
+        tev(t, "event closed by Tier 1 triage, no fix needed: %s" % why[:200])
+    if not task_txn(n, c):
+        return False, "the failure changed while it was closed"
+    digest("triage-closed", "stage %s [%s]: no fix needed (%s)" % (f["stage"], f["cls"], why[:240]), n)
+    return True, ""
+
+
 def observe_task(n, jobs):
     t = task_load(n)
     ns = t["namespace"]
@@ -3046,10 +3314,16 @@ def observe_task(n, jobs):
         if s["state"] != "running":
             continue
         sid, info = s["id"], jobs.get(s["job"])
-        if info and info["state"] in ("running", "pending") and not s.get("pod_started"):
-            ps0 = pod_started(ns, s["job"])
-            if ps0:
-                task_txn(n, lambda t: tstage(t, sid).update(pod_started=ps0))
+        if info and info["state"] in ("running", "pending"):
+            if not s.get("pod_started"):
+                ps0 = pod_started(ns, s["job"])
+                if ps0:
+                    task_txn(n, lambda t: tstage(t, sid).update(pod_started=ps0))
+                    s = tstage(task_load(n), sid)
+            try:
+                deadline_watch(n, s, info)                      # Tier 0: credit queue time, keep a progressing Job alive
+            except Exception as e:                              # a Tier 0 helper must never stop the pass
+                log("task %s: deadline watch error: %s: %s" % (n, type(e).__name__, str(e)[:150]))
             continue
         if info is None:
             if now() - s.get("submitted", 0) < MISSING_GRACE_S:
@@ -3101,7 +3375,8 @@ def task_prompt(t):
            "attempts": "\n".join("  - %s attempt failed [%s] %s -> fix: %s" % (x["job"], x["cls"], x["detail"][:150], x["fix"][:150]) for x in att) or "  (none)",
            "util": "\n".join("  - " + u for u in t.get("util", [])[-5:]) or "  (none)",
            "clone": code.get("clone", "(no code clone registered: fix only the manifest)"), "branch": code.get("branch", "-"),
-           "subdir": code.get("subdir") or ".", "skip_limit": skip_limit_text()}
+           "subdir": code.get("subdir") or ".", "skip_limit": skip_limit_text(),
+           "triage": f.get("triage_text") or "(Tier 1 did not run for this failure)"}
     for k, v in rep.items():
         tpl = tpl.replace("{%s}" % k, v)
     return tpl.replace("{handoff}", handoff_prompt(t))                 # last: the handoff text is not itself a template
@@ -3118,12 +3393,14 @@ def run_task_agent(n, prompt_text, a, kind="fix"):
     if kind == "continue":                                         # reads outputs and the plan, writes the next TASK file
         pd = str(plan_dir(t["on_done"]["plan"])).rstrip("/")
         allowed = ["Bash(nrp-task:*)", "Read(/%s/**)" % d, "Read(/%s/**)" % pd, "Write(/%s/work/**)" % pd, "Edit(/%s/work/**)" % pd]
+    elif kind == "triage":                                         # Tier 1: Haiku, read-only; its verdict is the last line of its answer
+        allowed = ["Bash(nrp-task %s:*)" % c for c in ("show", "logs", "describe", "util", "s3")] + ["Read(/%s/**)" % d]
     elif kind != "fix":
         allowed = ["Bash(nrp-task:*)", "Read(/%s/**)" % d]
     deny = []
     if kind == "continue":                                         # night code lives in work/code-<step>/: its .git is not the agent's to edit
         deny = ["Write(/%s/work/**/.git/**)" % pd, "Edit(/%s/work/**/.git/**)" % pd]
-    cmd = agent_cmd("task", allowed, json_out=True, deny=deny)
+    cmd = agent_cmd("triage" if kind == "triage" else "task", allowed, json_out=True, deny=deny)
     if not agents_available():                                     # every runner is out of usage: nothing started, nothing spent
         return unavailable_text(), []
     env = clean_env()
@@ -3149,6 +3426,8 @@ def run_task_agent(n, prompt_text, a, kind="fix"):
     if claim is not None:
         task_txn(n, lambda t: t.update(util_ok_claim=claim))                  # the script decides on it in handle_failure
     rec = {"ts": now(), "kind": kind, "runner": runner, "cost": res.get("total_cost_usd"), "turns": res.get("num_turns"), "result": line, "denials": len(den)}
+    if kind == "triage":
+        rec["verdict"], rec["verdict_text"] = triage_verdict(full)
     task_txn(n, lambda t: (t.setdefault("agent_runs", []).append(rec), t.pop("agent_started", None)))
     log("task %s: agent done cost=%s denials=%d: %s" % (n, rec["cost"], len(den), line[:250]))
     try:
@@ -3162,38 +3441,67 @@ def run_task_agent(n, prompt_text, a, kind="fix"):
 
 
 def handle_failure(n, a):
+    """The task escalation ladder. Tier 0: script rules (classification in observe_task, deadline rules, `tier0_timeout`). Tier 1: Haiku
+    triage, where a benign answer is possible; 'no fix needed' CLOSES the event. Tier 2: the Sonnet fix agent. Tier 3: the task's
+    coordinator chat (`to_coordinator`). The owner is told (NEEDS_OWNER + one DM) only by the chat (`task needs-owner`), or when a person's
+    decision is the only way on (watch-only task, GPU approval), or when the chat cannot be woken."""
     t = task_load(n)
     f = t["failure"]
     since = t.get("budget_from", 0)
     prior = [x["sig"] for x in t["attempts"] if x["stage"] == f["stage"]]
     used = len(t["attempts"][since:])
     cls_used = sum(1 for x in t["attempts"][since:] if x["cls"] == f["cls"])
-    why = None
     if t["mode"] == "watch":
-        why = "watch-only task, stage %s failed [%s]: %s" % (f["stage"], f["cls"], f["detail"])
-    elif f["cls"] == "slow":
-        why = "stage %s %s" % (f["stage"], f["detail"])
-    elif f["sig"] in prior:
+        escalate(n, "watch-only task, stage %s failed [%s]: %s" % (f["stage"], f["cls"], f["detail"]), a)
+        return
+    if f["cls"] == "slow" and not a.dry_run and tier0_timeout(n, f):
+        return
+    why = None
+    if f["sig"] in prior:
         why = "stage %s failed the same way again after a retry [%s]: %s" % (f["stage"], f["cls"], f["detail"])
     elif used >= t["max_retries"]:
         why = "retry cap %d reached; last failure [%s]: %s" % (t["max_retries"], f["cls"], f["detail"])
     elif cls_used >= CLASS_BUDGET.get(f["cls"], 1):
         why = "%s retries used (%d); last failure: %s" % (f["cls"], cls_used, f["detail"])
     if why:
-        escalate(n, why, a)
+        to_coordinator(n, why, a)
         return
     gx = gpu_expired(tstage(t, f["stage"]))
     if gx and not a.dry_run:
         escalate(n, "stage %s failed [%s] %s | %s" % (f["stage"], f["cls"], f["detail"][:150], gx.split(" (`nrp-watchdog")[0]), a)
         return
     if a.dry_run:
-        print("[dry-run] task %s: would start a fix agent for [%s] %s" % (n, f["cls"], f["detail"][:120]))
+        print("[dry-run] task %s: would run Tier 1 triage / start a fix agent for [%s] %s" % (n, f["cls"], f["detail"][:120]))
         return
     if not agents_available():
         log("task %s: fix agent waits: %s" % (n, unavailable_text()))
         return
+    if not f.get("triaged") and triage_wanted(t, f):                       # Tier 1: once per failure
+        PASS["agents"] = PASS.get("agents", 0) + 1
+        line, _ = run_task_agent(n, triage_prompt(t), a, kind="triage")
+        if is_unavailable(line):
+            return
+        run = (task_load(n).get("agent_runs") or [{}])[-1]
+        verdict, vtext = run.get("verdict") or "ESCALATE", run.get("verdict_text") or line
+
+        def mark(t):
+            cur = t.get("failure")
+            if not cur or cur.get("ts") != f.get("ts"):
+                return False
+            cur["triaged"], cur["triage_text"] = now(), "%s: %s" % (verdict, vtext)
+            tev(t, "Tier 1 triage: %s: %s" % (verdict, vtext[:200]))
+        task_txn(n, mark)
+        if verdict in TRIAGE_CLOSE:
+            ok, refused = close_failure(n, f, vtext)
+            if ok:
+                return
+            task_txn(n, lambda t: tev(t, "Tier 1 said no fix needed but the script refused to close it: " + refused))
+        t = task_load(n)
+        if not t.get("failure"):
+            return
+        f = t["failure"]
     PASS["agents"] = PASS.get("agents", 0) + 1
-    line, den = run_task_agent(n, task_prompt(t), a)
+    line, den = run_task_agent(n, task_prompt(t), a)                       # Tier 2
     if is_unavailable(line):
         return
     t = task_load(n)
@@ -3214,9 +3522,9 @@ def handle_failure(n, a):
             return
         log("task %s: util waiver refused: %s" % (n, why))
         task_txn(n, lambda t: (t.pop("util_ok_claim", None), tev(t, "util waiver refused: " + why)))
-        escalate(n, "fix agent did not resubmit: %s [util waiver refused: %s]" % (((rep.get("line") or line)[:200]), why[:110]), a)
+        to_coordinator(n, "fix agent did not resubmit: %s [util waiver refused: %s]" % (((rep.get("line") or line)[:200]), why[:110]), a)
         return
-    escalate(n, "fix agent did not resubmit: %s" % ((rep.get("line") or line)[:300]), a)
+    to_coordinator(n, "fix agent did not resubmit: %s" % ((rep.get("line") or line)[:300]), a)                    # Tier 3
 
 
 def s3_gate(s):
@@ -3320,6 +3628,10 @@ def advance_task(n, jobs, a):
 
 
 def process_tasks(a, st):
+    try:
+        check_coordinator_waits(a)
+    except Exception as e:
+        log("coordinator wait check error: %s: %s" % (type(e).__name__, str(e)[:150]))
     names = [x for x in task_names() if (task_load(x) or {}).get("status") in TASK_LIVE]
     PASS["tasks"] = len(names)
     cache = {}
@@ -3760,7 +4072,7 @@ def check_on_done(od, raw, src_file, by, parent):
     led = plan_state(pid)["ledger"].get(step) or []
     if by != "session" and led:
         raise ChainError("step %s of plan %s was already started once (task %s); only a session may rerun it" % (step, pid, led[-1]["task"]))
-    live = [e["task"] for e in led if (task_load(e["task"]) or {}).get("status") in TASK_LIVE + ("NEEDS_OWNER",)]
+    live = [e["task"] for e in led if (task_load(e["task"]) or {}).get("status") in TASK_LIVE + TASK_HELD]
     if live:
         raise ChainError("step %s of plan %s is already running as task %s" % (step, pid, live[0]))
     depth = 0
@@ -4215,6 +4527,10 @@ def needs_owner():
     return out
 
 
+def coordinating():
+    return [(n, t) for n in task_names() for t in [task_load(n)] if t and t["status"] == "WITH_COORDINATOR"]
+
+
 def ref_label(ref):
     """'task-name · origin title' for digest lines (looked up now, so a backfilled origin also labels old events)."""
     if not ref or ref == "-":
@@ -4240,6 +4556,10 @@ def render_digest(hours):
     lines.append("\n## Needs the owner (%d)" % len(nh))
     lines += ["- %s (%s): %s  -> `nrp-watchdog task show %s`" % (n, origin_plain(t.get("origin"), "goal: " + t.get("goal", "")[:60]),
                                                                t.get("reason", "")[:300], n) for n, t in nh] or ["- nothing"]
+    co = coordinating()
+    lines.append("\n## With the coordinator chat, owner not notified (%d)" % len(co))
+    lines += ["- %s (%s) for %s: %s  -> `nrp-watchdog task show %s`" % (n, origin_plain(t.get("origin"), "goal: " + t.get("goal", "")[:60]),
+                                                                        ago(t.get("coordinator_since", now())), t.get("reason", "")[:300], n) for n, t in co] or ["- nothing"]
     live = [(n, task_load(n)) for n in task_names()]
     live = [(n, t) for n, t in live if t and t["status"] in TASK_LIVE]
     lines.append("\n## Running tasks (%d)" % len(live))
@@ -4362,13 +4682,15 @@ def cmd_task_show(a):
 
 def cmd_task_resume(a):
     """After the owner decides: clear NEEDS_OWNER; the failed stage is resubmitted next pass (or --skip it), budgets restart."""
-    msgs, skipped, again = [], [], []
+    msgs, skipped, again, who = [], [], [], ["a person"]
 
     def f(t):
         del skipped[:], again[:]
-        if t["status"] not in ("NEEDS_OWNER", "blocked"):
-            msgs.append("task %s is %s; only NEEDS_OWNER or blocked can be resumed" % (t["name"], t["status"]))
+        if t["status"] not in ("NEEDS_OWNER", "WITH_COORDINATOR", "blocked"):
+            msgs.append("task %s is %s; only NEEDS_OWNER, WITH_COORDINATOR or blocked can be resumed" % (t["name"], t["status"]))
             return False
+        who[0] = "the coordinator chat" if t["status"] == "WITH_COORDINATOR" else "a person"
+        t["webhook_outbox"] = [e for e in t.get("webhook_outbox") or [] if e.get("event_type") != "escalation"]   # the question is answered
         for s in t["stages"]:
             if s["state"] == "failed":
                 s["state"] = "done" if s["id"] in (a.skip or []) else "pending"
@@ -4376,7 +4698,7 @@ def cmd_task_resume(a):
                 (skipped if s["state"] == "done" else again).append(s["id"])
         if t.get("failure"):
             t["attempts"].append(dict(stage=t["failure"]["stage"], job=t["failure"]["job"], cls=t["failure"]["cls"], sig=t["failure"]["sig"],
-                                      detail=t["failure"]["detail"][:200], fix="resumed by a person: " + (a.note or ""), by="person", ts=now()))
+                                      detail=t["failure"]["detail"][:200], fix="resumed by %s: %s" % (who[0], a.note or ""), by="person", ts=now()))
         t["failure"], t["status"], t["reason"] = None, "running", ""
         t["budget_from"] = len(t["attempts"])
         if a.retries is not None:
@@ -4385,12 +4707,29 @@ def cmd_task_resume(a):
             for s in t["stages"]:
                 if s["state"] != "done" and s.get("manifest") and manifest_gpu(s["manifest"]):
                     s["gpu_ok_until"] = a.gpu_ok_until
-        tev(t, "resumed by a person%s" % (": " + a.note if a.note else ""))
+        tev(t, "resumed by %s%s" % (who[0], ": " + a.note if a.note else ""))
     if not task_txn(a.name, f):
         sys.exit(msgs[0] if msgs else "no task %s" % a.name)
     said = (["skipped (marked done): %s" % ", ".join(skipped)] if skipped else []) + (
         ["the next pass resubmits %s from %s/manifests" % (", ".join(again), task_dir(a.name))] if again else [])
     print("task %s resumed; %s" % (a.name, "; ".join(said) or "no failed stage; pending stages run as usual"))
+    return 0
+
+
+def cmd_task_needs_owner(a):
+    """`task needs-owner NAME --reason TEXT`: what the task's coordinator chat runs when the owner is truly needed. Sets NEEDS_OWNER and sends
+    the one DM (the same path as every other stop). Nothing else tells the owner about a task that is WITH_COORDINATOR."""
+    t = task_load(a.name)
+    if not t:
+        sys.exit("no task %s" % a.name)
+    if t["status"] in ("done", "cancelled"):
+        sys.exit("task %s is %s; nothing to hand to the owner" % (a.name, t["status"]))
+    if t["status"] == "NEEDS_OWNER":
+        sys.exit("task %s is already NEEDS_OWNER (reason: %s)" % (a.name, t.get("reason", "")[:200]))
+    if len(a.reason.strip()) < 8:
+        sys.exit("--reason: say what the owner must decide (at least a short sentence)")
+    escalate(a.name, "the coordinator chat needs you: " + a.reason.strip(), None)
+    print("task %s is NEEDS_OWNER; the owner was sent one DM. They continue it with `nrp-watchdog task resume %s`" % (a.name, a.name))
     return 0
 
 
@@ -4931,6 +5270,10 @@ def cmd_status(a):
     if nh:
         print("nrp-watchdog: %d task(s) need the owner: %s  (`nrp-watchdog digest`)" % (len(nh), "; ".join(
               "%s: %s" % (n, (t.get("reason") or "")[:100]) for n, t in nh[:3])))
+    co = coordinating()
+    if co:
+        print("nrp-watchdog: %d task(s) wait on their coordinator chat (the owner is told only if the chat says so): %s" % (
+              len(co), "; ".join("%s: %s" % (n, (t.get("reason") or "")[:80]) for n, t in co[:3])))
     blocked = [r for r in agent_cfg()["runners"] if runner_blocked(r)]
     if blocked:
         print("nrp-watchdog: agent runner(s) out of usage: %s%s  (`nrp-watchdog agents`)" % (", ".join(blocked),
@@ -5123,13 +5466,17 @@ def main():
     x = tk.add_parser("watch", help="set one task to watch mode when no watchdog pass is running")
     x.add_argument("name")
     x.set_defaults(f=cmd_task_watch)
-    x = tk.add_parser("resume", help="after the owner decides: clear NEEDS_OWNER, resubmit the failed stage (edit tasks/<t>/manifests first), budgets restart")
+    x = tk.add_parser("resume", help="after the owner (or the coordinator chat) decides: clear NEEDS_OWNER / WITH_COORDINATOR, resubmit the failed stage (edit tasks/<t>/manifests first), budgets restart")
     x.add_argument("name")
     x.add_argument("--skip", action="append", metavar="STAGE", help="treat STAGE as done instead")
     x.add_argument("--retries", type=int, help="new max_retries")
     x.add_argument("--gpu-ok-until", metavar="YYYY-MM-DD", help="the owner's new last day of GPU OK for the unfinished GPU stages")
     x.add_argument("--note", help="what was decided (kept in the task)")
     x.set_defaults(f=cmd_task_resume)
+    x = tk.add_parser("needs-owner", help="(the task's coordinator chat) the owner is truly needed: sets NEEDS_OWNER and sends the one DM")
+    x.add_argument("name")
+    x.add_argument("--reason", required=True, help="what the owner must decide")
+    x.set_defaults(f=cmd_task_needs_owner)
     x = tk.add_parser("handoff", help="attach a handoff (markdown from templates/handoff.md) to a task registered without one; copied into the task dir")
     x.add_argument("name")
     x.add_argument("file")

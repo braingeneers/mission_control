@@ -14,13 +14,55 @@
 ## Escalation ladder
 
 A failure is handled by the cheapest thing that can fix it; a person hears about it only after that has failed, with one
-Slack DM.
+Slack DM. Hunter's rule: Haiku triages, Sonnet fixes, the chat that owns the work helps if Sonnet cannot, and only that chat decides
+the owner is needed.
+
+### Tasks (v3)
+
+0. **Tier 0, script rules, no model.** Classification, success markers, utilization, and the timeout rules below.
+1. **Tier 1, Haiku triage** (agent tier `triage`, read-only `nrp-task show|logs|describe|util|s3`). Runs once per failure when a
+   benign answer is possible: the Job is still running, pending or finished, or the class is `unknown`/`slow`. A plain terminal failure
+   the rules already classified (OOM, traceback, image pull) skips straight to Tier 2, and so do util failures (Tier 2's `UTIL_OK`
+   waiver is their "no fix needed"). Menu: `BENIGN: why`, `NO_FIX_NEEDED: why`, `ESCALATE: evidence` (anything else counts as
+   ESCALATE). The two closing answers CLOSE the event: the failure is cleared, the stage goes back to running (or done when its
+   outputs exist), the task's events and the digest (`triage-closed`) record it, no retry is used and nobody is notified. The script
+   refuses to close it when the Job is dead and the outputs are missing; the event then goes on to Tier 2.
+2. **Tier 2, Sonnet fixer** (agent tier `task`, `templates/task_agent.md`; it sees Tier 1's text). Fixes and resubmits within the retry
+   budget. It reports STOPPED when it is not confident, needs a scientific or design choice, or its waiver is refused. A failure that
+   repeats after a fix of its own, or a used-up retry budget, skips the agents and goes straight to Tier 3.
+3. **Tier 3, the task's coordinator chat.** The task becomes `WITH_COORDINATOR` (not `NEEDS_OWNER`) and the monitor sends an
+   `escalation` event through the task's webhook (`<state>/webhooks/<task>`, the same relay as the `done` and `failure` wakes) whose
+   `summary` names the task, the event and the pointers (`task show`, saved logs, the handoff's Fix log). The chat then runs one of:
+   `nrp-watchdog task resume NAME --note TEXT` (hand back: the failed stage is resubmitted, budgets restart), `task cancel NAME`, or,
+   only when the owner is truly needed, `task needs-owner NAME --reason TEXT` (sets `NEEDS_OWNER` and sends the one DM).
+   Nothing is lost silently: with no webhook configured for the task, a wake that fails delivery 6 passes in a row (about 30 minutes),
+   or a delivered wake nobody answers for 24 hours, falls back to `NEEDS_OWNER` with that reason. Watch-only tasks, GPU approval
+   expiry and a 6-hour utilization block still go straight to the owner: only a person can decide those.
+
+Tier models are the `models` entries `triage` (Tier 1) and `task` (Tier 2) of `agents.json` (agents.md); Tier 3 uses no model, it wakes
+the chat that already has the context.
+
+### Deadline timeouts (Tier 0, tasks)
+
+`activeDeadlineSeconds` counts from the Job's start, Pending time included. Each pass, for a running stage's Job:
+- **Credit queue time.** Once the pod has started after waiting Pending 10 minutes or more, the Job's deadline is patched in place to
+  the original plus the wait (once).
+- **Pending near the deadline** (under max(20% of the deadline, 15 min), at most 1 hour): kept alive in place to elapsed + original,
+  up to 8 times, unless the pod is stuck on an image or config error.
+- **Progressing near the deadline:** when the Job's log tail changed between two passes, the deadline is extended in place by the
+  original, at most 2 times. A Job whose log did not advance is left to expire (an event says so).
+- **Already dead (`slow`) and the stage resumes by skipping finished items** (`resumable: true` on the stage, or `--skip-existing` /
+  `--resume` in its manifest command; nothing else is assumed): resubmitted once with 2x the deadline, silently.
+- Anything else enters the ladder at Tier 1. A timeout never pages the owner directly; a second timeout of the same stage is a repeat
+  after a fix, so it goes to Tier 3.
+
+### Legacy jobs (`add`) and the person step
 
 1. **No model.** The script classifies the failure (resources, util, code, queue, infra, outputs, slow) and handles
    routine events.
 2. **Cheap triage.** For a registered Job with a resume file, one read-only agent looks first and returns a result or
    `ESCALATE` with evidence.
-3. **Repair.** Up to two repair attempts for a job follow-up. A task failure starts one fresh fix agent directly, with a
+3. **Repair.** Up to two repair attempts for a legacy job follow-up (the ladder is configurable: agents.md). A task's Tier 2 agent has a
    retry budget of 4 total and 3 per failure class. Code fixes are committed on `watchdog/<task>`. The agent's prompt
    carries the task's handoff, and its `HANDOFF_ENTRY:` block is appended to the handoff's Fix log (handoff.md).
    A single bad item is skipped and logged; a pattern (more than 5% of items, by default; the `skip_limit_fraction`
@@ -28,19 +70,20 @@ Slack DM.
    A util fix agent that finds the Job healthy may answer `UTIL_OK: evidence` instead of a stop (a **util waiver**,
    utilization.md): the script accepts it only for a flag from the lab floor alone, on a Job that still runs, at most 3
    times per task; otherwise it is the stop below.
-4. **A person.** The task becomes `NEEDS_OWNER` (tasks stored under the earlier name `NEEDS_HUNTER` are read as this) and the owner gets one DM when a
-   run is slow, the same failure repeats, the retry budget is used up, an agent stops, or it has been blocked 6 hours.
+4. **A person.** The task becomes `NEEDS_OWNER` (tasks stored under the earlier name `NEEDS_HUNTER` are read as this) and the owner gets
+   one DM. For a task that is: when its coordinator chat runs `task needs-owner`, when Tier 3 cannot reach the chat (above), for a
+   watch-only task, GPU approval expiry, or a 6-hour utilization block. For a legacy job: when the follow-up ladder is used up.
    `nrp-watchdog task resume NAME` continues after they decide.
 
-The ladder for job follow-ups is configurable (agents.md). An accepted util waiver sends no DM, uses no retry and adds a
-`util-waived` line to the digest. Retries are silent. When no agent can run (every runner is out of
-usage), the work waits without using a retry and the owner gets one DM saying so.
+An accepted util waiver sends no DM, uses no retry and adds a `util-waived` line to the digest. Retries are silent. When no agent can
+run (every runner is out of usage), the work waits without using a retry and the owner gets one DM saying so.
 
 ## The digest
 
 Everything routine is silent. `nrp-watchdog digest --hours N` lists events, what needs a person, plans waiting, tasks with
 no continuation, and a warning when the notification token is near expiry. `nrp-watchdog status` shows scheduler heartbeat
-age (exit 3 when stale while work is active), tasks that need the owner, and runners out of usage.
+age (exit 3 when stale while work is active), tasks that need the owner, tasks waiting on their coordinator chat, and runners out of usage.
+The digest has a "With the coordinator chat, owner not notified" section next to "Needs the owner".
 
 ## Completion continuation (`on_done`)
 
