@@ -137,3 +137,5 @@ behind profile stages.
 ## Memory LOW review
 
 A utilization flag alone never fails or holds a healthy running task stage. For memory (20–150% of request), skip LOW review during ramp-up: 25% of measured stage runtime, or 30 minutes without history. Use whole-life per-pod Thanos peaks and recorded OOM limits: need is their maximum, right is ceil(need*1.25) Gi. A request <=1.2*right is sized correctly. Otherwise the fixer updates the manifest for retries/later runs; resubmit running work only when resumable and more than two measured hours remain. A max/median peak spread >3 with completed low pods below 20% throughout their lives calls for input size groups. The triage judge receives all numbers and returns CLOSE or ESCALATE; only the fixer changes anything. Missing peaks require review. Example: 12Gi request, peaks 4.5–7.7Gi, earlier OOM at 6Gi => need 7.7, right 10Gi, sized correctly; a 1.2Gi mean at 17 minutes is still ramp-up.
+
+- `nrp-monitor` asks the coordinator after six hours unschedulable for GPU stages (`queue_wait_ceiling` overrides it); the Job stays queued, resume doubles the ceiling, and CPU fallback requires an explicit coordinator choice.

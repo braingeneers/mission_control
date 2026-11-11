@@ -108,3 +108,26 @@ it refuses running or pending Jobs and refuses an uncertain status check.
 Running utilization flags are observations, not failures. Add a positive `measured_runtime_seconds` to a stage when measured history exists; without it, memory LOW ramp-up lasts 30 minutes. Per-pod peaks, OOM limits and review evidence persist with the stage. See [utilization](utilization.md) for the exact sizing rule and worked example.
 
 Each pass also checks NEEDS_OWNER and WITH_COORDINATOR tasks. When the held stage Job is Complete and all exact `done_s3` markers exist, the stage becomes done, an event records recovery, and the hold clears. Normal next stages and plan-step completion wakes then proceed. Complete Jobs with missing or unreadable markers stay held and name the missing evidence.
+
+### Changing the owning chat
+
+`nrp-monitor task origin NAME` shows the current origin. It is an alias for `origin task NAME` and accepts the same flags.
+To move ownership, use `task origin NAME --replace --chat '<t3-thread://v2/ENV/THREAD>' --evidence 'how verified'`.
+For a Claude or Codex session use `--chat SESSION --harness claude|codex`; title is optional.
+A different link or session clears unspecified old chat details while preserving the collaborator.
+Previous origins remain in `origin_history` with replacement time, replacement evidence and changer (`--by`, otherwise the current session or `cli`).
+`task show NAME` lists them. The task log records old and new origins and the changer.
+
+### Queue waits
+
+Stages may declare `"queue_wait_ceiling": "6h"` (positive durations in seconds, minutes, hours or days: `s`, `m`, `h`, `d`).
+The default is six hours for manifests requesting `nvidia.com/gpu`, with no default ceiling for CPU stages.
+The timer starts when a pod is first observed Pending with an Unschedulable scheduler condition, persists across passes,
+and resets when scheduled or on a new attempt. Pending log messages repeat only for changed reasons or hourly;
+the digest shows the current wait once.
+At the ceiling the existing coordinator wake route holds the task and explains the wait and scheduler reason.
+The Job remains queued. Choose `nrp-monitor task resume NAME` to keep waiting with a doubled total ceiling, or cancel.
+A stage may also declare `"cpu_fallback": "/path/to/cpu-job.yaml"` or a resources override such as
+`"cpu_fallback": {"requests": {"cpu": "4", "memory": "8Gi"}, "limits": {"cpu": "4", "memory": "8Gi"}}`.
+Only a declared fallback is offered; the coordinator decides how to apply it. The monitor never switches or fans out automatically.
+If the pod gets scheduled while held, the queue hold clears automatically.
