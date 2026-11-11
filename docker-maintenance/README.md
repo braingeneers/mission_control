@@ -5,6 +5,12 @@ critical storage alerts. No host cron, systemd unit, daemon configuration edit,
 PostgreSQL, Workflows, or provider credential is required. Source is owned here;
 production uses a published immutable image.
 
+Maintainers: Mission Control service administrators. Policy reviewed 2026-11-11
+against the service source and Compose configuration. See the
+[wiki operator entry](https://github.com/braingeneers/wiki/blob/main/shared/administrators.md#docker-maintenance-and-server-disk-space)
+for the lab documentation route and [release validation](VALIDATION.md) for
+test/publication evidence and operator-reported deployment status.
+
 ## Policy
 
 - Observe Docker and the shared `local` volume filesystem every five minutes.

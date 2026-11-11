@@ -39,13 +39,18 @@ Makefile, Compose configuration, proxy files or affected contract tests. The
 completed image tests and full repository gate above therefore retain their
 original scope; no runtime check was repeated for that unrelated skills merge.
 
-## Operator acceptance still outstanding
+## Operator deployment report and remaining verification
 
-This release has **not** been deployed by the assistant. The operator must pull
-and start `docker-maintenance`, confirm running image identity, initial cleanup
-success and health, and compare its disk readings with host `df`/`findmnt`.
+On 2026-11-11, the operator reported that the service is running fine after the
+deployment handoff. This is operator-reported deployment, not an independent
+inspection of the running image or host. No restart is needed for the subsequent
+documentation updates.
+
+Detailed verification remains unrecorded: running image identity, initial cleanup
+result, health output, and comparison of disk readings with host `df`/`findmnt`.
 Specifically confirm that `/local` and the Docker root share the affected `/data`
-filesystem. Commands and stopping conditions are in the service README.
+filesystem. Commands and stopping conditions are in the service README. Live
+critical Slack delivery has not been exercised; no synthetic alert was sent.
 
 No production cleanup, service restart or Slack delivery has been exercised by
 these checks. A same-host monitor cannot guarantee alerts through a host or
