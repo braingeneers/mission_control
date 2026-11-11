@@ -27,6 +27,22 @@ may_touch: tools/nrp-watchdog/, docs/agents/
 - "the subagents shuolid be attached to that chat not a new thread. we should also have this be able to be used for others subs if
   it works with claude code, codex, or t3 type of deal with multiple subscriptions"
 
+**Hunter's decisions** (chat "BWB FT prep", 2026-11-11, verbatim):
+- On the ladder: "escalation from a haiku to a sonnet for general fixing and then opus if sonnet cant and only then to notify me".
+- Tier 3 is the coordinator chat, not a separate Opus fixer: "I think the chat since it has all of the context to help fix".
+- "we need to actually implement and push to main not a PR for this".
+
+**Added 2026-11-11 (seen live on ft-tables-w6, spike-tokenizer-scaling):**
+- Deadline timeouts (`slow` class) go straight to NEEDS_OWNER in v2 (`handle_failure`), skipping every agent. v3: Tier 0 first
+  (pod still progressing, i.e. per-item outputs or log lines advancing -> extend `activeDeadlineSeconds` in place, or resubmit once
+  with 2x deadline when the job resumes by skipping finished items); then the normal ladder. Never page Hunter for a timeout directly.
+  W6 lost a whole stage at 495/510 because one slow node (pas.pitt.net.internet2.edu) ran one pod 10x slower.
+- Tasks get the full ladder too (v2: one Sonnet `task` agent, then NEEDS_OWNER; the Haiku->Sonnet ladder exists only for legacy jobs).
+- `nrp-task reship` only packs `code.subdir` = the predictor_v3 package; tasks whose code also ships extra package dirs (e.g.
+  `finetune/` from spike-tokenizer-scaling via codeship `extra_pkg_dirs`) could not be reshipped, so four correct Sonnet fixes on
+  ft-tables-w6 stalled waiting for a person. v3: reship packs every dir the task's spec declares.
+- `task add` without `origin` must be refused (v2 only warns); ft-tables-w6 had none, so its alert named no chat and no chat was woken.
+
 **Agreed design:**
 - Tier 0, script (no model): submit, track states, success markers, DCGM/thanos utilization against the nrp-cluster skill and house
   rules; fixed rules applied without a model (OOM -> peak x1.3; known node fault -> exclude node, resubmit; Pending near deadline ->
@@ -36,7 +52,7 @@ may_touch: tools/nrp-watchdog/, docs/agents/
   escalate. (2026-11-10 false STUCK on a pod that had just started should have ended here as benign.)
 - Tier 2, Sonnet fixer: code/config/resize inside may_touch, resubmits, fix log; escalates when not confident, on a repeat after a fix,
   or on any scientific choice.
-- Tier 3, manager model in the plan's coordinator thread: woken on step success or failure (one aggregate wake per step, not per pod)
+- Tier 3 (Opus step of the ladder), manager model in the plan's coordinator thread (Hunter 2026-11-11: the chat, it has the context): woken on step success or failure (one aggregate wake per step, not per pod)
   and on Tier 2 escalations; wake = short summary + pointers. Hunter is notified only when the manager needs him.
 - All agent activity (Haiku, Sonnet, manager) posts into the plan's bound coordinator thread; never a new thread.
 - The monitor sends the wake (covers OOM/node loss, no per-Job callback Secrets).
