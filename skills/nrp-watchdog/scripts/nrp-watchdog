@@ -118,6 +118,7 @@ def _owner_cfg():
     nrp_user_annotation (the nrp.ai/username annotation value on your pods, e.g. http://cilogon.org/serverE/users/NNNN),
     slack_user_id (the Slack user who gets the one DM), owner_label (label value on the watchdog's own check Jobs), owner_name (how messages and agent prompts name you),
     skip_limit_fraction (optional; the share of skipped items above which a failure goes to you; default 0.05),
+    tier0_mem_cap_gi (optional; the largest memory in GiB the Tier 0 OOM rule may set without asking an agent; default 128),
     util_waiver_max (optional; how many util waivers one task may get before the owner is asked; default 3; 0 = never waive),
     util_waiver_hours (optional; how long one waiver lasts; default 6)."""
     try:
@@ -332,14 +333,14 @@ def add_origin_args(p):
     p.add_argument("--origin-collaborator", help="person the chat works with (default: the owner_name setting)")
 
 
-def require_origin_note(o, kind, name):
-    """Refuse (when NRP_WATCHDOG_REQUIRE_ORIGIN is set) or warn on stderr; returns nothing."""
+def require_origin_note(o, kind, name, always=False):
+    """Refuse (always=True, or when NRP_WATCHDOG_REQUIRE_ORIGIN is set) or warn on stderr; returns nothing."""
     if o:
         return
     msg = ("%s %s has no origin: alerts will say 'origin not recorded' and the person cannot tell which chat owns it. "
            "Add \"origin\": {\"title\": ..., \"link\": ...} (or --origin-title/--origin-link) naming the chat that asked for it; "
            "for existing work: nrp-watchdog origin %s %s --title ... --link ... --evidence ..." % (kind, name, kind, name))
-    if os.environ.get("NRP_WATCHDOG_REQUIRE_ORIGIN"):
+    if always or os.environ.get("NRP_WATCHDOG_REQUIRE_ORIGIN"):
         sys.exit("%s refused: %s" % (kind, msg))
     print("warning: " + msg, file=sys.stderr)
 
@@ -2628,6 +2629,7 @@ def clone_code(name, code, warn):
     if r.returncode:
         raise ChainError("code.repo %s is not a git repository" % repo)
     top = Path(r.stdout.strip())
+    given = repo
     if repo != top:                                                   # repo given as a subfolder
         sub = str((repo / sub).relative_to(top)).strip(".").strip("/") if sub else str(repo.relative_to(top))
         repo = top
@@ -2635,6 +2637,15 @@ def clone_code(name, code, warn):
     if r.returncode:
         raise ChainError("code.commit %s not found in %s" % (code.get("commit"), repo))
     sha = r.stdout.strip()
+    extras, shipped_extras = [], []                                   # code dirs the task ships besides subdir: in this repo / as declared
+    for x in code.get("extra_pkg_dirs") or []:
+        if os.path.isabs(os.path.expanduser(x)):
+            shipped_extras.append(str(Path(x).expanduser()))             # another checkout: packed in place at reship, not cloned
+        else:
+            rel = str((given / x).relative_to(top)).strip(".").strip("/") if given != top else x.strip("/")
+            extras.append(rel)
+            shipped_extras.append(rel)
+    scope = [x for x in ([sub] + extras if sub else []) if x] or ["."]
     dest = TASK_CACHE / name / "repo"
     shutil.rmtree(dest, ignore_errors=True)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -2643,12 +2654,12 @@ def clone_code(name, code, warn):
         if r.returncode:
             raise ChainError("git clone failed: %s" % r.stderr.strip()[:200])
     if sub:
-        git("sparse-checkout", "set", "--cone", sub, cwd=str(dest))
+        git("sparse-checkout", "set", "--cone", *scope, cwd=str(dest))
     r = git("checkout", "-q", "-B", "watchdog/" + name, sha, cwd=str(dest))        # -B: a night-code work clone already has this branch
     if r.returncode:
         raise ChainError("git checkout failed: %s" % r.stderr.strip()[:200])
     if not code.get("commit"):
-        diff = git("diff", "HEAD", "--binary", "--", sub or ".", cwd=str(repo)).stdout
+        diff = git("diff", "HEAD", "--binary", "--", *scope, cwd=str(repo)).stdout
         if diff.strip():
             a = git("apply", "--whitespace=nowarn", "-", cwd=str(dest), inp=diff)
             if a.returncode:
@@ -2657,7 +2668,7 @@ def clone_code(name, code, warn):
             git("commit", "-qm", "uncommitted state of %s at task add" % repo, cwd=str(dest))
             warn.append("uncommitted changes under %s were committed in the clone" % (sub or repo))
         copied, skipped, total = [], [], 0
-        for rel in git("ls-files", "-z", "--others", "--exclude-standard", "--", sub or ".", cwd=str(repo)).stdout.split("\0"):
+        for rel in git("ls-files", "-z", "--others", "--exclude-standard", "--", *scope, cwd=str(repo)).stdout.split("\0"):
             src = repo / rel
             if not rel or not src.is_file():
                 continue
@@ -2676,7 +2687,45 @@ def clone_code(name, code, warn):
         if skipped:
             warn.append("%d untracked file(s) under %s are NOT in the clone (not source or over %d MiB; e.g. %s); commit them or set code.commit"
                         % (len(skipped), sub or repo, CLONE_MAX_FILE >> 20, skipped[0]))
-    return {"repo": str(repo), "base": sha, "clone": str(dest), "branch": "watchdog/" + name, "subdir": sub}
+    out = {"repo": str(repo), "base": sha, "clone": str(dest), "branch": "watchdog/" + name, "subdir": sub}
+    if code.get("pkg_dir"):
+        out["pkg_dir"] = code["pkg_dir"]
+    if shipped_extras:
+        out["extra_pkg_dirs"] = shipped_extras
+    return out
+
+
+def code_dir_problem(x, what):
+    """None, or why `x` cannot be a code dir: relative = inside the task's repo (no `..`), absolute / `~` = another git checkout."""
+    if not isinstance(x, str) or not x.strip() or "\0" in x:
+        return "%s: a folder path" % what
+    p = Path(os.path.expanduser(x))
+    if p.is_absolute():
+        return None if p.is_dir() else "%s: %s is not a folder" % (what, x)
+    if ".." in Path(x).parts:
+        return "%s: %s must stay inside the code repo (no ..); use an absolute path for another checkout" % (what, x)
+    return None
+
+
+def code_dirs_check(code):
+    """Problems with code.pkg_dir / code.extra_pkg_dirs (what `nrp-task reship` packs besides the clone's own package)."""
+    bad = []
+    if code.get("pkg_dir") is not None:
+        pr = code_dir_problem(code["pkg_dir"], "code.pkg_dir")
+        bad += [pr] if pr else []
+    ex = code.get("extra_pkg_dirs")
+    if ex is not None:
+        if not isinstance(ex, list) or len(ex) > 8:
+            bad.append("code.extra_pkg_dirs: a list of at most 8 package folders")
+        else:
+            for i, x in enumerate(ex):
+                pr = code_dir_problem(x, "code.extra_pkg_dirs[%d]" % i)
+                if pr:
+                    bad.append(pr)
+            names = [Path(os.path.expanduser(x)).name for x in ex if isinstance(x, str)]
+            if len(set(names)) != len(names) or not all(n.isidentifier() for n in names):
+                bad.append("code.extra_pkg_dirs: each folder name must be a distinct Python package name (it is the top-level folder in the shipped tarball)")
+    return bad
 
 
 # ---- task add / validate ---------------------------------------------------------------------------------------
@@ -2702,7 +2751,10 @@ def validate_task(raw, warn, plan_gpu=None):
         bad.append("max_retries: 0-10")
     code = raw.get("code")
     if code is not None and (not isinstance(code, dict) or not isinstance(code.get("repo"), str)):
-        bad.append("code: {repo: path, commit?: sha, subdir?: path}")
+        bad.append("code: {repo: path, commit?: sha, subdir?: path, pkg_dir?: path, extra_pkg_dirs?: [path]}")
+        code = None
+    if code is not None:
+        bad += code_dirs_check(code)
     fol = raw.get("followup", "")
     if not isinstance(fol, str) or len(fol.encode()) > 2048:
         bad.append("followup: text, at most 2 KB (what a read-only agent reports when the task is done)")
@@ -2843,7 +2895,9 @@ def task_add_raw(raw, src_file, by="session", parent=None):
         if os.environ.get("NRP_WATCHDOG_REQUIRE_HANDOFF") and by == "session":     # a continue agent registering the next step is only warned
             sys.exit("task refused: " + msg)
         warn.append(msg)
-    require_origin_note(t["origin"], "task", n)
+    # v3: a task registered by a person/chat must name its chat (ft-tables-w6 had none, so its alert woke nobody). A continuation
+    # inherits its parent's origin, so one without is only warned about (refusing would strand the approved plan).
+    require_origin_note(t["origin"], "task", n, always=(by == "session"))
     with state_lock():
         if task_load(n) and task_load(n)["status"] not in ("done", "cancelled"):
             sys.exit("task %s already exists and is %s (`nrp-watchdog task show %s`)" % (n, task_load(n)["status"], n))
@@ -3440,6 +3494,262 @@ def run_task_agent(n, prompt_text, a, kind="fix"):
     return line, den
 
 
+# ---- Tier 0: fixed rules, no model (v3 plan) -------------------------------------------------------------------------
+# Applied before any agent: OOM -> memory = observed peak x1.3; a known node fault -> exclude that node and resubmit; a long Pending
+# reports the scheduler's reason. Every rule goes through do_submit, so retry caps, class budgets, the GPU approval date and the
+# manifest rules still hold; anything a rule cannot decide (no peak number, repeat failure, over a cap) falls through to the
+# agents (handle_failure) untouched.
+OOM_FACTOR = 1.3
+OOM_MAX_GI_DEFAULT = 128
+NODE_EXCLUDE_MAX = 3                       # nodes excluded per stage by Tier 0; a fourth fault goes to the agents
+PENDING_REPORT_S = 30 * 60
+PENDING_REREPORT_S = 6 * 3600
+THANOS_URL = os.environ.get("NRP_WATCHDOG_THANOS_URL") or "https://thanos.nrp-nautilus.io/api/v1/query"
+NODE_FAULT_RE = re.compile(r"uncorrectable ECC|\bXid\b\W*\d+|no CUDA-capable device is detected|nvidia-container-cli|"
+                           r"failed to create (?:pod )?sandbox|FailedMount|MountVolume\.\w+ failed|OCI runtime create failed|"
+                           r"\bNodeLost\b|ContainerStatusUnknown", re.I)
+_MEM_UNITS = {"": 1, "k": 1e3, "K": 1e3, "M": 1e6, "G": 1e9, "T": 1e12, "Ki": 2 ** 10, "Mi": 2 ** 20, "Gi": 2 ** 30, "Ti": 2 ** 40}
+
+
+def mem_bytes(q):
+    """Bytes of a Kubernetes memory quantity ('512Mi', '4Gi', '2G', '123456'); None when not understood."""
+    m = re.fullmatch(r"([\d.]+)([A-Za-z]{0,2})", str(q).strip())
+    if not m or m.group(2) not in _MEM_UNITS:
+        return None
+    try:
+        return float(m.group(1)) * _MEM_UNITS[m.group(2)]
+    except ValueError:
+        return None
+
+
+def mem_text(b):
+    import math
+    return "%dGi" % math.ceil(b / 2 ** 30) if b >= 2 ** 30 else "%dMi" % max(64, math.ceil(b / 2 ** 20))
+
+
+def manifest_doc(path):
+    text = Path(path).read_text()
+    try:
+        import yaml
+        return yaml.safe_load(text)
+    except ImportError:
+        return json.loads(text)
+
+
+def manifest_write(path, doc):
+    try:
+        import yaml
+        Path(path).write_text(yaml.safe_dump(doc, sort_keys=False))
+    except ImportError:
+        Path(path).write_text(json.dumps(doc, indent=2))
+
+
+def thanos_peak_mem(ns, job, container, since_ts):
+    """Peak working-set bytes of the Job's pods (one container) since `since_ts`, from NRP's Prometheus; None when unavailable."""
+    window = max(300, int(now() - since_ts) + 120)
+    expr = 'max(max_over_time(container_memory_working_set_bytes{namespace="%s",pod=~"%s-.*",container="%s"}[%ds]))' % (ns, job, container, window)
+    try:
+        with urllib.request.urlopen(THANOS_URL + "?" + urllib.parse.urlencode({"query": expr}), timeout=60) as r:
+            d = json.load(r)
+        res = d["data"]["result"]
+        return float(res[0]["value"][1]) if d.get("status") == "success" and res else None
+    except Exception as e:
+        log("tier0: thanos peak query failed: %s: %s" % (type(e).__name__, str(e)[:120]))
+        return None
+
+
+def job_pods(ns, job):
+    r = kubectl("-n", ns, "get", "pods", "-l", "job-name=" + job, "-o", "json")
+    try:
+        return json.loads(r.stdout or "{}").get("items", []) if r.returncode == 0 else []
+    except ValueError:
+        return []
+
+
+def tier0_oom(t, s, f):
+    """(manifest doc, reason, record) raising the OOMKilled container's memory to observed peak x1.3, or None to leave it to the agents."""
+    if not str(f.get("sig", "")).startswith("oom@"):
+        return None
+    if any(x.get("stage") == s["id"] and x.get("rule") == "oom" for x in t.get("tier0") or []):
+        return None                                           # already resized once: a second OOM is not a sizing problem a rule can settle
+    cname = None
+    for p in job_pods(t["namespace"], s["job"]):
+        for cs in (p.get("status") or {}).get("containerStatuses") or []:
+            term = (cs.get("state") or {}).get("terminated") or (cs.get("lastState") or {}).get("terminated") or {}
+            if term.get("reason") == "OOMKilled":
+                cname = cs.get("name")
+    try:
+        doc = manifest_doc(s["manifest"])
+        cs_ = doc["spec"]["template"]["spec"]["containers"]
+    except Exception:
+        return None
+    c = next((x for x in cs_ if x.get("name") == cname), cs_[0] if len(cs_) == 1 or not cname else None)
+    if c is None:
+        return None
+    res = c.setdefault("resources", {})
+    lim = mem_bytes((res.get("limits") or {}).get("memory") or (res.get("requests") or {}).get("memory") or "")
+    peak = thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted") or now() - 3600)
+    if not lim or peak is None:
+        return None
+    base = max(peak, lim)                                     # an OOM-killed container reached its limit even if the 30 s samples missed it
+    new = base * OOM_FACTOR
+    cap = float(OWNER.get("tier0_mem_cap_gi") or OOM_MAX_GI_DEFAULT) * 2 ** 30
+    if new > cap:
+        return None
+    tol = float(util_policy().get("limit_to_request_tolerance") or 0.2)
+    new_text = mem_text(new)
+    new_b = mem_bytes(new_text)
+    old_req = mem_bytes((res.get("requests") or {}).get("memory") or "") or lim
+    req_b = new_b if old_req >= lim else min(new_b, max(old_req, new_b / (1 + tol)))        # limit stays within the shared tolerance of the request
+    res.setdefault("limits", {})["memory"] = new_text
+    res.setdefault("requests", {})["memory"] = mem_text(req_b)
+    return doc, "OOM at %s (observed peak %.1fGi) -> memory %s (peak x%g, Tier 0 rule)" % (
+        mem_text(lim), peak / 2 ** 30, new_text, OOM_FACTOR), {"rule": "oom", "memory": new_text}
+
+
+def node_fault_of(t, s, f):
+    """(node, evidence) of a pod of this stage's Job that hit a known node fault, else None. Pod status and conditions plus the saved log tail."""
+    tail = ""
+    try:
+        tail = Path(f.get("logs") or "").read_text()[-8000:] if f.get("logs") else ""
+    except OSError:
+        pass
+    pods = job_pods(t["namespace"], s["job"])
+    for p in pods:
+        node = (p.get("spec") or {}).get("nodeName")
+        ps = p.get("status") or {}
+        bits = [ps.get("reason") or "", ps.get("message") or ""]
+        for c in ps.get("conditions") or []:
+            bits.append(c.get("reason") or "")
+            bits.append(c.get("message") or "")
+        for cs in ps.get("containerStatuses") or []:
+            for k in ("state", "lastState"):
+                for v in (cs.get(k) or {}).values():
+                    bits += [(v or {}).get("reason") or "", (v or {}).get("message") or ""]
+        text = " ".join(bits) + "\n" + (tail if len(pods) == 1 else "")     # the log tail names one pod only when there is one
+        m = NODE_FAULT_RE.search(text)
+        if m and node:
+            return node, m.group(0)
+    return None
+
+
+def exclude_node(doc, node):
+    """Add `kubernetes.io/hostname NotIn [node]` to every required node-affinity term of the Job's pod spec (idempotent)."""
+    pod = doc["spec"]["template"]["spec"]
+    na = pod.setdefault("affinity", {}).setdefault("nodeAffinity", {})
+    req = na.setdefault("requiredDuringSchedulingIgnoredDuringExecution", {})
+    terms = req.setdefault("nodeSelectorTerms", [])
+    if not terms:
+        terms.append({})
+    for term in terms:
+        exprs = term.setdefault("matchExpressions", [])
+        e = next((x for x in exprs if x.get("key") == "kubernetes.io/hostname" and x.get("operator") == "NotIn"), None)
+        if e is None:
+            exprs.append({"key": "kubernetes.io/hostname", "operator": "NotIn", "values": [node]})
+        elif node not in e.get("values", []):
+            e["values"] = list(e.get("values", [])) + [node]
+
+
+def tier0_node(t, s, f):
+    hit = node_fault_of(t, s, f)
+    if not hit:
+        return None
+    node, why = hit
+    excluded = [x for x in t.get("tier0") or [] if x.get("stage") == s["id"] and x.get("rule") == "node"]
+    if len(excluded) >= NODE_EXCLUDE_MAX or any(x.get("node") == node for x in excluded):
+        return None
+    try:
+        doc = manifest_doc(s["manifest"])
+        exclude_node(doc, node)
+    except Exception:
+        return None
+    return doc, "known node fault on %s (%s) -> node excluded, resubmitted (Tier 0 rule)" % (node, why[:60]), {"rule": "node", "node": node}
+
+
+def tier0_fix(n, a):
+    """True when a Tier 0 rule edited the manifest and resubmitted the failed stage. Never raises, never starts a model; False hands the
+    failure to handle_failure unchanged (watch-only tasks, repeats, anything over a cap, no rule matched)."""
+    try:
+        t = task_load(n)
+        f = (t or {}).get("failure")
+        if not f or t["mode"] != "auto" or a.dry_run or f.get("cls") not in ("resources", "infra", "code", "unknown"):
+            return False
+        if f["sig"] in [x["sig"] for x in t["attempts"] if x["stage"] == f["stage"]]:
+            return False                                       # the same failure again after a retry: not a rule's call
+        s = tstage(t, f["stage"])
+        if not s.get("manifest"):
+            return False
+        for rule in (tier0_node, tier0_oom):
+            r = rule(t, s, f)
+            if not r:
+                continue
+            doc, reason, rec = r
+            before = Path(s["manifest"]).read_text()
+            manifest_write(s["manifest"], doc)
+            ok, msg = do_submit(n, s["id"], reason, "tier0")
+            if not ok:
+                Path(s["manifest"]).write_text(before)         # nothing was submitted: leave the manifest as it was
+                log("task %s: tier0 %s not applied: %s" % (n, rec["rule"], msg[:200]))
+                return False
+            task_txn(n, lambda t: t.setdefault("tier0", []).append(dict(rec, stage=s["id"], ts=now())))
+            digest("retry", "%s [%s] -> %s" % (s["job"], f["cls"], reason[:250]), n)
+            PASS["tier0"] = PASS.get("tier0", 0) + 1
+            return True
+    except Exception as e:
+        log("task %s: tier0 error: %s: %s" % (n, type(e).__name__, str(e)[:200]))
+    return False
+
+
+def pending_reason(t, s):
+    """One line saying why the scheduler has not started a Pending Job: its PodScheduled message, plus the node restrictions in our own
+    manifest (for example a GPU allow-list) when it reports nodes excluded by affinity/selector."""
+    pods = job_pods(t["namespace"], s["job"])
+    msgs = []
+    for p in pods:
+        for c in (p.get("status") or {}).get("conditions") or []:
+            if c.get("type") == "PodScheduled" and c.get("status") == "False" and c.get("message"):
+                msgs.append(c["message"])
+    if not pods:
+        return "the Job has no pod yet (admission, quota or the Job controller)"
+    if not msgs:
+        return "a pod exists but the scheduler gave no reason yet"
+    msg = " ".join(msgs[0].split())[:300]
+    own = []
+    try:
+        pod = manifest_doc(s["manifest"])["spec"]["template"]["spec"]
+        for term in (((pod.get("affinity") or {}).get("nodeAffinity") or {}).get("requiredDuringSchedulingIgnoredDuringExecution") or {}).get("nodeSelectorTerms") or []:
+            own += ["%s %s %s" % (e.get("key"), e.get("operator"), ",".join(map(str, e.get("values") or []))[:80]) for e in term.get("matchExpressions") or []]
+        own += ["%s=%s" % kv for kv in (pod.get("nodeSelector") or {}).items()]
+    except Exception:
+        pass
+    if own and re.search(r"affinity|selector", msg, re.I):
+        msg += " | our manifest restricts nodes: %s (an own allow-list may be what excludes them)" % "; ".join(own)[:200]
+    return msg
+
+
+def report_long_pending(n, jobs):
+    """Tier 0: a Job Pending longer than PENDING_REPORT_S gets the scheduler's reason recorded once in the task events and the digest
+    (again when the reason changes, or every PENDING_REREPORT_S). Read-only: no resubmit, no deadline change."""
+    try:
+        t = task_load(n)
+        for s in t["stages"]:
+            info = jobs.get(s["job"])
+            # a Job whose pod is unscheduled has active=1, so it reads "running" here; "no pod_started" is what says it never started
+            if s["state"] != "running" or not info or info["state"] not in ("running", "pending") or s.get("pod_started"):
+                continue
+            if now() - s.get("submitted", now()) < PENDING_REPORT_S:
+                continue
+            reason = pending_reason(t, s)
+            last = s.get("pending_report") or {}
+            if last.get("reason") == reason and now() - last.get("at", 0) < PENDING_REREPORT_S:
+                continue
+            msg = "stage %s Job %s Pending %s: %s" % (s["id"], s["job"], ago(s["submitted"]), reason)
+            task_txn(n, lambda t: (tstage(t, s["id"]).update(pending_report={"reason": reason, "at": now()}), tev(t, msg)))
+            digest("pending", msg, n)
+    except Exception as e:
+        log("task %s: pending report error: %s: %s" % (n, type(e).__name__, str(e)[:200]))
+
+
 def handle_failure(n, a):
     """The task escalation ladder. Tier 0: script rules (classification in observe_task, deadline rules, `tier0_timeout`). Tier 1: Haiku
     triage, where a benign answer is possible; 'no fix needed' CLOSES the event. Tier 2: the Sonnet fix agent. Tier 3: the task's
@@ -3571,9 +3881,11 @@ def advance_task(n, jobs, a):
         if not ok:
             task_txn(n, lambda t: t.update(status="retrying"))
     observe_task(n, jobs)
+    report_long_pending(n, jobs)
     t = task_load(n)
     if t.get("failure"):
-        handle_failure(n, a)
+        if not tier0_fix(n, a):                                           # fixed rules first (no model); the agents only when none applies
+            handle_failure(n, a)
         return
     for s in t["stages"]:
         if s["state"] == "pending" and all(tstage(t, x)["state"] == "done" for x in s["after"]):
@@ -4010,8 +4322,10 @@ def plan_sync(path, pid):
     return h
 
 
-def next_steps(h, from_step, ledger=None):
-    """(go, held): steps after `from_step` the continue agent may start, and [(step, why)] for those it may not."""
+def next_steps(h, from_step, ledger=None, parent=None):
+    """(go, held): steps after `from_step` the continue agent may start, and [(step, why)] for those it may not.
+    `parent` = the task whose continue agent is registering: tasks it already registered for a step do not hold that step, so one
+    step can have several tasks (per-cell fan-outs); a step started by anyone else is still held."""
     ledger = ledger if ledger is not None else plan_state(h["plan"])["ledger"]
     if from_step in h["next"]:
         cand = h["next"][from_step]
@@ -4024,7 +4338,7 @@ def next_steps(h, from_step, ledger=None):
             held.append((s, "planned stop for the owner"))
         elif step_pos(h, s) > approved_pos(h):
             held.append((s, "beyond the approved range (approved through %s)" % h["approved_through"]))
-        elif ledger.get(s):
+        elif [e for e in ledger.get(s, []) if not (parent and e.get("by") != "session" and e.get("parent") == parent)]:
             held.append((s, "already started once (task %s); a rerun needs a session" % ledger[s][-1]["task"]))
         else:
             go.append(s)
@@ -4069,12 +4383,11 @@ def check_on_done(od, raw, src_file, by, parent):
                          "(approved_through) first" % (pid, h["approved_through"], step))
     if step in h["stops"]:
         raise ChainError("step %s is a stop for the owner in plan %s: record the owner's decision in the plan and take it out of stop_for_owner first" % (step, pid))
+    # v3: a step may have several tasks (per-cell fan-outs); it counts as done when all of them are (process_continuations).
+    # A session may add another task to a step at any time; a continue agent only to a step it started itself in this run.
     led = plan_state(pid)["ledger"].get(step) or []
-    if by != "session" and led:
+    if by != "session" and [e for e in led if not (e.get("by") != "session" and e.get("parent") == parent)]:
         raise ChainError("step %s of plan %s was already started once (task %s); only a session may rerun it" % (step, pid, led[-1]["task"]))
-    live = [e["task"] for e in led if (task_load(e["task"]) or {}).get("status") in TASK_LIVE + TASK_HELD]
-    if live:
-        raise ChainError("step %s of plan %s is already running as task %s" % (step, pid, live[0]))
     depth = 0
     if parent:
         depth = int(((task_load(parent) or {}).get("on_done") or {}).get("depth", 0)) + 1
@@ -4176,6 +4489,17 @@ def continue_task(n, a):
     close_continuation(n, status, rep.get("line") or line)
 
 
+def step_siblings(t):
+    """The other tasks bound to the same plan step as task `t` (from the plan's ledger), as loaded task dicts; cancelled ones do not count."""
+    od = t["on_done"]
+    out = []
+    for e in plan_state(od["plan"])["ledger"].get(od["from_step"]) or []:
+        o = task_load(e["task"]) if e["task"] != t["name"] else None
+        if o and o.get("status") != "cancelled" and o.get("on_done") and o["on_done"].get("from_step") == od["from_step"]:
+            out.append(o)
+    return out
+
+
 def process_continuations(a, st=None):
     for n in task_names():
         t = task_load(n)
@@ -4186,6 +4510,18 @@ def process_continuations(a, st=None):
             close_continuation(n, "FAILED", "the continue agent never returned (pass crashed or timed out)")
             continue
         if c:
+            continue
+        sib = step_siblings(t)
+        waiting = [x for x in sib if x["status"] in TASK_LIVE + TASK_HELD]
+        if waiting and not a.dry_run:                                   # the step is done only when all its tasks are
+            names = ", ".join(x["name"] for x in waiting)
+            if t.get("step_waits_for") != names:
+                task_txn(n, lambda t: (t.update(step_waits_for=names), tev(t, "step %s is not done: waiting for task(s) %s" % (t["on_done"]["from_step"], names))))
+            continue
+        covered = [x["name"] for x in sib if x.get("continuation")]
+        if covered and not a.dry_run:                                   # one continuation per step: a sibling already ran it
+            task_txn(n, lambda t: (t.update(continuation={"state": "closed", "status": "COVERED", "line": "step %s continued by task %s" % (t["on_done"]["from_step"], covered[0]), "closed": now()}),
+                                   tev(t, "step %s continued by task %s" % (t["on_done"]["from_step"], covered[0]))))
             continue
         try:
             continue_task(n, a)
@@ -4413,7 +4749,7 @@ def tool_next_add(n, t, rest):
         sys.exit("next-add refused: TASK file must be an object")
     h = plan_header(od["plan"])
     step = str((raw.get("on_done") or {}).get("from_step") or "")
-    go, held = next_steps(h, od["from_step"])
+    go, held = next_steps(h, od["from_step"], parent=n)
     if step not in go:
         why = dict(held).get(step, "not a next step of %s" % od["from_step"])
         sys.exit("next-add refused: step %r may not be started automatically (%s). Report WAITING instead." % (step, why))
@@ -4452,10 +4788,11 @@ def tool_next_add(n, t, rest):
     o = t.get("origin") or {}
     raw["origin"] = {k: o[k] for k in ORIGIN_FIELDS if o.get(k)} or None
     raw.pop("mode", None)
+    carry = {k: t["code"][k] for k in ("pkg_dir", "extra_pkg_dirs") if (t.get("code") or {}).get(k)}     # what reship packs stays declared
     if cc:
-        raw["code"] = {"repo": cc["dir"], "commit": head, "subdir": cc["subdir"]}      # pinned: the new task runs exactly this commit
+        raw["code"] = dict({"repo": cc["dir"], "commit": head, "subdir": cc["subdir"]}, **carry)      # pinned: the new task runs exactly this commit
     elif t.get("code"):
-        raw["code"] = {"repo": t["code"]["clone"], "subdir": (raw.get("code") or {}).get("subdir") or t["code"].get("subdir") or ""}
+        raw["code"] = dict({"repo": t["code"]["clone"], "subdir": (raw.get("code") or {}).get("subdir") or t["code"].get("subdir") or ""}, **carry)
     else:
         raw.pop("code", None)
     rc = task_add_raw(raw, str(p), by="continuation", parent=n)
@@ -4633,6 +4970,38 @@ def cmd_task_watch(a):
     return 0
 
 
+def cmd_task_code(a):
+    """`task code NAME [--pkg-dir D] [--extra-pkg-dir D ...] [--replace]`: declare the code dirs `nrp-task reship` packs for a task registered
+    without them (for example finetune/ from another repo). Relative = inside the task's clone (added to its sparse checkout), absolute = another checkout."""
+    t = task_load(a.name)
+    if not t or not t.get("code"):
+        sys.exit("no task %s with a code clone" % a.name)
+    code = dict(t["code"])
+    if a.pkg_dir:
+        code["pkg_dir"] = a.pkg_dir
+    new = list(a.extra_pkg_dir or [])
+    code["extra_pkg_dirs"] = new if a.replace else list(code.get("extra_pkg_dirs") or []) + [x for x in new if x not in (code.get("extra_pkg_dirs") or [])]
+    bad = code_dirs_check(code)
+    if bad:
+        sys.exit("task code refused: " + "; ".join(bad))
+    clone = Path(code["clone"])
+    for x in code["extra_pkg_dirs"]:
+        if not os.path.isabs(os.path.expanduser(x)) and not (clone / x).is_dir() and code.get("subdir"):
+            git("sparse-checkout", "add", x, cwd=str(clone))
+            git("checkout", "-q", cwd=str(clone))
+        if not os.path.isabs(os.path.expanduser(x)) and not (clone / x).is_dir():
+            sys.exit("task code refused: %s is not in the task's code clone %s (it must be committed in %s)" % (x, clone, code["repo"]))
+    try:
+        reship_dirs(code)
+    except ChainError as e:
+        sys.exit("task code refused: %s" % e)
+    if not task_txn(a.name, lambda t: (t["code"].update({k: code[k] for k in ("pkg_dir", "extra_pkg_dirs") if code.get(k)}),
+                                      tev(t, "code dirs declared by operator: pkg %s, extra %s" % (code.get("pkg_dir") or "default", ", ".join(code["extra_pkg_dirs"]) or "none")))):
+        sys.exit("no task %s" % a.name)
+    print("task %s: reship packs %s%s" % (a.name, code.get("pkg_dir") or "predictor_v3 (default)", " + " + ", ".join(code["extra_pkg_dirs"]) if code["extra_pkg_dirs"] else ""))
+    return 0
+
+
 def cmd_task_show(a):
     t = task_load(a.name)
     if not t:
@@ -4642,6 +5011,8 @@ def cmd_task_show(a):
     print("goal: %s\napproved: %s\norigin: %s" % (t["goal"], t["approved"], origin_plain(t.get("origin"), "no chat recorded; goal and code repo above identify it")))
     if t.get("reason"):
         print("reason: " + t["reason"])
+    if (t.get("code") or {}).get("extra_pkg_dirs") or (t.get("code") or {}).get("pkg_dir"):
+        print("code dirs reship packs: pkg %s; extra %s" % (t["code"].get("pkg_dir") or "default", ", ".join(t["code"].get("extra_pkg_dirs") or []) or "none"))
     if t.get("failure"):
         f = t["failure"]
         print("failure: stage %s [%s] %s\n  logs: %s" % (f["stage"], f["cls"], f["detail"], f.get("logs")))
@@ -4821,6 +5192,29 @@ def cmd_origin(a):
 
 
 # ---- nrp-task: the fix agent's only shell tool -------------------------------------------------------------------
+def reship_dirs(code):
+    """(primary package dir, [extra package dirs]) that `nrp-task reship` packs: everything the task's code declares.
+    Primary = code.pkg_dir, else code.subdir when it is the predictor_v3 folder, else <clone>/predictor_v3. Extras = code.extra_pkg_dirs
+    (relative = inside the clone, absolute = another checkout read in place). Raises ChainError when something declared is missing."""
+    clone = Path(code["clone"])
+
+    def res(x):
+        p = Path(os.path.expanduser(x))
+        return p if p.is_absolute() else clone / x
+    if code.get("pkg_dir"):
+        pkg = res(code["pkg_dir"])
+    else:
+        sub = clone / (code.get("subdir") or "")
+        pkg = sub if sub.name == "predictor_v3" else clone / "predictor_v3"
+    if not pkg.is_dir() or pkg.name != "predictor_v3":
+        raise ChainError("needs the predictor_v3 package folder (code.subdir, <clone>/predictor_v3, or code.pkg_dir); got %s" % pkg)
+    extras = [res(x) for x in code.get("extra_pkg_dirs") or []]
+    for x in extras:
+        if not x.is_dir():
+            raise ChainError("code.extra_pkg_dirs: %s does not exist in the clone (commit it, or check the path)" % x)
+    return pkg.resolve(), [x.resolve() for x in extras]
+
+
 def cmd_tool(a):
     n = os.environ.get("NRP_TASK", "")
     t = task_load(n)
@@ -4904,9 +5298,10 @@ def cmd_tool(a):
         spec_uri = pv3_spec_uri(jobs[j]["manifest"])
         if not spec_uri:
             sys.exit("Job %s does not run from an S3 spec (no `--spec s3://...` in its command): nothing to reship" % j)
-        pkg = Path(t["code"]["clone"]) / (t["code"].get("subdir") or "")
-        if pkg.name != "predictor_v3" or not pkg.is_dir():
-            sys.exit("reship needs code.subdir to be the predictor_v3 package folder, got %s" % pkg)
+        try:
+            pkg, extras = reship_dirs(t["code"])
+        except ChainError as e:
+            sys.exit("reship refused: %s" % e)
         r = subprocess.run(aws_cmd() + ["s3", "cp", spec_uri, "-"], capture_output=True, text=True, timeout=180, env=aws_env())
         try:
             spec = json.loads(r.stdout)
@@ -4916,17 +5311,22 @@ def cmd_tool(a):
         tgz = WORK / "task" / ("%s-reship.tgz" % j)
         tgz.parent.mkdir(parents=True, exist_ok=True)
         py = os.environ.get("NRP_TASK_PYTHON") or (str(CODE_PYTHON) if CODE_PYTHON and CODE_PYTHON.exists() else sys.executable)
-        snippet = ("import json,sys,pathlib; clone,pkg,out=sys.argv[1:4]; sys.path.insert(0,clone); "
-                   "from predictor_v3.utils.jobs import codeship; b=codeship.build(pathlib.Path(pkg)); "
+        # the same `codeship.build` the original --ship-code used, from the package's own checkout; extra dirs are packed beside
+        # predictor_v3/ exactly as at submission (PV3_CODE_EXTRA_PACKAGES layout), so the pod's imports resolve the same way
+        snippet = ("import json,sys,pathlib; pkg,out=sys.argv[1:3]; extras=[pathlib.Path(x) for x in sys.argv[3:]]; "
+                   "sys.path.insert(0,str(pathlib.Path(pkg).parent)); "
+                   "from predictor_v3.utils.jobs import codeship; "
+                   "b=codeship.build(pathlib.Path(pkg), **({'extra_pkg_dirs': tuple(extras)} if extras else {})); "
                    "pathlib.Path(out).write_bytes(b.data); print(json.dumps({'sha256':b.sha256,'n':b.n_files,'skipped':list(b.skipped)}))")
-        b = subprocess.run([py, "-c", snippet, t["code"]["clone"], str(pkg), str(tgz)], capture_output=True, text=True, timeout=300,
-                           cwd=t["code"]["clone"], env=dict(clean_env(), PYTHONPATH=t["code"]["clone"]))
+        b = subprocess.run([py, "-c", snippet, str(pkg), str(tgz), *map(str, extras)], capture_output=True, text=True, timeout=300,
+                           cwd=str(pkg.parent), env=dict(clean_env(), PYTHONPATH=str(pkg.parent)))
         if b.returncode:
-            sys.exit("could not pack the clone's code: %s" % (b.stderr.strip() or b.stdout.strip())[-400:])
+            sys.exit("could not pack the task's code (%s): %s" % (", ".join(x.name for x in [pkg] + extras), (b.stderr.strip() or b.stdout.strip())[-400:]))
         info = json.loads(b.stdout.strip().splitlines()[-1])
         new_uri = old.rsplit("/", 1)[0] + "/%s.tgz" % info["sha256"][:16]
         if info["sha256"] == spec["code"].get("sha256"):
-            print("the clone's code is identical to what %s already runs (%s); nothing to reship" % (j, info["sha256"][:16]))
+            print("the task's code (%s) is identical to what %s already runs (%s); nothing to reship"
+                  % (", ".join(x.name for x in [pkg] + extras), j, info["sha256"][:16]))
             return 0
         for src, dst in ((str(tgz), new_uri),):
             u = subprocess.run(aws_cmd() + ["s3", "cp", src, dst], capture_output=True, text=True, timeout=300, env=aws_env())
@@ -4937,9 +5337,9 @@ def cmd_tool(a):
                            capture_output=True, text=True, timeout=180, env=aws_env())
         if u.returncode:
             sys.exit("could not rewrite %s: %s" % (spec_uri, u.stderr.strip()[:200]))
-        task_txn(n, lambda t: tev(t, "reshipped code for %s: %s (%d files) -> %s" % (j, info["sha256"][:16], info["n"], spec_uri)))
-        print("reshipped: %s now runs code %s (%d files%s); spec %s rewritten. Resubmit with `nrp-task submit %s --reason ...`."
-              % (j, info["sha256"][:16], info["n"], ", left out for size: %s" % ", ".join(info["skipped"]) if info["skipped"] else "", spec_uri, j))
+        task_txn(n, lambda t: tev(t, "reshipped code for %s: %s (%d files; dirs %s) -> %s" % (j, info["sha256"][:16], info["n"], ", ".join(x.name for x in [pkg] + extras), spec_uri)))
+        print("reshipped: %s now runs code %s (%d files from %s%s); spec %s rewritten. Resubmit with `nrp-task submit %s --reason ...`."
+              % (j, info["sha256"][:16], info["n"], ", ".join(x.name for x in [pkg] + extras), ", left out for size: %s" % ", ".join(info["skipped"]) if info["skipped"] else "", spec_uri, j))
         return 0
     if c == "commit":
         if not t.get("code") or not rest:
@@ -5466,6 +5866,12 @@ def main():
     x = tk.add_parser("watch", help="set one task to watch mode when no watchdog pass is running")
     x.add_argument("name")
     x.set_defaults(f=cmd_task_watch)
+    x = tk.add_parser("code", help="declare the code dirs `nrp-task reship` packs (pkg dir + extra package dirs, e.g. finetune/ from another repo)")
+    x.add_argument("name")
+    x.add_argument("--pkg-dir", metavar="DIR", help="the predictor_v3 package folder when it is not in the clone (absolute path)")
+    x.add_argument("--extra-pkg-dir", action="append", metavar="DIR", help="an extra package folder to ship beside predictor_v3 (repeatable; relative = in the clone)")
+    x.add_argument("--replace", action="store_true", help="replace the declared extra dirs instead of adding")
+    x.set_defaults(f=cmd_task_code)
     x = tk.add_parser("resume", help="after the owner (or the coordinator chat) decides: clear NEEDS_OWNER / WITH_COORDINATOR, resubmit the failed stage (edit tasks/<t>/manifests first), budgets restart")
     x.add_argument("name")
     x.add_argument("--skip", action="append", metavar="STAGE", help="treat STAGE as done instead")
