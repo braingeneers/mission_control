@@ -111,7 +111,7 @@ Before submission, ask for or confirm:
 ### 4) Monitor and debug
 
 - Use `/.agent/workflows/monitor-job.md`.
-- For approved work that will run unattended, register it with the `nrp-monitor` skill (when installed) instead of polling. A model never waits or polls: a script (Tier 0) tracks states, markers and utilization against these rules and applies fixed repairs; what it cannot classify goes to Tier 1 triage (a configurable cheap backend, e.g. Gemini Flash or Haiku; "no fix needed" closes the event), then a Tier 2 Sonnet fixer, then Tier 3, a wake of the task's own coordinator chat in Claude Code, Codex or T3 (one wake per plan step, plus escalations). The owner is told only when that chat runs `task needs-owner`; a timeout never pages directly. `task add` needs an origin (the coordinator chat), and the registering agent writes this ladder into its handoff. `nrp-monitor setup` chooses the backend for each tier.
+- For approved work that will run unattended, register it with the `nrp-monitor` skill (when installed) instead of polling. A model never waits or polls: a script (Tier 0) tracks states, markers and utilization against these rules and applies fixed repairs; what it cannot classify goes to Tier 1 triage judge (the user's chosen runner; CLOSE or ESCALATE only), then a Tier 2 fixer (also chosen by the user), then Tier 3, a wake of the task's own coordinator chat in Claude Code, Codex or T3 (one wake per plan step, plus escalations). The owner is told only when that chat runs `task needs-owner`; a timeout never pages directly. `task add` needs an origin (the coordinator chat), and the registering agent writes this ladder into its handoff. `nrp-monitor setup` chooses the backend for each tier.
 - Capture job/pod status and recent logs after submission.
 - Delete finished/failed jobs when requested.
 
@@ -133,3 +133,7 @@ above `smoke_max_jobs` in nrp-cluster's shared utilization-policy.json (default 
 the script cannot infer the largest input. After a successful profile, the Tier 2 fixer or coordinator chat decides
 the full size within the plan's approved limits and explicitly registers it. Do not register speculative full fan-outs
 behind profile stages.
+
+## Memory LOW review
+
+A utilization flag alone never fails or holds a healthy running task stage. For memory (20–150% of request), skip LOW review during ramp-up: 25% of measured stage runtime, or 30 minutes without history. Use whole-life per-pod Thanos peaks and recorded OOM limits: need is their maximum, right is ceil(need*1.25) Gi. A request <=1.2*right is sized correctly. Otherwise the fixer updates the manifest for retries/later runs; resubmit running work only when resumable and more than two measured hours remain. A max/median peak spread >3 with completed low pods below 20% throughout their lives calls for input size groups. The triage judge receives all numbers and returns CLOSE or ESCALATE; only the fixer changes anything. Missing peaks require review. Example: 12Gi request, peaks 4.5–7.7Gi, earlier OOM at 6Gi => need 7.7, right 10Gi, sized correctly; a 1.2Gi mean at 17 minutes is still ramp-up.

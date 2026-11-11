@@ -108,7 +108,7 @@ class LadderTests(Ladder):
         self.run_pass()
         self.set_job("t1-a", state="running", started=time.time() - 120)
         self.inject_failure()
-        self.triage_says("BENIGN: the pod started 2 min ago and is writing logs")
+        self.triage_says("CLOSE: the pod started 2 min ago and is writing logs")
         self.run_pass()
         t = self.task()
         self.assertEqual(t["status"], "running")
@@ -127,7 +127,7 @@ class LadderTests(Ladder):
         self.run_pass()
         self.set_job("t1-a", state="running", started=time.time() - 120)
         self.inject_failure()
-        self.triage_says("NO_FIX_NEEDED: running normally")
+        self.triage_says("CLOSE: running normally")
         self.run_pass()
         self.assertEqual(self.task()["status"], "running")
         args = json.loads((self.fake / "claude_args.log").read_text().splitlines()[0])
@@ -138,25 +138,26 @@ class LadderTests(Ladder):
         self.assertNotIn("Bash(nrp-task:*)", allowed)
 
     def test_benign_on_a_dead_job_is_refused_by_the_script(self):
-        """The script decides, not the verdict: a BENIGN for a Job that failed and left no outputs goes on to Tier 2."""
+        """The script decides, not the verdict: a CLOSE for a Job that failed and left no outputs goes on to Tier 2."""
         self.add()
         self.unknown_failure()
-        self.triage_says("BENIGN: looks fine to me")
+        self.triage_says("CLOSE: looks fine to me")
         self.sonnet_plan_stop()
         self.run_pass()
         self.assertEqual(len(self.prompts()), 2)
         self.assertIn("refused to close", self.events())
         self.assertEqual(self.task()["status"], "NEEDS_OWNER")             # no webhook here: the fallback
 
-    def test_util_failures_skip_tier_1(self):
+    def test_util_failures_receive_judge_review(self):
         """Tier 2's UTIL_OK waiver is the util 'no fix needed' path; Haiku is not asked about NRP-counted utilization."""
         self.add()
         self.run_pass()
         self.set_job("t1-a", state="running", started=time.time() - 120)
         self.inject_failure(cls="util", sig="util:cpu@512Mi", detail="pod outside NRP utilization bands")
+        self.triage_says("ESCALATE: resize needs review")
         self.sonnet_plan_stop("STOPPED: resize needed")
         self.run_pass()
-        self.assertEqual(self.agent_models(), ["sonnet"])
+        self.assertEqual(self.agent_models(), ["haiku", "sonnet"])
 
     # ---------------------------------------------------------------- Tier 2: Sonnet fix after Haiku escalates
     def test_haiku_escalates_then_sonnet_fixes_silently(self):

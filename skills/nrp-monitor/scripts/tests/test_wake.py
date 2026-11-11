@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_isolation import wake_env
 import test_agent_runners as TA  # noqa: E402  (load_module: the script as a module)
 
 SID_C = "11111111-2222-3333-4444-555555555555"
@@ -44,7 +45,9 @@ class Base(unittest.TestCase):
             (self.bin / n).chmod(0o755)
         self.chat_dir = self.tmp / "chat"
         self.chat_dir.mkdir()
-        self.env = patch.dict(os.environ, {"PATH": "%s:%s" % (self.bin, os.environ["PATH"])})
+        self.env = patch.dict(os.environ, dict(wake_env(self.tmp), PATH="%s:/usr/bin:/bin" % self.bin,
+                                             NRP_MONITOR_CLAUDE_BIN=str(self.bin / "claude"),
+                                             NRP_MONITOR_CODEX_BIN=str(self.bin / "codex")))
         self.env.start()
         self.addCleanup(self.env.stop)
         for name in ("log", "digest", "push", "push_clear"):
@@ -225,7 +228,7 @@ class Delivery(Base):
     def test_missing_cli_is_a_failed_delivery_not_a_crash(self):
         self.task(harness="claude")
         self.w.task_txn("t1", lambda t: self.w.queue_task_webhook(t, "done"))
-        with patch.dict(os.environ, {"PATH": "/nonexistent"}):
+        with patch.dict(os.environ, {"PATH": "/nonexistent", "NRP_MONITOR_CLAUDE_BIN": "/nonexistent/fake-claude"}):
             self.deliver()
         self.assertEqual(len(self.outbox()), 1)
         self.assertEqual(list(self.w.task_load("t1")["wake_tries"].values()), [1])
@@ -425,7 +428,7 @@ class AddFlags(unittest.TestCase):
         self.assertEqual(rc, 0, err)
         rc, out, err = self.add_with("t2", origin={"title": "t3 chat", "link": "t3-thread://v2/e/t", "harness": "t3"})
         self.assertEqual(rc, 0, err)
-        self.assertIn("NO wake target", out, "a T3 origin without a webhook file has nowhere to wake yet")
+        self.assertIn("T3 CLI thread t", out, "a T3 link is wakeable without a webhook")
 
     def test_origin_command_can_bind_the_session_later(self):
         self.add("t1")

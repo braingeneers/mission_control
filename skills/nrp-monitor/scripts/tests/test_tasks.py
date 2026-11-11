@@ -12,11 +12,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from test_isolation import wake_env
+
 HERE = Path(__file__).resolve().parent.parent
 SCRIPT = os.environ.get("MONITOR", str(HERE / "nrp-monitor"))
 USER = "http://cilogon.org/serverE/users/100000"
 
-TEST_ORIGIN = {"title": "test chat", "link": "t3-thread://v2/test-env/test-thread"}
+TEST_ORIGIN = {"title": "test chat", "link": "https://example.test/chat/test-thread"}
 
 FAKE_KUBECTL = r'''#!/usr/bin/env python3
 import json, os, sys, time
@@ -162,14 +164,16 @@ class T(unittest.TestCase):
         for n, body in (("kubectl", FAKE_KUBECTL), ("aws", FAKE_AWS), ("osascript", FAKE_OSA), ("claude", FAKE_CLAUDE)):
             (self.bin / n).write_text(body)
             os.chmod(self.bin / n, 0o755)
+        (self.bin / "python3").symlink_to(sys.executable)
         shutil.copy(SCRIPT, self.bin / "nrp-monitor")
         shutil.copy(HERE / "nrp-task", self.bin / "nrp-task")
         shutil.copytree(HERE / "templates", self.state / "templates")
         (self.fake / "cluster.json").write_text('{"jobs": {}}')
         (self.fake / "s3.json").write_text("[]")
-        self.env = {"PATH": "%s:/usr/bin:/bin" % self.bin, "HOME": str(Path.home()), "NRP_MONITOR_OWNER_NAME": "Sam", "FAKE_DIR": str(self.fake),
+        self.env = {"PATH": "%s:/usr/bin:/bin" % self.bin, "HOME": str(self.tmp), "NRP_MONITOR_OWNER_NAME": "Sam", "FAKE_DIR": str(self.fake),
                     "NRP_MONITOR_STATE": str(self.state), "NRP_TASK_CACHE": str(self.tmp / "cache"),
                     "NRP_MONITOR_NO_PUSH": "1", "NRP_MONITOR_SLACK_URL": "http://127.0.0.1:9/never"}
+        self.env.update(wake_env(self.tmp))
         # a code repo with a bug
         self.repo = self.tmp / "repo"
         (self.repo / "job").mkdir(parents=True)

@@ -26,8 +26,8 @@ v2 (owner decision 2026-11-05, design docs/design.md): approved work is a TASK.
   another task's success marker; `task show` lists them as waiting-on).
   A pass submits ready stages, checks done_s3, saves logs and deletes finished Jobs, classifies a failure (resources, util,
   code, queue, infra, outputs, unknown, slow, repeated) and runs the escalation ladder: Tier 0 script rules (incl. deadline extension,
-  queue-time credit, one 2x resubmit of a `resumable` stage), Tier 1 Haiku triage (templates/task_triage.md; BENIGN / NO_FIX_NEEDED close
-  the event), Tier 2 ONE fresh Sonnet fix agent (templates/task_agent.md) within the retry budget, Tier 3 the task's coordinator chat
+  queue-time credit, one 2x resubmit of a `resumable` stage), Tier 1 triage judge (templates/task_triage.md; CLOSE closes
+  the event), Tier 2 ONE fresh fixer (templates/task_agent.md) within the retry budget, Tier 3 the task's coordinator chat
   (status WITH_COORDINATOR, an `escalation` webhook event; the chat runs `task resume` or `task needs-owner`). Retries are silent.
   NEEDS_OWNER (the chat's `task needs-owner`, no webhook / undeliverable or unanswered wake, watch-only, GPU approval, blocked 6 h)
   sends ONE push: a Slack DM to the owner (notification-service, ~/.ssh/braingeneers_jwt_token.json) plus a Claude
@@ -258,7 +258,7 @@ CODE_SKIP = (".git", "__pycache__", ".pytest_cache", "results", "node_modules")
 CLONE_SUFFIXES = frozenset({".py", ".yaml", ".yml", ".json", ".lock", ".txt", ".csv", ".ini", ".md", ".R", ".sh"})   # source and config; same idea as pv3 --ship-code
 CLONE_MAX_FILE = 2 * 1024 * 1024
 CODE_SKIP_EXT = (".pt", ".npz", ".npy", ".pth", ".safetensors", ".h5", ".nwb", ".fasta", ".fa", ".gz", ".tgz", ".zip")
-FLAG = re.compile(r"^(LOW|STUCK|FAILED) (?!checked \d+ pods)(\S+?):?(?:\s|$)")
+FLAG = re.compile(r"^(LOW|HIGH|STUCK|FAILED) (?!checked \d+ pods)(\S+?):?(?:\s|$)")
 ACCT = re.compile(r"account: (\d+) of (\d+) running pods outside NRP bands")
 
 
@@ -301,7 +301,7 @@ def save(d):
 # the goal and code repo so the person can still find the owner.
 ORIGIN_MISSING = "origin not recorded"
 ORIGIN_FIELDS = ("title", "link", "assistant", "collaborator", "note", "evidence", "harness", "session", "cwd")
-# v3: the origin also says HOW to wake that same chat. `harness` is t3 (the task's webhook relay, link = the T3 thread), claude (a Claude Code
+# v3: the origin also says HOW to wake that same chat. `harness` is t3 (CLI or webhook, link = the T3 thread), claude (a Claude Code
 # session id, resumed with `claude -p --resume ID`) or codex (a Codex session id, `codex exec resume ID`). `session` is that id and `cwd` the
 # directory the chat ran in (Claude Code finds a session by its project directory). A wake lands in that chat's own history; it never starts one.
 ORIGIN_HARNESSES = ("t3", "claude", "codex")
@@ -381,7 +381,7 @@ def add_origin_args(p):
     p.add_argument("--origin-assistant", help="assistant and model of that chat, e.g. 'Codex gpt-6-astra' (optional)")
     p.add_argument("--origin-collaborator", help="person the chat works with (default: the owner_name setting)")
     p.add_argument("--origin-harness", choices=ORIGIN_HARNESSES,
-                   help="where the chat runs, so the monitor wakes THAT chat: t3 (webhook + link), claude (Claude Code session), codex (Codex session)")
+                   help="where the chat runs, so the monitor wakes THAT chat: t3 (thread link or webhook), claude (Claude Code session), codex (Codex session)")
     p.add_argument("--origin-session", help="session id of the claude/codex chat to wake (default: read from CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID)")
     p.add_argument("--origin-cwd", help="directory the claude/codex chat runs in (default: the current directory); Claude Code finds sessions by it")
 
@@ -511,7 +511,8 @@ def notify(msg, state=None, key=None, dry=False, ref="-"):
 # ---- headless agents -----------------------------------------------------------------------------------------
 def clean_env():
     keep = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "SHELL", "KUBECONFIG", "XDG_CONFIG_HOME",
-            "NRP_MONITOR_STATE", "NRP_TASK_CACHE", "NRP_MONITOR_NO_PUSH", "NRP_MONITOR_S3_ENDPOINT", "NRP_TASK_PYTHON")
+            "NRP_MONITOR_STATE", "NRP_MONITOR_TESTING", "NRP_MONITOR_NO_WAKE", "NRP_MONITOR_T3_BIN",
+            "NRP_MONITOR_CLAUDE_BIN", "NRP_MONITOR_CODEX_BIN", "NRP_TASK_CACHE", "NRP_MONITOR_NO_PUSH", "NRP_MONITOR_S3_ENDPOINT", "NRP_TASK_PYTHON")
     return {k: v for k, v in os.environ.items() if k in keep}
 
 
@@ -863,7 +864,7 @@ def exec_codex(spec, prompt, cwd, timeout, env):
         os.symlink(str(auth), str(home / "auth.json"))
         (home / "rules" / "monitor.rules").write_text(codex_rules(spec["allowed"]))
         last = home / "last.txt"
-        argv = ["codex", "exec", "-s", "workspace-write", "-c", 'approval_policy="never"',
+        argv = ["codex", "exec", "-s", "read-only" if spec["tier"] == "triage" else "workspace-write", "-c", 'approval_policy="never"',
                 "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true", "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
                 "--skip-git-repo-check", "--ephemeral", "-C", str(cwd), "-o", str(last)]
         for d in codex_writable(spec["allowed"]):
@@ -2390,7 +2391,7 @@ TASK_CACHE = Path(os.environ.get("NRP_TASK_CACHE") or Path.home() / ".cache/nrp-
 TASK_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 CLASS_BUDGET = {"resources": 3, "util": 3, "code": 3, "queue": 2, "infra": 2, "outputs": 1, "unknown": 1}
 TASK_LIVE = ("running", "retrying", "blocked")
-TASK_HELD = ("NEEDS_OWNER", "WITH_COORDINATOR")      # not advanced by a pass: waiting on the owner, or on the task's coordinator chat (Tier 3)
+TASK_HELD = ("NEEDS_OWNER", "WITH_COORDINATOR")      # completion is still observed while waiting for a decision
 WAKE_MAX_TRIES = 6                                   # a coordinator wake that fails this many passes (~30 min) falls back to NEEDS_OWNER
 COORD_STALE_S = 24 * 3600                            # a delivered wake nobody answered for this long falls back to NEEDS_OWNER
 # Tier 0 deadline rules (no model). activeDeadlineSeconds counts from Job start INCLUDING time spent Pending.
@@ -2715,13 +2716,16 @@ def handoff_prompt(t):
 
 
 def wake_target(t):
-    """How to wake the chat that owns task `t`, or None. The origin's harness decides: claude / codex -> resume that session; otherwise
-    the task's webhook relay (T3), which exists only when an operator configured it. Never a new thread."""
+    """Resume a recorded session, use the preferred T3 webhook, or send to the recorded T3 thread through its CLI."""
     o = t.get("origin") or {}
     if o.get("harness") in ("claude", "codex") and o.get("session"):
         return {"harness": o["harness"], "session": o["session"], "cwd": o.get("cwd") or ""}
     if (STATE / "webhooks" / t["name"]).exists():
         return {"harness": "t3"}
+    link = str(o.get("link") or "").strip().strip("<>")
+    match = re.fullmatch(r"t3-thread://v2/[^/\s]+/([^/\s]+)", link)
+    if match:
+        return {"harness": "t3-cli", "session": match.group(1)}
     return None
 
 
@@ -2855,10 +2859,9 @@ def wake_session(target, text, timeout=None):
     if h == "claude" and claude_session_open(target["session"]):
         raise WakeError("claude coordinator session is open or recently active; deferred to avoid a fork")
     cwd = target.get("cwd") if target.get("cwd") and os.path.isdir(target["cwd"]) else str(Path.home())
-    if shutil.which(h, path=clean_env().get("PATH")) is None:
-        raise WakeError("%s is not installed on this machine" % h)
+    binary = wake_binary(h)
     try:
-        r = subprocess.run(wake_argv(target), input=text, capture_output=True, text=True, cwd=cwd, env=clean_env(), timeout=timeout or WAKE_TIMEOUT_S)
+        r = subprocess.run([binary] + wake_argv(target)[1:], input=text, capture_output=True, text=True, cwd=cwd, env=clean_env(), timeout=timeout or WAKE_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         raise WakeError("%s resume timed out after %ds" % (h, timeout or WAKE_TIMEOUT_S))
     except OSError as e:
@@ -2878,11 +2881,46 @@ def wake_session(target, text, timeout=None):
             raise WakeError("claude resume reported an error: %s" % " ".join(str(res.get("result") or "").split())[:160])
 
 
-WAKE_EXEC = {"claude": wake_session, "codex": wake_session}     # tests replace these; the T3 relay is the webhook path below
+def wake_test_mode():
+    """Scratch state never discovers installed wake clients, even if a harness forgets its environment guard."""
+    return bool(os.environ.get("NRP_MONITOR_TESTING")) or STATE.resolve().is_relative_to(Path(tempfile.gettempdir()).resolve())
+
+
+def wake_binary(harness):
+    """Tests may execute only an explicit binary. Normal installs retain CLI discovery."""
+    if os.environ.get("NRP_MONITOR_NO_WAKE"):
+        raise WakeError("wake delivery disabled")
+    override = os.environ.get("NRP_MONITOR_%s_BIN" % harness.upper())
+    if override:
+        return override
+    if wake_test_mode():
+        raise WakeError("test wake requires an explicit %s binary" % harness)
+    if harness == "t3":
+        local = Path.home() / ".t3/bin/t3"
+        if local.is_file():
+            return str(local)
+    binary = shutil.which(harness, path=clean_env().get("PATH"))
+    if not binary:
+        raise WakeError("%s binary unavailable" % harness)
+    return binary
+
+
+def wake_t3(target, text):
+    binary = wake_binary("t3")
+    try:
+        r = subprocess.run([binary, "thread", "send", target["session"], "-"], input=text,
+                           capture_output=True, text=True, env=clean_env(), timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise WakeError("t3 unavailable (%s)" % type(e).__name__)
+    if r.returncode:
+        raise WakeError("t3 unavailable (rc %d)" % r.returncode)
+
+
+WAKE_EXEC = {"claude": wake_session, "codex": wake_session, "t3-cli": wake_t3}     # tests replace these; the T3 relay is the webhook path below
 
 
 def process_task_webhooks(a, st):
-    if a.dry_run:
+    if a.dry_run or os.environ.get("NRP_MONITOR_NO_WAKE"):
         return
     opener = urllib.request.build_opener(NoWebhookRedirect())
     for n in task_names():
@@ -3294,6 +3332,12 @@ def validate_task(raw, warn, plan_gpu=None):
             res = None
         stage = {"id": sid, "job": job, "manifest": os.path.expanduser(m) if isinstance(m, str) else None,
                  "after": after, "done_s3": d3, "state": st0, "attempt": 1}
+        runtime = s.get("measured_runtime_seconds")
+        if runtime is not None:
+            if isinstance(runtime, (int, float)) and not isinstance(runtime, bool) and runtime > 0:
+                stage["measured_runtime_seconds"] = runtime
+            else:
+                bad.append("%s: measured_runtime_seconds must be a positive measured stage runtime" % w)
         if smoke:
             stage["purpose"] = "profile" if purpose == "profile" or s.get("profile") else "smoke"
         if res:
@@ -3435,7 +3479,7 @@ def task_add_raw(raw, src_file, by="session", parent=None):
     tgt = wake_target(t)
     print("Wake: %s. The monitor wakes that same chat (never a new thread) once per finished plan step and, as a last resort, when its own "
           "subagents cannot fix a failure; nothing else wakes it." % (
-          {"t3": "T3 webhook relay", "claude": "Claude Code session %s" % (tgt or {}).get("session"),
+          {"t3": "T3 webhook relay", "t3-cli": "T3 CLI thread %s" % (tgt or {}).get("session"), "claude": "Claude Code session %s" % (tgt or {}).get("session"),
            "codex": "Codex session %s" % (tgt or {}).get("session")}[tgt["harness"]] if tgt else
            "NO wake target (no webhook, no --origin-harness/--origin-session): a failure that needs the chat goes to the owner instead"))
     if htext is None or hthin or handoff_escalation_missing(htext):
@@ -3604,6 +3648,8 @@ def do_submit(n, sid, reason, by):
         s2.pop("pod_started", None)
         s2["dl"] = {"resubmits": (s2.get("dl") or {}).get("resubmits", 0)}      # a new Job gets fresh deadline tracking (Tier 0, deadline_watch)
         s2.pop("util_deleted", None)
+        if (t.get("util_event") or {}).get("stage") == sid:
+            t.pop("util_event", None)
         t.pop("pending", None)
         t["status"] = "retrying" if retry or t["status"] == "retrying" else "running"
         tev(t, "submitted %s (attempt %d) by %s: %s" % (s2["job"], s2["attempt"], by, reason[:200]))
@@ -3792,15 +3838,15 @@ def tier0_timeout(n, f):
     return True
 
 
-# ---- Tier 1 (Haiku triage) ----
-TRIAGE_VERDICT_RE = re.compile(r"^[ \t>*_`#-]*(BENIGN|NO_FIX_NEEDED|ESCALATE)\b[ \t*_`]*:?[ \t*_`]*(.*)$", re.M)
-TRIAGE_CLOSE = ("BENIGN", "NO_FIX_NEEDED")
+# ---- Tier 1 (triage judge) ----
+TRIAGE_VERDICT_RE = re.compile(r"^[ \t>*_`#-]*(CLOSE|ESCALATE)\b[ \t*_`]*:?[ \t*_`]*(.*)$", re.M)
+TRIAGE_CLOSE = ("CLOSE",)
 
 
 def triage_verdict(text):
-    """(verdict, text) from the LAST verdict line of Haiku's answer. Anything else fails closed to ESCALATE."""
-    ms = list(TRIAGE_VERDICT_RE.finditer(text or ""))
-    if not ms:
+    """(verdict, text) from the LAST verdict line of the judge's answer. Anything else fails closed to ESCALATE."""
+    ms = list(TRIAGE_VERDICT_RE.finditer((text or "").strip().splitlines()[-1] if (text or "").strip() else ""))
+    if not ms or not ms[-1].group(2).strip():
         return "ESCALATE", "no verdict line in the triage answer"
     return ms[-1].group(1), " ".join(ms[-1].group(2).replace("*", "").replace("`", "").split())[:300]
 
@@ -3808,9 +3854,9 @@ def triage_verdict(text):
 def triage_wanted(t, f):
     """Tier 1 looks at an event when a benign answer is possible: the Job is still alive or finished, or the class is one the script cannot
     pin down (unknown, slow). A plain terminal failure the rules already classified (OOM, traceback, image pull) goes straight to Tier 2.
-    Util failures never go to Tier 1: Tier 2's UTIL_OK waiver is their 'no fix needed' path, with the script's own checks."""
+    Util observations always receive a judge before a fixer."""
     if f.get("cls") == "util":
-        return False
+        return True
     return f.get("cls") in TRIAGE_CLASSES_ALWAYS or job_state(f["job"], t["namespace"]) in ("running", "pending", "ok")
 
 
@@ -3932,7 +3978,7 @@ def task_prompt(t):
 
 def run_task_agent(n, prompt_text, a, kind="fix"):
     t = task_load(n)
-    ctx = dict(t.get("failure") or {}) if kind == "fix" else {}            # what the fix agent was started for (a resubmit clears the failure)
+    ctx = dict(t.get("failure") or t.get("util_event") or {}) if kind == "fix" else {}            # what the fix agent was started for (a resubmit clears the failure)
     d = str(task_dir(n)).rstrip("/")
     allowed = ["Bash(nrp-task:*)", "Read(/%s/**)" % d, "Edit(/%s/**)" % d]
     if t.get("code"):
@@ -3941,7 +3987,7 @@ def run_task_agent(n, prompt_text, a, kind="fix"):
     if kind == "continue":                                         # reads outputs and the plan, writes the next TASK file
         pd = str(plan_dir(t["on_done"]["plan"])).rstrip("/")
         allowed = ["Bash(nrp-task:*)", "Read(/%s/**)" % d, "Read(/%s/**)" % pd, "Write(/%s/work/**)" % pd, "Edit(/%s/work/**)" % pd]
-    elif kind == "triage":                                         # Tier 1: Haiku, read-only; its verdict is the last line of its answer
+    elif kind == "triage":                                         # Tier 1: judge, read-only; its verdict is the last line of its answer
         allowed = ["Bash(nrp-task %s:*)" % c for c in ("show", "logs", "describe", "util", "s3")] + ["Read(/%s/**)" % d]
     elif kind != "fix":
         allowed = ["Bash(nrp-task:*)", "Read(/%s/**)" % d]
@@ -3953,6 +3999,7 @@ def run_task_agent(n, prompt_text, a, kind="fix"):
         return unavailable_text(), []
     env = clean_env()
     env["NRP_TASK"] = n
+    env["NRP_MONITOR_AGENT_ROLE"] = kind
     cwd = WORK / "task"
     task_txn(n, lambda t: (t.update(agent_started=now()), t.pop("report", None), t.pop("util_ok_claim", None)))
     log("task %s: %s agent start" % (n, kind))
@@ -4039,11 +4086,24 @@ def manifest_write(path, doc):
         Path(path).write_text(json.dumps(doc, indent=2))
 
 
-def thanos_peak_mem(ns, job, container, since_ts):
+def thanos_peak_mem(ns, job, container, since_ts, per_pod=False):
     """Peak working-set bytes of the Job's pods (one container) since `since_ts`, from NRP's Prometheus; None when unavailable."""
     window = max(300, int(now() - since_ts) + 120)
     expr = 'max(max_over_time(container_memory_working_set_bytes{namespace="%s",pod=~"%s-.*",container="%s"}[%ds]))' % (ns, job, container, window)
+    if per_pod:
+        expr = expr.replace("max(max_over_time", "max by (pod) (max_over_time", 1)
     res = thanos_query(expr)
+    if per_pod:
+        import math
+        peaks = {}
+        for r in res:
+            try:
+                value = float(r["value"][1])
+                if math.isfinite(value) and value >= 0:
+                    peaks[r["metric"]["pod"]] = value
+            except (KeyError, ValueError, TypeError, IndexError):
+                continue
+        return peaks
     return float(res[0]["value"][1]) if res else None
 
 
@@ -4286,8 +4346,8 @@ def report_long_pending(n, jobs):
 
 
 def handle_failure(n, a):
-    """The task escalation ladder. Tier 0: script rules (classification in observe_task, deadline rules, `tier0_timeout`). Tier 1: Haiku
-    triage, where a benign answer is possible; 'no fix needed' CLOSES the event. Tier 2: the Sonnet fix agent. Tier 3: the task's
+    """The task escalation ladder. Tier 0: script rules (classification in observe_task, deadline rules, `tier0_timeout`). Tier 1: read-only
+    triage, where a benign answer is possible; 'no fix needed' CLOSES the event. Tier 2: the fixer. Tier 3: the task's
     coordinator chat (`to_coordinator`). The owner is told (NEEDS_OWNER + one DM) only by the chat (`task needs-owner`), or when a person's
     decision is the only way on (watch-only task, GPU approval), or when the chat cannot be woken."""
     t = task_load(n)
@@ -4422,6 +4482,7 @@ def advance_task(n, jobs, a):
             task_txn(n, lambda t: t.update(status="retrying"))
     observe_task(n, jobs)
     report_long_pending(n, jobs)
+    process_util_event(n, a)
     t = task_load(n)
     if t.get("failure"):
         if not tier0_fix(n, a):                                           # fixed rules first (no model); the agents only when none applies
@@ -4476,12 +4537,32 @@ def advance_task(n, jobs, a):
             digest("result", line, n)
 
 
+def recover_held_completion(n, jobs):
+    t = task_load(n)
+    sid = (t.get("failure") or {}).get("stage")
+    stages = [s for s in t["stages"] if s["id"] == sid] if sid else [s for s in t["stages"] if s["state"] in ("running", "failed")]
+    completed = [s for s in stages if (jobs.get(s["job"]) or {}).get("state") == "ok"]
+    if not completed:
+        return False
+    missing = [u for s in completed for u in s["done_s3"] if s3_exists(u, {}) is not True]
+    if missing:
+        reason = t.get("reason", "").split(" Completion check:", 1)[0] + " Completion check: Job complete but success markers missing or unreadable: " + ", ".join(missing)
+        task_txn(n, lambda t: t.update(reason=reason))
+        return False
+    def recover(t):
+        for s in completed:
+            tstage(t, s["id"]).update(state="done", done_ts=now())
+        t.update(status="running", failure=None)
+        for key in ("reason", "coordinator_since", "util_event"):
+            t.pop(key, None)
+        t["webhook_outbox"] = [e for e in t.get("webhook_outbox", []) if e.get("event_type") != "escalation"]
+        tev(t, "held stage completed with all success markers; hold cleared")
+    task_txn(n, recover)
+    return True
+
+
 def process_tasks(a, st):
-    try:
-        check_coordinator_waits(a)
-    except Exception as e:
-        log("coordinator wait check error: %s: %s" % (type(e).__name__, str(e)[:150]))
-    names = [x for x in task_names() if (task_load(x) or {}).get("status") in TASK_LIVE]
+    names = [x for x in task_names() if (task_load(x) or {}).get("status") in TASK_LIVE + TASK_HELD]
     PASS["tasks"] = len(names)
     cache = {}
     for n in names:
@@ -4489,9 +4570,17 @@ def process_tasks(a, st):
         try:
             if t["namespace"] not in cache:
                 cache[t["namespace"]] = fetch_jobs(t["namespace"])
+            if t["status"] in TASK_HELD:
+                if a.dry_run or not recover_held_completion(n, cache[t["namespace"]]):
+                    continue
             advance_task(n, cache[t["namespace"]], a)
         except Exception as e:
             log("task %s error: %s: %s" % (n, type(e).__name__, str(e)[:200]))
+
+    try:
+        check_coordinator_waits(a)
+    except Exception as e:
+        log("coordinator wait check error: %s: %s" % (type(e).__name__, str(e)[:150]))
 
 
 FLAG_RULE_RE = re.compile(r"\brule=(lab|nrp|gpu)\b")
@@ -4620,9 +4709,7 @@ def util_waive(n, f, claim, a):
 
 
 def task_pod_flag(st, n, sid, pod, kind, line):
-    """A task's pod was flagged by nrp-util-check. Strike 1 (NRP violation): record the resize, silent. Strike 2 or STUCK:
-    the task's fix agent takes over (delete, resize, resubmit). Lab-rule-only flags are recorded, never acted on."""
-    adv = resize_advice(line)
+    """Utilization is a judge event, never a stage failure. STUCK remains an infrastructure failure."""
     if kind == "STUCK":
         task_fail(n, sid, "infra", "stuck:" + norm_sig(line.split(" ", 2)[-1])[:60], "pod %s STUCK: %s" % (pod, line[:200]))
         return
@@ -4630,20 +4717,105 @@ def task_pod_flag(st, n, sid, pod, kind, line):
     if rule == "lab" and active_waiver(task_load(n), sid):               # the owner-side lab floor only, and the fix agent showed the Job is healthy
         st["strikes"].pop(pod, None)
         return
-    nrp = "[NRP violation]" in line
-    s = st["strikes"].get(pod)
-    if nrp and s and now() - s.get("t", 0) >= STRIKE_GAP_S:
-        st["strikes"].pop(pod, None)
-        task_txn(n, lambda t: tstage(t, sid).update(util_deleted=line[:200]))
-        task_fail(n, sid, "util", "util:" + ",".join(sorted(set(k for k, *_ in FLAG_RES.findall(line)))) + "@" + manifest_mem(task_load(n), tstage(task_load(n), sid)),
-                  "pod %s outside NRP utilization bands on 2 passes: %s. Resize: %s" % (pod, line[:200], adv),
-                  extra={"rule": rule, "pod": pod})
-        record_resize(st, pod, None, line, "STRIKE2 task %s: %s" % (n, adv))
+    t = task_load(n)
+    stage = tstage(t, sid)
+    evidence = memory_low_evidence(t, stage, pod) if kind == "LOW" and any(k == "mem" and int(pct) < 20 for k, use, req, pct, mx in FLAG_RES.findall(line)) else None
+    if evidence and evidence["ramp_up"]:
         return
-    if nrp and not s:
-        st["strikes"][pod] = {"n": 1, "t": now(), "owner": n}
-    task_txn(n, lambda t: (t.setdefault("util", []).append("%s [%s] %s -> %s" % (iso(), rule, " ".join(line.split())[:200], adv)), t["util"].__delitem__(slice(None, -10))))
-    record_resize(st, pod, None, line, "OVERSIZED (task %s): %s" % (n, adv))
+    if stage["state"] != "running":
+        return
+    event = {"stage": sid, "job": stage["job"], "cls": "util", "sig": "util:" + norm_sig(line),
+             "detail": line, "ts": now(), "evidence": evidence, "rule": rule, "pod": pod}
+    def record(t):
+        t.setdefault("util", []).append("%s [%s] %s" % (iso(), rule, line[:200]))
+        del t["util"][:-10]
+        if not t.get("util_event"):
+            t["util_event"] = event
+            tev(t, "utilization observation (stage keeps running): " + line)
+            if evidence:
+                tev(t, "memory request=%gGi limit=%gGi need=%gGi right=%dGi spread=%s: %s" % (
+                    evidence["request_gi"], evidence["limit_gi"], evidence["need_gi"], evidence["right_gi"],
+                    evidence["spread"], evidence["suggested_verdict"]))
+    task_txn(n, record)
+
+
+def process_util_event(n, a):
+    t = task_load(n)
+    event = t.get("util_event")
+    if not event or t.get("failure") or a.dry_run:
+        return
+    if tstage(t, event["stage"])["state"] != "running":
+        task_txn(n, lambda t: t.pop("util_event", None))
+        return
+    context = dict(t, failure=event)
+    numbers = json.dumps(event.get("evidence"), sort_keys=True)
+    prompt = triage_prompt(context) + "\nMemory evidence (GiB): " + numbers + "\n" + MEMORY_RULE
+    line, _ = run_task_agent(n, prompt, a, kind="triage")
+    if is_unavailable(line):
+        return
+    runs = task_load(n).get("agent_runs") or []
+    verdict = runs[-1].get("verdict", "ESCALATE") if runs else "ESCALATE"
+    if verdict not in TRIAGE_CLOSE and t.get("mode") == "watch":
+        digest("util-review", "watch-only task: judge recommends fixer review; running Job left alone. " + line, n)
+    elif verdict not in TRIAGE_CLOSE:
+        context["failure"]["triage_text"] = "%s: %s" % (verdict, runs[-1].get("verdict_text", line) if runs else line)
+        line, _ = run_task_agent(n, task_prompt(context) + "\nMemory evidence (GiB): " + numbers + "\n" + MEMORY_RULE, a)
+        if is_unavailable(line):
+            return
+    task_txn(n, lambda t: (t.pop("util_event", None), tstage(t, event["stage"]).update(util_reviewed=now()), tev(t, "utilization review: " + line)))
+
+
+MEMORY_RULE = """Memory NRP band is 20–150% of request. Tier 1 is judge only: CLOSE with numbers or ESCALATE with numbers and what looks wrong.
+The fixer alone changes resources. need=max(stage whole-life per-pod peaks, recorded OOM limits); right=ceil(need*1.25) Gi.
+request <= 1.2*right is sized correctly; above it is oversized. If max/median >3 and low pods remain below 20% of request
+through their whole life, split inputs into size groups. Missing peaks or incomparable pods require explicit review.
+Fixer: write right into the manifest for retries/later runs. Leave running work to finish unless measured time remaining >2h
+AND the stage is resumable; only then resubmit at right. Never shrink below OOM evidence. UTIL flags alone never hold a task."""
+
+
+def memory_low_evidence(t, s, flagged_pod):
+    import math
+    import statistics
+    doc = manifest_doc(s["manifest"])
+    containers = doc["spec"]["template"]["spec"]["containers"]
+    resources = containers[0].get("resources", {})
+    request = (mem_bytes(resources.get("requests", {}).get("memory", "")) or 0) / 2**30
+    limit = (mem_bytes(resources.get("limits", {}).get("memory", "")) or 0) / 2**30
+    runtime = s.get("measured_runtime_seconds")
+    threshold = float(runtime) * .25 if runtime else 1800
+    pods = job_pods(t["namespace"], s["job"])
+    ages = {p["metadata"]["name"]: max(0, now() - (parse_ts(p.get("status", {}).get("startTime") or p["metadata"].get("creationTimestamp", "")) or now())) for p in pods}
+    age = ages.get(flagged_pod, max(0, now() - s.get("pod_started", now())))
+    since = min(s.get("memory_since", now()), t.get("created", now()), s.get("submitted", now()),
+                *(now() - age for age in ages.values()))
+    peaks = thanos_peak_mem(t["namespace"], s["job"], containers[0]["name"], since, per_pod=True)
+    previous = s.get("memory_peaks_gi", {})
+    peaks = {k: max(v / 2**30, previous.get(k, 0)) for k, v in peaks.items()} | {k: v for k, v in previous.items() if k not in peaks}
+    for name in peaks:
+        ages.setdefault(name, None)
+    oom = list(s.get("oom_limits_gi", []))
+    for attempt in t.get("attempts", []):
+        if attempt.get("stage") == s["id"] and str(attempt.get("sig", "")).startswith("oom@"):
+            b = mem_bytes(attempt["sig"].split("@", 1)[1])
+            if b: oom.append(b / 2**30)
+    for p in pods:
+        for cs in p.get("status", {}).get("containerStatuses", []) or []:
+            if any((cs.get(k, {}).get("terminated") or {}).get("reason") == "OOMKilled" for k in ("state", "lastState")):
+                pc = next((c for c in p.get("spec", {}).get("containers", []) if c["name"] == cs.get("name")), {})
+                b = mem_bytes(pc.get("resources", {}).get("limits", {}).get("memory", ""))
+                if b: oom.append(b / 2**30)
+    need = max(list(peaks.values()) + oom + [0])
+    right = math.ceil(need * 1.25)
+    spread = max(peaks.values()) / statistics.median(peaks.values()) if peaks and statistics.median(peaks.values()) else None
+    missing = sorted((set(ages) | {flagged_pod}) - set(peaks))
+    verdict = "missing peaks: review" if not peaks or missing else ("sized correctly" if request <= 1.2 * right else "oversized")
+    finished = set(s.get("memory_completed_pods", [])) | {p["metadata"]["name"] for p in pods if p.get("status", {}).get("phase") == "Succeeded"}
+    low_whole_life = sorted(k for k, v in peaks.items() if k in finished and v < .2 * request)
+    if spread and spread > 3 and low_whole_life and not missing: verdict = "inputs differ in size"
+    task_txn(t["name"], lambda t: tstage(t, s["id"]).update(memory_peaks_gi=peaks, oom_limits_gi=sorted(set(oom)), memory_since=since, memory_completed_pods=sorted(finished)))
+    return dict(peaks_gi=peaks, ages_seconds=ages, request_gi=request, limit_gi=limit, oom_limits_gi=oom,
+                need_gi=need, right_gi=right, spread=spread, suggested_verdict=verdict, ramp_up=age < threshold,
+                missing_peak_pods=missing, low_whole_life=low_whole_life, measured_runtime_seconds=runtime, remaining_seconds=max(0, runtime-age) if runtime else None)
 
 
 def check_orphans(a, st):
@@ -5850,6 +6022,8 @@ def cmd_tool(a):
     if not argv:
         sys.exit(usage)
     c, rest = argv[0], argv[1:]
+    if os.environ.get("NRP_MONITOR_AGENT_ROLE") == "triage" and c not in ("show", "logs", "describe", "util", "s3"):
+        sys.exit("triage is judge only; changes belong to the fixer")
 
     def need_job():
         if not rest or rest[0] not in jobs:
@@ -5990,10 +6164,19 @@ def cmd_tool(a):
     if c == "delete":
         j = need_job()
         st_, f = job_state(j, ns), t.get("failure") or {}
+        util = t.get("util_event") or {}
+        util_retry = util.get("job") == j and st_ in ("running", "pending")
+        if util_retry:
+            evidence = util.get("evidence") or {}
+            if not stage_resumable(jobs[j]) or (evidence.get("remaining_seconds") or 0) - max(0, now() - util.get("ts", now())) <= 7200:
+                sys.exit("utilization review: leave running Job to finish; resubmit requires resumable stage and >2h measured time left")
+            f = util
         if st_ in ("running", "pending") and not (f.get("job") == j and f.get("cls") in ("util", "infra")):
             sys.exit("Job %s is %s; only a finished Job, or one this task's failure says to stop (util/stuck), may be deleted" % (j, st_))
         save_task_logs(t, jobs[j], "deleted by the fix agent")
         rc = kc("delete", "job", j, "--wait=true", "--timeout=180s")
+        if rc == 0 and util_retry:
+            task_fail(n, jobs[j]["id"], "util", util["sig"], util["detail"], extra={"evidence": util.get("evidence")})
         task_txn(n, lambda t: tev(t, "agent deleted Job %s (was %s)" % (j, st_)))
         return rc
     if c == "plan":
@@ -6228,7 +6411,7 @@ def cmd_chain_wait(a):
 # ---- setup: choose each tier's backend from the subscriptions the user has (writes agents.json) ----------------------
 # Tier 1 (triage) and Tier 2 (fixer) are configurable; Tier 3 is always the coordinator chat and there is no separate Opus tier.
 SUBSCRIPTIONS = ("claude", "codex", "gemini", "agy", "t3")          # t3 only changes what is explained: it is a harness for the coordinator chat, not a runner
-SETUP_TIERS = (("triage", "Tier 1 triage (reads one event, answers benign / no fix / escalate)"),
+SETUP_TIERS = (("triage", "Tier 1 triage judge (reads one event, answers CLOSE / ESCALATE)"),
                ("task", "Tier 2 fixer (edits manifests and code, resubmits)"))
 SETUP_DEFAULT_MODEL = {("claude", "triage"): "haiku", ("claude", "task"): "sonnet", ("codex", "triage"): "gpt-6.1-sol", ("codex", "task"): "gpt-6.1-sol",
                        ("gemini", "triage"): "gemini-3.8-flash"}
@@ -6281,13 +6464,13 @@ def backend_label(b):
 
 def setup_config(old, tiers):
     """The agents.json object to write: whatever the user already had (limits, models, follow-up ladder) plus `tiers`, and `runners` (the
-    tiers' runners, fixer first, for the legacy repair/pod tiers; gemini cannot run those)."""
+    tiers' runners, fixer first; read-only runners are still excluded from writing tiers)."""
     cfg = {k: v for k, v in (old or {}).items() if k != "tiers"}
     cfg["tiers"] = tiers
     runners = []
     for tier in ("task", "triage"):
         for b in tiers.get(tier, []):
-            if b["runner"] not in ("gemini", "agy") and b["runner"] not in runners:
+            if b["runner"] not in runners:
                 runners.append(b["runner"])
     if runners:
         cfg["runners"] = runners
@@ -6425,7 +6608,7 @@ def cmd_agents(a):
         spec = {"tier": "triage", "allowed": [], "json": False, "deny": []}
         (WORK / "followup").mkdir(parents=True, exist_ok=True)
         rc = 0
-        for r in ([a.runner] if a.runner else cfg["runners"]):
+        for r in ([a.runner] if a.runner else list(dict.fromkeys(cfg["runners"] + [b["runner"] for bs in cfg.get("tiers", {}).values() for b in bs]))):
             if r not in KNOWN_RUNNERS or not runner_ready(r):
                 print("%-7s not installed" % r)
                 rc = 1
@@ -6454,7 +6637,7 @@ def cmd_agents(a):
               tier, " -> ".join("%s%s%s" % (x["runner"], "/" + x["model"] if x.get("model") else " (default model)",
                                            " thinking=%s" % x["thinking"] if x.get("thinking") is not None else "") for x in tier_backends(tier)) or "(no backend)",
               lim["turns"], lim["budget"], lim["timeout"]))
-    print("Tier 3 (every task): its coordinator chat, woken through its origin (t3 webhook / claude or codex session); no model entry")
+    print("Tier 3 (every task): its coordinator chat, woken through its origin (t3 CLI/webhook / claude or codex session); no model entry")
     print("job follow-up ladder: " + " -> ".join(cfg["followup_ladder"]) + " -> a person")
     return 0
 

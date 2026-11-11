@@ -38,38 +38,36 @@ manifest untouched and hands the failure to the ladder below. Tier 0 resubmits a
 ## Escalation ladder
 
 A failure is handled by the cheapest thing that can fix it; a person hears about it only after that has failed, with one
-Slack DM. Hunter's rule: Haiku triages, Sonnet fixes, the chat that owns the work helps if Sonnet cannot, and only that chat decides
+Slack DM. The triage judge reviews, the fixer changes work, and the chat that owns the work helps if the fixer cannot, and only that chat decides
 the owner is needed.
 
 ### Tasks (v3)
 
 0. **Tier 0, script rules, no model.** Classification, success markers, utilization, and the timeout rules below.
-1. **Tier 1, Haiku triage** (agent tier `triage`, read-only `nrp-task show|logs|describe|util|s3`). Runs once per failure when a
+1. **Tier 1, triage judge** (agent tier `triage`, read-only `nrp-task show|logs|describe|util|s3`). Runs once per failure when a
    benign answer is possible: the Job is still running, pending or finished, or the class is `unknown`/`slow`. A plain terminal failure
-   the rules already classified (OOM, traceback, image pull) skips straight to Tier 2, and so do util failures (Tier 2's `UTIL_OK`
-   waiver is their "no fix needed"). Menu: `BENIGN: why`, `NO_FIX_NEEDED: why`, `ESCALATE: evidence` (anything else counts as
-   ESCALATE). The two closing answers CLOSE the event: the failure is cleared, the stage goes back to running (or done when its
+   the rules already classified (OOM, traceback, image pull) skips straight to Tier 2. Running utilization flags instead use a separate observation event and always start with the judge; they never fail the stage. Menu: `CLOSE: why`, `ESCALATE: evidence` (anything else counts as
+   ESCALATE). CLOSE closes the event: the failure is cleared, the stage goes back to running (or done when its
    outputs exist), the task's events and the digest (`triage-closed`) record it, no retry is used and nobody is notified. The script
    refuses to close it when the Job is dead and the outputs are missing; the event then goes on to Tier 2.
-2. **Tier 2, Sonnet fixer** (agent tier `task`, `templates/task_agent.md`; it sees Tier 1's text). Fixes and resubmits within the retry
+2. **Tier 2, fixer** (agent tier `task`, `templates/task_agent.md`; it sees Tier 1's text). Fixes and resubmits within the retry
    budget. It reports STOPPED when it is not confident, needs a scientific or design choice, or its waiver is refused. A failure that
    repeats after a fix of its own, or a used-up retry budget, skips the agents and goes straight to Tier 3.
 3. **Tier 3, the task's coordinator chat.** The task becomes `WITH_COORDINATOR` (not `NEEDS_OWNER`) and the monitor sends an
-   `escalation` event through the task's webhook (`<state>/webhooks/<task>`, the same relay as the `done` and `failure` wakes) whose
+   `escalation` event through the task's wake route (session resume, T3 CLI or configured webhook, also used for completion wakes) whose
    `summary` names the task, the event and the pointers (`task show`, saved logs, the handoff's Fix log). The chat then runs one of:
    `nrp-monitor task resume NAME --note TEXT` (hand back: the failed stage is resubmitted, budgets restart), `task cancel NAME`, or,
    only when the owner is truly needed, `task needs-owner NAME --reason TEXT` (sets `NEEDS_OWNER` and sends the one DM).
-   Nothing is lost silently: with no webhook configured for the task, a wake that fails delivery 6 passes in a row (about 30 minutes),
+   Nothing is lost silently: with no wake target configured for the task, a wake that fails delivery 6 passes in a row (about 30 minutes),
    or a delivered wake nobody answers for 24 hours, falls back to `NEEDS_OWNER` with that reason. Watch-only tasks, GPU approval
    expiry and a 6-hour utilization block still go straight to the owner: only a person can decide those.
 
-Tier backends are the `tiers` entries `triage` (Tier 1) and `task` (Tier 2) of `agents.json`, chosen by `nrp-monitor setup` (agents.md; Hunter's
-choice: Tier 1 Gemini Flash with the lowest thinking, Tier 2 Sonnet, no separate Opus tier). Tier 3 uses no model: it wakes the chat that already
+Tier backends are the `tiers` entries `triage` (Tier 1) and `task` (Tier 2) of `agents.json`, chosen by `nrp-monitor setup` (agents.md). Tier 3 uses no model: it wakes the chat that already
 has the context.
 
 ### Waking the coordinator chat (any harness)
 
-The task's `origin` says how to reach its chat: `harness` t3 (the task's webhook relay, as before), `claude` (a Claude Code session id) or
+The task's `origin` says how to reach its chat: `harness` t3 (thread link, or configured webhook relay), `claude` (a Claude Code session id) or
 `codex` (a Codex session id), plus the session's `cwd`. Register with `--origin-harness claude|codex [--origin-session ID] [--origin-cwd DIR]`
 (without `--origin-session` the id is read from `CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID` of the shell that runs the command, only when the
 harness is named; a delegated child session gets a warning) or `nrp-monitor origin task NAME --harness ... --session ... --evidence ...`.
@@ -80,6 +78,13 @@ transcript activity within five minutes. An open/recent session is deferred, nev
 as delivered, because headless resume can fork an unseen sibling. Uncertain process inspection
 also defers. These deferrals count toward `WAKE_MAX_TRIES` exactly like a failed webhook (an escalation falls back to
 `NEEDS_OWNER`; a done/failure wake is dropped with a digest `fault` line).
+
+T3 origins can use `origin.link: "t3-thread://v2/ENV/THREAD"` (angle brackets around the link are accepted).
+A configured `<state>/webhooks/<task>` remains the preferred T3 route. Otherwise the monitor sends the wake text
+on stdin to `t3 thread send THREAD -`. It selects `NRP_MONITOR_T3_BIN`, then `~/.t3/bin/t3`, then `t3` on PATH.
+Missing binaries, nonzero exits, timeouts and an unavailable server count as unavailable delivery: retry up to
+`WAKE_MAX_TRIES` (six passes), then fall back to NEEDS_OWNER for an escalation. No new thread is created.
+Claude and Codex origins still resume their recorded sessions. Plan-step completion keeps one aggregate wake per step.
 
 **What wakes the chat:** (1) once when a plan step finishes (several tasks of one step send one wake, from the last task to finish, naming
 all of them); (2) as a last resort, once per escalation, when Tier 0/1/2 could not fix a failure (`escalation`); (3) a watch-only task's final

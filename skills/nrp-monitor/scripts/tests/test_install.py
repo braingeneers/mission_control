@@ -1,6 +1,7 @@
 """install.sh runs end to end into a throwaway HOME (no launchd, no network)."""
 import os, subprocess, tempfile, unittest
 from pathlib import Path
+from test_isolation import wake_env
 
 HERE = Path(__file__).resolve().parents[1]
 
@@ -12,6 +13,7 @@ def install(home, **extra):
     launchctl.write_text('#!/bin/sh\n[ "$1" = print ] && exit 1\nexit 0\n')
     launchctl.chmod(0o755)
     env = dict(os.environ, HOME=home, NRP_MONITOR_SETUP="skip", **extra)
+    env.update(wake_env(home))
     env["PATH"] = str(fake_bin) + os.pathsep + os.environ["PATH"]
     return subprocess.run(["sh", str(HERE / "install.sh")], env=env, capture_output=True, text=True)
 
@@ -34,6 +36,7 @@ class Install(unittest.TestCase):
             self.assertIn("nrp-monitor", alias.read_text())
             self.assertFalse(Path(home, ".local/bin/nrp-monitor").is_symlink())
             env = dict(os.environ, HOME=home, NRP_MONITOR_STATE=str(Path(home, "st")))
+            env.update(wake_env(home))
             for cmd in ("nrp-monitor", "nrp-watchdog"):
                 r = subprocess.run([str(Path(home, ".local/bin", cmd)), "--help"], env=env, capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, (cmd, r.stderr))
@@ -45,6 +48,7 @@ class Install(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             for primary in (False, True):
                 env = {k: v for k, v in os.environ.items() if not k.startswith(("NRP_MONITOR_", "NRP_WATCHDOG_"))}
+                env.update(wake_env(home))
                 env.update(HOME=home, NRP_WATCHDOG_STATE=home+"/old")
                 if primary:
                     env["NRP_MONITOR_STATE"] = home+"/new"
@@ -106,6 +110,7 @@ if a[0] == 'bootstrap': loaded.write_text(Path(a[2]).stem)
     def run_install(self, *args):
         env = dict(os.environ, HOME=str(self.home), PATH=str(self.bin)+os.pathsep+os.environ['PATH'],
                    NRP_MONITOR_SETUP='skip', NRP_MONITOR_MIGRATE_WAIT='0')
+        env.update(wake_env(self.home))
         env.pop('NRP_MONITOR_LABEL', None)
         env.pop('NRP_WATCHDOG_LABEL', None)
         return subprocess.run(['sh', str(HERE/'install.sh'), *args], env=env, capture_output=True, text=True)

@@ -43,21 +43,34 @@ Each flagged line ends `[tag] rule=R`: `gpu` (any GPU flag), `nrp` (a CPU or mem
 or `lab` (only the lab floor flagged it; NRP does not count it). The monitor reads that token (an older line without it is
 read from its tag).
 
-## In the monitor
+## Running task observations
 
-- First flag on a pod: record resize advice, silent.
-- A second consecutive flag: a fresh agent deletes or resizes, for the user's own task and chain pods; other pods need the
-  owner.
-- A pod that holds its request unused (stuck, failed) is flagged immediately.
-- With the local `account_block_after_violating_pods` check on, the monitor pushes once when the count is 3 or more on two
-  passes in a row (NRP's own limit is about how many pods an account may have outside its bands).
-- A flag from the lab floor alone (inside NRP's bands; the line ends `rule=lab`) is recorded and never acted on. If a util
-  fix agent is started for a Job anyway and finds it healthy (outputs written, logs moving, a resubmit would lose work),
-  it may end with `UTIL_OK: evidence`; see "Util waiver" below.
-- Size resubmissions from the recorded advice. The rule is about resources, not progress: a slow run that uses what it
-  asked for is not a violation.
+A LOW or HIGH utilization flag is an observation for the triage judge. It never fails a healthy running stage or
+holds a task by itself. The judge returns only `CLOSE: reason` or `ESCALATE: diagnosis`; the fixer makes every change.
+The roles use the runners chosen in each user's `agents.json`, including a single subscribed runner for both roles.
 
-## Util waiver
+For memory LOW (NRP band: 20–150% of request), wait until each flagged pod is past ramp-up: 25% of the stage's
+measured runtime, or 30 minutes when no measured history is available. A stage can record measured history as
+`measured_runtime_seconds` in TASK.json; do not substitute its deadline for measured runtime.
+Use each pod's whole-life Thanos peak, including earlier attempts, rather than the 10-minute mean. Set
+`need = max(highest stage pod peak, every recorded OOMKilled attempt's limit)` and `right = ceil(need * 1.25)` Gi.
+Requests at or below `1.2 * right` are sized correctly. Larger requests go to the fixer to update the manifest for
+retries and later runs. Leave running work to finish unless more than two measured hours remain AND the stage is
+resumable; the fixer may then delete and resubmit at the right size. If max/median peaks exceed 3 and low pods stayed
+below 20% of request throughout their completed lives, ask the fixer to split inputs into size groups with separate memory.
+Missing peaks or incomparable pods need explicit review, not a blind shrink.
+
+Both roles receive per-pod peaks and ages, request and limit, OOM history, need, right size, spread and the script's
+suggested verdict. The judge may disagree with the suggestion but must cite the numbers. It cannot edit files or run
+state-changing task commands. Invalid replies escalate. The fixer alone edits manifests, resubmits or splits inputs.
+
+Worked example: big-s requests 12Gi. A 1.2Gi mean at 17 minutes is ramp-up, so no event. Whole-life peaks of
+4.5–7.7Gi and a recorded OOM at 6Gi give need 7.7Gi and right 10Gi. Since 12 <= 1.2*10, the request is sized correctly.
+The peak range is only about 1.7x (max/median cannot exceed that range), so there is no split.
+
+For legacy chains and standalone registrations, the existing strike handling remains separate.
+
+## Historical util failure waivers
 
 A healthy, I/O-bound Job can sit under the lab floor for hours; deleting it would lose work. The util fix agent may then end
 with `UTIL_OK: <one paragraph of evidence>` (the Job is still running and progressing, the flag is utilization only, a

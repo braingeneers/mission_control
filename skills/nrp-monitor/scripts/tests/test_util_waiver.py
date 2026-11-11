@@ -176,7 +176,7 @@ class Suppression(Base):
         st = self.flag(m, NRP_LINE)
         self.assertEqual(len(self.notes()), 1, 'an NRP-band flag is still processed under a waiver')
         self.assertIn('[nrp]', self.notes()[0])
-        self.assertIn('t1-a-abc', st['strikes'])
+        self.assertEqual(h.task()['util_event']['rule'], 'nrp')
         self.flag(m, "LOW t1-a-abc age 218m, 10m mean: gpu 5% (gpu 0, A100) [NRP violation] rule=gpu")
         self.assertEqual(len(self.notes()), 2)
 
@@ -200,13 +200,15 @@ class Suppression(Base):
         self.edit(lambda t: t['stages'][0].update(submitted=t['util_waivers'][0]['submitted'], state='done'))
         self.assertIsNone(m.active_waiver(h.task(), 'a'), 'the Job ended')
 
-    def test_strike_two_failure_records_the_rule_and_pod(self):
+    def test_strike_two_observation_records_the_rule_and_pod(self):
         h = self.h
         self.started()
         m = self.module()
         st = {'strikes': {'t1-a-abc': {'n': 1, 't': time.time() - 3600, 'owner': 't1'}}, 'jobs': {}, 'pods': {}}
         m.task_pod_flag(st, 't1', 'a', 't1-a-abc', 'LOW', NRP_LINE)
-        f = h.task()['failure']
+        self.assertIsNone(h.task()['failure'])
+        self.assertEqual(h.task()['stages'][0]['state'], 'running')
+        f = h.task()['util_event']
         self.assertEqual((f['cls'], f['rule'], f['pod']), ('util', 'nrp', 't1-a-abc'))
         self.edit(lambda t: t.update(failure=None))
         # an older nrp-util-check has no rule token: the tag says it
@@ -230,8 +232,8 @@ class ExpiryAndCap(Base):
             self.assertEqual(len(self.waivers()), k)
             self.edit(lambda t: [w.update(until=time.time() - 10) for w in t['util_waivers']])     # six hours pass
         self.assertEqual(h.pushes(), [])
-        self.assertEqual(len(h.prompts()), 3, 'each re-flag started a fresh fix agent')
-        self.assertIn('flag rule lab', h.prompts()[0].read_text())
+        self.assertEqual(len(h.prompts()), 6, 'each legacy event receives a judge and fixer')
+        self.assertIn('flag rule lab', h.prompts()[1].read_text())
         self.inject()
         self.agent()
         h.run_pass()
@@ -250,7 +252,7 @@ class ExpiryAndCap(Base):
         self.inject()
         self.agent(report='STOPPED')
         h.run_pass()
-        text = h.prompts()[0].read_text()
+        text = h.prompts()[1].read_text()
         self.assertIn('at most 2 times per task', text)
         self.assertIn('for 1.5 hours', text)
         self.assertIn('UTIL_OK', text)
