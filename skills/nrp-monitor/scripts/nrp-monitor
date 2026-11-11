@@ -4342,7 +4342,14 @@ def queue_ceiling_seconds(value):
 
 
 def report_long_pending(n, jobs):
-    """Record bounded Pending reports and ask the coordinator before a long queue wait continues."""
+    """Record bounded Pending reports and ask the coordinator before a long queue wait continues. Never raises."""
+    try:
+        _report_long_pending(n, jobs)
+    except Exception as e:
+        log("task %s: pending report error: %s: %s" % (n, type(e).__name__, str(e)[:200]))
+
+
+def _report_long_pending(n, jobs):
     t = task_load(n)
     for s in t["stages"]:
         if s["state"] != "running":
@@ -4350,6 +4357,8 @@ def report_long_pending(n, jobs):
         info = jobs.get(s.get("job"))
         if not info or info["state"] not in ("running", "pending"):
             continue
+        if s.get("pod_started") and not s.get("queue_wait") and t.get("queue_hold") != s["id"]:
+            continue                                   # already running, nothing queued: no extra kubectl call
         try:
             pods = job_pods(t["namespace"], s["job"])
         except Exception as e:
