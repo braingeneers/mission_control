@@ -69,7 +69,7 @@ acceptable before listing `codex`.
 
 When the user has already specified per-tier backends/models, the agent applies them directly with
 `nrp-monitor setup --non-interactive --triage ... --fixer ...`; do not ask the user to run setup.
-Current live choice: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.1-sol then Claude Sonnet for the fixer:
+Example configuration: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.1-sol then Claude Sonnet for the fixer:
 ```sh
 nrp-monitor setup --non-interactive --triage gemini:gemini-3.8-flash:lowest,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
 ```
@@ -95,3 +95,26 @@ Gemini CLI eligibility errors (`IneligibleTierError`, `UNSUPPORTED_CLIENT`, Code
 client retirement) count as unavailable authentication, including JSON `is_error` replies
 with nonzero exit status, so dispatch tries the next tier backend. This fixes failover;
 it does not repair the installed Gemini CLI's server eligibility.
+
+## Judge and fixer roles
+
+Tier 1 is a judge only. It receives all memory numbers and the suggested verdict, checks comparability and missing evidence, and returns CLOSE with a numeric reason or ESCALATE with the numbers and what looks wrong. Code rejects other verdicts and state-changing task commands. All edits, resource changes, resubmissions and input grouping belong to Tier 2, the fixer. Both roles use the user’s chosen runners; one subscription can fill both. See [utilization](utilization.md) for the memory rule.
+
+`agents test` without a runner tests every runner named in any tier as well as `runners`. Setup includes tier-only runners in `runners` too. These are per-user choices; no particular subscription or harness is required.
+
+## Coordinator wake
+
+T3 origins can use `origin.link: "t3-thread://v2/ENV/THREAD"` (angle brackets around the link are accepted).
+A configured `<state>/webhooks/<task>` remains the preferred T3 route. Otherwise the monitor sends the wake text
+on stdin to `t3 thread send THREAD -`. It selects `NRP_MONITOR_T3_BIN`, then `~/.t3/bin/t3`, then `t3` on PATH.
+Missing binaries, nonzero exits, timeouts and an unavailable server count as unavailable delivery: retry up to
+`WAKE_MAX_TRIES` (six passes), then fall back to NEEDS_OWNER for an escalation. No new thread is created.
+Claude and Codex origins still resume their recorded sessions. Plan-step completion keeps one aggregate wake per step.
+
+## Testing wake delivery
+
+Tests use a temporary HOME and explicit fake recorder binaries for T3, Claude and Codex wakes. The script treats
+`NRP_MONITOR_TESTING=1` or state under the system temporary directory as test mode: it refuses HOME/PATH discovery
+and requires `NRP_MONITOR_T3_BIN`, `NRP_MONITOR_CLAUDE_BIN` or `NRP_MONITOR_CODEX_BIN` explicitly.
+`NRP_MONITOR_NO_WAKE=1` disables all wake delivery, including webhooks. Never put a real thread or session ID in fixtures.
+The isolation guard tests also remove the explicit binaries and verify that discovery cannot reach an installed client.

@@ -25,3 +25,14 @@
 ## For the owner
 
 <!-- Questions and decisions that need a person. The script appends FOR_OWNER lines from either kind of agent. -->
+
+## Wake route and resource review
+
+T3 origins can use `origin.link: "t3-thread://v2/ENV/THREAD"` (angle brackets around the link are accepted).
+A configured `<state>/webhooks/<task>` remains the preferred T3 route. Otherwise the monitor sends the wake text
+on stdin to `t3 thread send THREAD -`. It selects `NRP_MONITOR_T3_BIN`, then `~/.t3/bin/t3`, then `t3` on PATH.
+Missing binaries, nonzero exits, timeouts and an unavailable server count as unavailable delivery: retry up to
+`WAKE_MAX_TRIES` (six passes), then fall back to NEEDS_OWNER for an escalation. No new thread is created.
+Claude and Codex origins still resume their recorded sessions. Plan-step completion keeps one aggregate wake per step.
+
+Record measured stage runtime, per-pod peaks and earlier OOM limits in the handoff. The triage judge only returns CLOSE or ESCALATE; every Job, manifest and resource change belongs to the fixer. A utilization flag alone leaves running work running.

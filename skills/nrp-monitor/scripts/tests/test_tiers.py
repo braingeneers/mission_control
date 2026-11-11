@@ -12,6 +12,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from test_isolation import wake_env
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -108,7 +109,7 @@ class GeminiRunner(Base):
         return res, seen
 
     def test_argv_is_headless_json_default_approval_with_an_admin_policy_and_the_alias(self):
-        res, seen = self.run_gemini(stdout=json.dumps({"response": "BENIGN: pod started", "stats": {}}))
+        res, seen = self.run_gemini(stdout=json.dumps({"response": "CLOSE: pod started", "stats": {}}))
         argv = seen["argv"]
         self.assertEqual(argv[0], "gemini")
         self.assertIn("-p", argv)
@@ -119,7 +120,7 @@ class GeminiRunner(Base):
         for bad in ("--yolo", "-y", "--sandbox", "-s"):
             self.assertNotIn(bad, argv)
         self.assertEqual(seen["input"], "the prompt", "the prompt travels on stdin, not in argv")
-        self.assertEqual(res[:2], ("ok", "BENIGN: pod started"))
+        self.assertEqual(res[:2], ("ok", "CLOSE: pod started"))
         al = seen["settings"]["modelConfigs"]["customAliases"]["nrp-monitor-triage"]
         self.assertEqual(al["modelConfig"]["model"], "gemini-3.8-flash")
         self.assertEqual(al["modelConfig"]["generateContentConfig"]["thinkingConfig"], {"thinkingLevel": "MINIMAL"})
@@ -148,9 +149,9 @@ class GeminiRunner(Base):
         self.assertEqual(seen["argv"][seen["argv"].index("-m") + 1], "gemini-3.8-flash")
 
     def test_json_mode_wraps_the_answer_like_the_other_runners(self):
-        res, _ = self.run_gemini(stdout=json.dumps({"response": "NO_FIX_NEEDED: finished"}), json=True)
+        res, _ = self.run_gemini(stdout=json.dumps({"response": "CLOSE: finished"}), json=True)
         j = json.loads(res[1])
-        self.assertEqual((j["result"], j["is_error"], j["runner"]), ("NO_FIX_NEEDED: finished", False, "gemini"))
+        self.assertEqual((j["result"], j["is_error"], j["runner"]), ("CLOSE: finished", False, "gemini"))
 
     def test_only_the_triage_tier_may_run_on_gemini(self):
         for tier in ("task", "repair", "pod", "repair_auth"):
@@ -184,7 +185,7 @@ class Failover(Base):
 
     def test_usage_limit_moves_to_the_next_backend_and_is_logged(self):
         seen = []
-        res, calls = self.run_dispatch({"gemini": ("limit", "RESOURCE_EXHAUSTED quota exceeded", "", 1), "claude": ("ok", "BENIGN: x", "", 0)}, on=seen.append)
+        res, calls = self.run_dispatch({"gemini": ("limit", "RESOURCE_EXHAUSTED quota exceeded", "", 1), "claude": ("ok", "CLOSE: x", "", 0)}, on=seen.append)
         self.assertEqual((res[0], res[1]), ("claude", "ok"))
         self.assertEqual(calls, [("gemini", "gemini-3.8-flash"), ("claude", "haiku")], "each backend gets its own configured model")
         self.assertEqual(len(seen), 1)
@@ -238,17 +239,17 @@ class Failover(Base):
         w = self.w
         w.task_write({"name": "t1", "label": "t1", "stages": [], "events": [], "status": "running", "failure": {}, "origin": {}})
         results = {"gemini": ("limit", "RESOURCE_EXHAUSTED", "", 1),
-                   "claude": ("ok", json.dumps({"result": "BENIGN: fine", "is_error": False, "permission_denials": []}), "", 0)}
+                   "claude": ("ok", json.dumps({"result": "CLOSE: fine", "is_error": False, "permission_denials": []}), "", 0)}
 
         def fake(name):
             return lambda spec, prompt, cwd, timeout, env: results[name]
         with patch.dict(w.RUNNER_EXEC, {n: fake(n) for n in ("claude", "codex", "gemini")}):
             line, _ = w.run_task_agent("t1", "triage prompt", SimpleNamespace(dry_run=False), kind="triage")
-        self.assertEqual(line, "BENIGN: fine")
+        self.assertEqual(line, "CLOSE: fine")
         t = w.task_load("t1")
         self.assertTrue(any("backend failover (tier triage): gemini/gemini-3.8-flash unavailable" in e for e in t["events"]), t["events"])
         self.assertEqual(t["agent_runs"][-1]["runner"], "claude")
-        self.assertEqual(t["agent_runs"][-1]["verdict"], "BENIGN")
+        self.assertEqual(t["agent_runs"][-1]["verdict"], "CLOSE")
 
 
 class Setup(Base):
@@ -272,7 +273,7 @@ class Setup(Base):
         self.assertEqual(cfg["tiers"]["triage"][0], {"runner": "gemini", "model": "gemini-3.8-flash", "thinking": "lowest"})
         self.assertEqual(cfg["tiers"]["task"][0], {"runner": "claude", "model": "sonnet"})
         self.assertEqual(cfg["tiers"]["task"][1]["runner"], "codex", "the other subscription is the failover")
-        self.assertNotIn("gemini", cfg["runners"], "gemini cannot run the legacy repair tiers")
+        self.assertIn("gemini", cfg["runners"], "setup records tier-only runners too")
         self.assertIsNone(self.w.load_agent_cfg()[1], "what setup writes loads cleanly")
         self.assertIn("(new file)", out)
         self.assertIn("+++ agents.json (proposed)", out)
@@ -363,6 +364,7 @@ class Setup(Base):
 
     def test_cli_entry_point_and_agents_command_show_the_tiers(self):
         env = dict(os.environ, NRP_MONITOR_STATE=str(self.tmp / "cli-state"), PATH=os.environ["PATH"])
+        env.update(wake_env(self.tmp))
         script = str(HERE / "nrp-monitor")
         r = subprocess.run([sys.executable, script, "setup", "--non-interactive", "--subscriptions", "claude", "--dry-run"], env=env,
                            capture_output=True, text=True, stdin=subprocess.DEVNULL)
@@ -383,6 +385,7 @@ class InstallSh(unittest.TestCase):
             (self.bin / n).write_text("#!/bin/sh\nexit 0\n")
             (self.bin / n).chmod(0o755)
         self.env = dict(os.environ, HOME=str(self.home), NRP_MONITOR_LABEL="test.nrp-monitor", PATH="%s:%s" % (self.bin, os.environ["PATH"]))
+        self.env.update(wake_env(self.tmp, home=self.home))
         self.env.pop("NRP_MONITOR_STATE", None)
         self.state = self.home / ".local/state/nrp-monitor"
 

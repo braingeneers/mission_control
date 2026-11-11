@@ -10,6 +10,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from test_isolation import wake_env
 
 HERE = Path(__file__).resolve().parents[1]
 SOURCE = HERE / 'nrp-util-check'
@@ -38,6 +39,7 @@ class Policy(unittest.TestCase):
         e = {"NRP_MONITOR_STATE": str(self.tmp / 'state'),
              "NRP_UTIL_POLICY": str(self.write('shared.json', shared)),
              "NRP_UTIL_POLICY_LOCAL": str(self.tmp / 'local.json')}
+        e.update(wake_env(self.tmp))
         if local is not None:
             self.write('local.json', local)
         return e
@@ -185,6 +187,7 @@ class Policy(unittest.TestCase):
         state.mkdir()
         (state / 'utilization-policy.local.json').write_text(json.dumps({"lab_floor": 0.5}))
         env = dict(os.environ, NRP_MONITOR_STATE=str(state), NRP_UTIL_POLICY=str(self.write('shared.json', SHARED)))
+        env.update(wake_env(self.tmp))
         env.pop('NRP_UTIL_POLICY_LOCAL', None)
         r = subprocess.run([sys.executable, str(SOURCE), '--policy'], capture_output=True, text=True, env=env)
         self.assertIn(str(state / 'utilization-policy.local.json'), r.stdout)

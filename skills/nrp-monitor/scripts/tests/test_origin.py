@@ -24,15 +24,15 @@ os.environ["NRP_MONITOR_STATE"] = _TMP                    # the module-level STA
 os.environ["NRP_MONITOR_OWNER_NAME"] = "Sam"                 # how messages name the person (setting owner_name)
 WD = importlib.machinery.SourceFileLoader("wd_under_test", SCRIPT).load_module()
 
-RT = {"title": "rt-sort-3d", "link": "t3-thread://v2/9287f026-7701-4dd7-9c6f-f015440d149e/5488c222-111b-479b-899d-141dbb803bfd",
+RT = {"title": "fixture-sort-chat", "link": "t3-thread://v2/fake-test-environment/fake-test-thread",
       "assistant": "Codex gpt-6-astra", "collaborator": "Sam"}
 
 
 class Pure(unittest.TestCase):
     def test_norm_origin_accepts_t3_link_with_angle_brackets_and_defaults_collaborator(self):
-        o = WD.norm_origin({"title": " rt-sort-3d ", "link": "<%s>" % RT["link"], "assistant": "Codex gpt-6-astra"})
+        o = WD.norm_origin({"title": " fixture-sort-chat ", "link": "<%s>" % RT["link"], "assistant": "Codex gpt-6-astra"})
         self.assertEqual(o["link"], RT["link"])
-        self.assertEqual(o["title"], "rt-sort-3d")
+        self.assertEqual(o["title"], "fixture-sort-chat")
         self.assertEqual(o["collaborator"], "Sam")
         self.assertEqual(o["source"], "registered")
 
@@ -106,23 +106,23 @@ class O(unittest.TestCase):
                             ["nrp-task", "report", "RESUBMITTED", "OOM -> 1Gi"]], "result": "RESUBMITTED"})
         self.run_pass()
         prompt = self.prompts()[0].read_text()
-        self.assertIn('Origin: chat "rt-sort-3d" (Codex gpt-6-astra, with Sam) ' + RT["link"], prompt)
+        self.assertIn('Origin: chat "fixture-sort-chat" (Codex gpt-6-astra, with Sam) ' + RT["link"], prompt)
         self.assertIn("not that chat", prompt, "the repair agent is told it is not the origin chat")
-        self.assertEqual(self.task()["origin"]["title"], "rt-sort-3d")
+        self.assertEqual(self.task()["origin"]["title"], "fixture-sort-chat")
         # same failure again -> NEEDS_OWNER (a push naming the chat), then a person resumes
         self.fail()
-        self.run_pass()
-        self.run_pass()
+        for _ in range(WD.WAKE_MAX_TRIES):
+            self.run_pass()
         self.assertEqual(self.task()["status"], "NEEDS_OWNER")
         self.assertEqual(len(self.pushes()), 1)
-        self.assertIn("[rt-sort-3d] NRP task t1 needs you", self.pushes()[0])
+        self.assertIn("[fixture-sort-chat] NRP task t1 needs you", self.pushes()[0])
         rc, out, err = self.wd("task", "resume", "t1", "--note", "decided")
         self.assertEqual(rc, 0, err)
         self.assertEqual(self.task()["origin"], dict(self.task()["origin"], **RT))
         rc, out, _ = self.wd("task", "show", "t1")
-        self.assertIn('origin: chat "rt-sort-3d" (Codex gpt-6-astra, with Sam) ' + RT["link"], out)
+        self.assertIn('origin: chat "fixture-sort-chat" (Codex gpt-6-astra, with Sam) ' + RT["link"], out)
         rc, out, _ = self.wd("task", "list")
-        self.assertIn("<rt-sort-3d>", out)
+        self.assertIn("<fixture-sort-chat>", out)
 
     def test_missing_origin_warns_stores_none_and_falls_back_to_goal_and_repo(self):
         rc, out, err = self.add_unattributed(mode="watch", code={"repo": str(self.repo), "subdir": "job"})
@@ -207,10 +207,10 @@ class O(unittest.TestCase):
         rc, out, err = self.wd("origin", "task", "t1", "--title", "other", "--evidence", "x")
         self.assertEqual(rc, 1)
         self.assertIn("already has origin", err)
-        rc, out, err = self.wd("origin", "task", "t1", "--title", "rt-sort-3d (renamed)", "--evidence", "renamed", "--replace")
+        rc, out, err = self.wd("origin", "task", "t1", "--title", "fixture-sort-chat (renamed)", "--evidence", "renamed", "--replace")
         self.assertEqual(rc, 0, err)
         o = self.task()["origin"]
-        self.assertEqual((o["title"], o["link"], o["assistant"]), ("rt-sort-3d (renamed)", RT["link"], RT["assistant"]))
+        self.assertEqual((o["title"], o["link"], o["assistant"]), ("fixture-sort-chat (renamed)", RT["link"], RT["assistant"]))
         rc, out, err = self.wd("origin", "task", "nosuch", "--title", "x", "--evidence", "x")
         self.assertEqual(rc, 1)
         self.assertIn("no task named nosuch", err)
@@ -239,7 +239,7 @@ class O(unittest.TestCase):
         env.update(NRP_MONITOR_JWT=str(jwt), NRP_MONITOR_SLACK_URL="http://127.0.0.1:%d/v1/slack" % srv.server_port, NRP_MONITOR_SLACK_USER="UTEST")
         self.env = env
         Stub.got.clear()
-        rc, out, err = self.add(mode="watch", origin=dict(RT, title="rt-sort-3d <&>"))
+        rc, out, err = self.add(mode="watch", origin=dict(RT, title="fixture-sort-chat <&>"))
         self.assertEqual(rc, 0, err)
         self.run_pass()
         self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="shard check <FAILED> & <!channel>: 2 of 16")
@@ -250,14 +250,14 @@ class O(unittest.TestCase):
         self.assertEqual(auth, "Bearer fake.jwt.token")
         self.assertEqual(payload["user_id"], "UTEST")
         lines = payload["text"].split("\n")
-        self.assertEqual(lines[0], "*Return to chat: rt-sort-3d &lt;&amp;&gt;* (Codex gpt-6-astra, working with Sam)")
+        self.assertEqual(lines[0], "*Return to chat: fixture-sort-chat &lt;&amp;&gt;* (Codex gpt-6-astra, working with Sam)")
         self.assertEqual(lines[1], "`%s`" % RT["link"])
         self.assertTrue(lines[2].startswith("*NRP monitor* (automated script, working with Sam; not a chat): NRP task t1 needs you:"))
         self.assertNotIn("<!channel>", payload["text"])
         self.assertIn("&lt;!channel&gt;", payload["text"])
         pushed = json.loads((self.state / "pushed.json").read_text())["task:t1:1"]
-        self.assertTrue(pushed["msg"].startswith("[rt-sort-3d <&>] "))
-        self.assertIn("rt-sort-3d <&>", pushed["origin"][0])
+        self.assertTrue(pushed["msg"].startswith("[fixture-sort-chat <&>] "))
+        self.assertIn("fixture-sort-chat <&>", pushed["origin"][0])
 
     def test_slack_payload_without_origin_says_so_and_names_goal(self):
         text = self._text_for_unrecorded_task()
@@ -277,7 +277,7 @@ class O(unittest.TestCase):
         self.assertIn("[t1 · origin not recorded]", out)
         self.wd("origin", "task", "t1", "--title", RT["title"], "--link", RT["link"], "--evidence", "verified")
         rc, out, _ = self.wd("digest")
-        self.assertIn("[t1 · rt-sort-3d]", out)
+        self.assertIn("[t1 · fixture-sort-chat]", out)
         self.assertIn("not by one chat", out)
 
     def test_chain_origin_add_show_backfill_and_stop_alert(self):
@@ -288,7 +288,7 @@ class O(unittest.TestCase):
         rc, out, err = self.wd("chain", "add", str(f))
         self.assertEqual(rc, 0, err)
         rc, out, _ = self.wd("chain", "show", "c1")
-        self.assertIn('origin: chat "rt-sort-3d"', out)
+        self.assertIn('origin: chat "fixture-sort-chat"', out)
         spec.pop("origin")
         spec["name"] = "c2"
         spec["steps"] = [dict(step, job="c-b")]
@@ -307,20 +307,20 @@ class O(unittest.TestCase):
         pushes = self.pushes()
         self.assertEqual(len(pushes), 2, pushes)
         joined = "\n".join(pushes)
-        self.assertIn("[rt-sort-3d] chain c1 STOPPED", joined)
+        self.assertIn("[fixture-sort-chat] chain c1 STOPPED", joined)
         self.assertIn("[finch] chain c2 STOPPED", joined)
 
     def test_legacy_add_records_origin_and_a_same_job_reregistration_keeps_it(self):
-        rc, out, err = self.wd("add", "legacy-1", "--label", "old job", "--origin-title", "rt-sort-3d", "--origin-link", RT["link"])
+        rc, out, err = self.wd("add", "legacy-1", "--label", "old job", "--origin-title", "fixture-sort-chat", "--origin-link", RT["link"])
         self.assertEqual(rc, 0, err)
-        self.assertIn('chat "rt-sort-3d"', out)
+        self.assertIn('chat "fixture-sort-chat"', out)
         jobs = json.loads((self.state / "jobs.json").read_text())["jobs"]
         self.assertEqual(jobs["legacy-1"]["origin"]["link"], RT["link"])
         rc, out, err = self.wd("add", "legacy-1", "--label", "old job again")      # a repair agent re-registers the same Job
         self.assertEqual(rc, 0, err)
         self.assertNotIn("has no origin", err)
         jobs = json.loads((self.state / "jobs.json").read_text())["jobs"]
-        self.assertEqual(jobs["legacy-1"]["origin"]["title"], "rt-sort-3d")
+        self.assertEqual(jobs["legacy-1"]["origin"]["title"], "fixture-sort-chat")
         rc, out, err = self.wd("add", "legacy-2", "--label", "no origin")
         self.assertIn("has no origin", err)
         self.assertNotIn("origin", json.loads((self.state / "jobs.json").read_text())["jobs"]["legacy-2"])

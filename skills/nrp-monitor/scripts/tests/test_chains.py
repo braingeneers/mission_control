@@ -13,6 +13,8 @@ import time
 import unittest
 from pathlib import Path
 
+from test_isolation import wake_env
+
 HERE = Path(__file__).resolve().parent.parent
 SCRIPT = os.environ.get("MONITOR", str(HERE / "nrp-monitor"))    # the versioned copy; MONITOR=~/.local/bin/nrp-monitor tests the installed one
 REAL_TPL = HERE / "templates"
@@ -103,14 +105,16 @@ class Base(unittest.TestCase):
         for n, body in (("kubectl", FAKE_KUBECTL), ("aws", FAKE_AWS), ("osascript", FAKE_OSA), ("claude", FAKE_CLAUDE)):
             (self.tmp / "bin" / n).write_text(body)
             os.chmod(self.tmp / "bin" / n, 0o755)
+        (self.tmp / "bin/python3").symlink_to(sys.executable)
         (self.work / "submit.py").write_text(FAKE_SUBMIT)
         shutil.copytree(REAL_TPL, self.state / "templates")
         self.cluster({})
         (self.fake / "s3.json").write_text("[]")
-        self.env = {"PATH": "%s:/usr/bin:/bin" % (self.tmp / "bin"), "HOME": str(Path.home()), "FAKE_DIR": str(self.fake),
+        self.env = {"PATH": "%s:/usr/bin:/bin" % (self.tmp / "bin"), "HOME": str(self.tmp), "FAKE_DIR": str(self.fake),
                     "FAKE_USER": USER, "NRP_MONITOR_USER_ANNOTATION": USER, "NRP_MONITOR_STATE": str(self.state), "NRP_MONITOR_POLL_S": "1",
                     "AWS_SECRET_ACCESS_KEY": "must-not-leak", "NRP_MONITOR_NO_PUSH": "1",
                     "NRP_MONITOR_SLACK_URL": "http://127.0.0.1:9/never"}
+        self.env.update(wake_env(self.tmp))
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -521,7 +525,7 @@ class TestChains(Base):
 
 class TestValidationAndResume(Base):
     def test_cwd_under_desktop_refused(self):
-        s = self.step("a", "j-a", cwd=str(Path.home() / "Desktop"))
+        s = self.step("a", "j-a", cwd=str(Path(self.env["HOME"]) / "Desktop"))
         rc, out, err = self.add("bad", [s])
         self.assertNotEqual(rc, 0)
         self.assertIn("TCC", err + out)

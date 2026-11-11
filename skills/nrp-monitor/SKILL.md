@@ -1,6 +1,6 @@
 ---
 name: nrp-monitor
-description: Follow approved NRP Nautilus work unattended instead of polling it. Register staged Jobs as a task with exact S3 success markers; a background pass submits stages, saves logs, checks utilization against the shared NRP Cluster numbers, repairs failures up a ladder (script rules, cheap triage, a Sonnet fixer, then a wake of the plan's own coordinator chat), continues the approved plan when work finishes, and contacts the owner once, only if that chat says he is needed. Use after the user approves NRP compute, for "keep an eye on this", overnight pipelines and utilization enforcement. Not for deciding what to run or for ad-hoc one-off Jobs.
+description: Follow approved NRP Nautilus work unattended instead of polling it. Register staged Jobs as a task with exact S3 success markers; a background pass submits stages, saves logs, checks utilization against the shared NRP Cluster numbers, repairs failures up a ladder (script rules, a triage judge, a fixer, then a wake of the plan's own coordinator chat), continues the approved plan when work finishes, and contacts the owner once, only if that chat says he is needed. Use after the user approves NRP compute, for "keep an eye on this", overnight pipelines and utilization enforcement. Not for deciding what to run or for ad-hoc one-off Jobs.
 ---
 
 # NRP Monitor
@@ -42,7 +42,7 @@ and never start an agent whose only job is to wait.
 5. **Record the origin** (required: `task add` refuses a task without it): the chat or ticket the work came from (`origin.title`,
    `origin.link`, or `--origin-title/--origin-link`) and where it runs, so the monitor wakes that same chat and never a new thread:
    `--origin-harness claude|codex` (the session id is read from `CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID`, or pass `--origin-session`),
-   or `t3` with its webhook (operations.md, "Waking the coordinator chat").
+   or `t3` with its `t3-thread://v2/ENV/THREAD` link (a configured webhook takes priority) (operations.md, "Waking the coordinator chat").
 6. **Register and verify**: `nrp-monitor task add TASK.json`, then `nrp-monitor task show NAME` and
    `nrp-monitor status`. Report what is registered and what will and will not resume on its own.
 7. **Write the handoff before you return.** Once the monitor is started, copy `scripts/templates/handoff.md` and fill
@@ -68,7 +68,7 @@ submitter.
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).
-- Handles a failure at the cheapest level that can fix it (script rules, a cheap triage agent, a Sonnet fixer, then the task's own coordinator
+- Handles a failure at the cheapest level that can fix it (script rules, a triage judge, a fixer, then the task's own coordinator
   chat, woken in whatever harness it runs; the person hears only if that chat says so): see
   [operations](references/operations.md). Which agent runs each tier (Claude Code, Codex or Gemini CLI), in what order, and what happens when one is unavailable is
   chosen by `nrp-monitor setup` and stored in `agents.json`: see [agents](references/agents.md). A healthy Job that only the lab floor flags can be waived
@@ -113,7 +113,7 @@ behind profile stages.
 
 When the user has already specified per-tier backends/models, the agent applies them directly with
 `nrp-monitor setup --non-interactive --triage ... --fixer ...`; do not ask the user to run setup.
-Current live choice: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.1-sol then Claude Sonnet for the fixer:
+Example configuration: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.1-sol then Claude Sonnet for the fixer:
 ```sh
 nrp-monitor setup --non-interactive --triage gemini:gemini-3.8-flash:lowest,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
 ```
@@ -127,3 +127,16 @@ To persist a stage-specific exclusion: `nrp-monitor task stage NAME STAGE --excl
 (repeatable). Automatic node exclusions are shared and expire 24 hours after the last fault.
 The optional Antigravity `agy` runner is triage-only; select it through setup, e.g.
 `--triage agy:gemini-3.8-flash-low,claude:haiku`. Changing source does not change live config.
+
+## Utilization review and wake routes
+
+Utilization flags leave healthy stages running. The triage judge returns CLOSE or ESCALATE; the fixer makes every change. Memory LOW uses ramp-up, whole-life per-pod peaks and recorded OOM limits, with 25% headroom. See [utilization](references/utilization.md) for the exact rule and big-s example.
+
+T3 origins can use `origin.link: "t3-thread://v2/ENV/THREAD"` (angle brackets around the link are accepted).
+A configured `<state>/webhooks/<task>` remains the preferred T3 route. Otherwise the monitor sends the wake text
+on stdin to `t3 thread send THREAD -`. It selects `NRP_MONITOR_T3_BIN`, then `~/.t3/bin/t3`, then `t3` on PATH.
+Missing binaries, nonzero exits, timeouts and an unavailable server count as unavailable delivery: retry up to
+`WAKE_MAX_TRIES` (six passes), then fall back to NEEDS_OWNER for an escalation. No new thread is created.
+Claude and Codex origins still resume their recorded sessions. Plan-step completion keeps one aggregate wake per step.
+
+Held tasks still check completion each pass. A Complete Job with every exact S3 marker clears its hold and continues the plan. Missing or unreadable markers keep the hold with an updated reason.

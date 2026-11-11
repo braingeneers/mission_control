@@ -20,7 +20,7 @@ Required: `name` (lowercase letters, digits and `-`, at most 40), `goal`, `appro
   person), `max_retries` (0-10, default 4), `label`.
 - `origin` (**required** for `task add`): `{title, link, assistant?, collaborator?, harness?, session?, cwd?}` of the chat or ticket the work came from.
   `harness` + `session` + `cwd` make the chat wakeable whatever it runs in: `claude` (Claude Code session id), `codex` (Codex session id) or
-  `t3` (link + the task's webhook); flags `--origin-harness`, `--origin-session`, `--origin-cwd` (operations.md, "Waking the coordinator chat"). Without it
+  `t3` (thread link; webhook preferred when configured); flags `--origin-harness`, `--origin-session`, `--origin-cwd` (operations.md, "Waking the coordinator chat"). Without it
   the task is refused (v3; an alert would name no chat and wake nobody). Pass it in the file or with `--origin-title/--origin-link`.
   A continuation registered by a continue agent inherits its parent's origin (only a warning if the parent had none).
 - Continuation, at least one of (a task with none is a warning, or a refusal with
@@ -102,3 +102,9 @@ exclusion to that stage's manifest. Repeat the flag for several nodes. This is s
 from the shared automatic fault list whose entries decay after 24 hours.
 Resume/submission saves logs and deletes leftover terminal Jobs before applying;
 it refuses running or pending Jobs and refuses an uncertain status check.
+
+## Memory observations and held completion
+
+Running utilization flags are observations, not failures. Add a positive `measured_runtime_seconds` to a stage when measured history exists; without it, memory LOW ramp-up lasts 30 minutes. Per-pod peaks, OOM limits and review evidence persist with the stage. See [utilization](utilization.md) for the exact sizing rule and worked example.
+
+Each pass also checks NEEDS_OWNER and WITH_COORDINATOR tasks. When the held stage Job is Complete and all exact `done_s3` markers exist, the stage becomes done, an event records recovery, and the hold clears. Normal next stages and plan-step completion wakes then proceed. Complete Jobs with missing or unreadable markers stay held and name the missing evidence.

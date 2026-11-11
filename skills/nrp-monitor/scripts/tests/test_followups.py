@@ -43,7 +43,7 @@ def test_thanos_vanished_node(w):
 def test_auth_eligibility_and_failover(w,tmp_path):
     raw=json.dumps({'is_error':True,'error':{'type':'IneligibleTierError','message':'UNSUPPORTED_CLIENT'}})
     assert w.auth_hit(1,raw,'')
-    with patch.object(w,'tier_backends',return_value=[{'runner':'gemini'},{'runner':'claude'}]), patch.object(w,'runner_ready',return_value=True), patch.object(w,'runner_blocked',return_value=False), patch.object(w,'block_runner'), patch.dict(w.RUNNER_EXEC,gemini=lambda *a:('auth',raw,'',1),claude=lambda *a:('ok','BENIGN: healthy','',0)):
+    with patch.object(w,'tier_backends',return_value=[{'runner':'gemini'},{'runner':'claude'}]), patch.object(w,'runner_ready',return_value=True), patch.object(w,'runner_blocked',return_value=False), patch.object(w,'block_runner'), patch.dict(w.RUNNER_EXEC,gemini=lambda *a:('auth',raw,'',1),claude=lambda *a:('ok','CLOSE: healthy','',0)):
         assert w.dispatch_agent({'tier':'triage'},'',tmp_path)[0]=='claude'
 
 
@@ -134,7 +134,7 @@ def test_agy_argv_and_result(w,tmp_path):
         assert '--dangerously-skip-permissions' not in argv
         assert '--disable-slash-commands' not in argv
         assert (Path(kw['cwd'])/'.agents/hooks.json').exists()
-        return SimpleNamespace(returncode=0,stdout=json.dumps({'result':'BENIGN: healthy'}),stderr='')
+        return SimpleNamespace(returncode=0,stdout=json.dumps({'result':'CLOSE: healthy'}),stderr='')
     with patch.object(w.subprocess,'run',side_effect=run):
         result=w.exec_agy({'tier':'triage','allowed':[],'json':True},'fixture',tmp_path,10,{})
-    assert w.triage_verdict(json.loads(result[1])['result'])[0]=='BENIGN'
+    assert w.triage_verdict(json.loads(result[1])['result'])[0]=='CLOSE'
