@@ -1,3 +1,0 @@
-#!/bin/sh
-# nrp-task: the only shell command a watchdog fix agent gets (NRP_TASK names its task). See `nrp-watchdog tool`.
-exec "$(dirname "$0")/nrp-watchdog" tool "$@"

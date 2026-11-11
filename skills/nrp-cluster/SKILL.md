@@ -60,7 +60,7 @@ the two must agree:
 - Resource limits stay within 20% of requests.
 - No more than 400 concurrent jobs.
 
-A monitor (for example `nrp-util-check`, or the `nrp-watchdog` skill built on it) reads that file and checks the GPU floor and the
+A monitor (for example `nrp-util-check`, or the `nrp-monitor` skill built on it) reads that file and checks the GPU floor and the
 job cap; the 20% limit rule is documented only; the monitor does not check it. Utilization is a
 fraction of the pod's **request**, averaged over the last 10 minutes of NRP's own metrics.
 
@@ -111,7 +111,7 @@ Before submission, ask for or confirm:
 ### 4) Monitor and debug
 
 - Use `/.agent/workflows/monitor-job.md`.
-- For approved work that will run unattended, register it with the `nrp-watchdog` skill (when installed) instead of polling.
+- For approved work that will run unattended, register it with the `nrp-monitor` skill (when installed; formerly `nrp-watchdog`, still an installed alias) instead of polling. A model never waits or polls: a script (Tier 0) tracks states, markers and utilization against these rules and applies fixed repairs; what it cannot classify goes to Tier 1 triage (a configurable cheap backend, e.g. Gemini Flash or Haiku; "no fix needed" closes the event), then a Tier 2 Sonnet fixer, then Tier 3, a wake of the task's own coordinator chat in Claude Code, Codex or T3 (one wake per plan step, plus escalations). The owner is told only when that chat runs `task needs-owner`; a timeout never pages directly. `task add` needs an origin (the coordinator chat), and the registering agent writes this ladder into its handoff. `nrp-monitor setup` chooses the backend for each tier.
 - Capture job/pod status and recent logs after submission.
 - Delete finished/failed jobs when requested.
 

@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""nrp-s3-read: read-only S3 access for the watchdog's headless follow-up agent (it cannot be given `aws` itself,
+because `aws s3 cp/rm/sync` write and delete).
+
+  nrp-s3-read ls  s3://bucket/prefix/     list (first 200 lines)
+  nrp-s3-read cat s3://bucket/key         print an object to stdout (first 256 KB, text only)
+
+Nothing else is accepted. Endpoint: NRP_WATCHDOG_S3_ENDPOINT or https://s3-west.nrp-nautilus.io; credentials and
+profile come from ~/.aws as for any aws call. When that endpoint is unreachable or answers 5xx (not 403/404), the same read-only
+ls/cat runs in ONE short in-cluster Job (amazon/aws-cli, internal Ceph endpoint) unless NRP_WATCHDOG_S3_INCLUSTER=off.
+Versioned in braindance_proj/tools/nrp-watchdog; install.sh copies it.
+"""
+import importlib.machinery
+import importlib.util
+import os
+import re
+import subprocess
+import sys
+
+for _k in [k for k in os.environ if k.startswith("NRP_MONITOR_")]: os.environ.setdefault("NRP_WATCHDOG_" + _k[12:], os.environ[_k])   # NRP_MONITOR_* aliases the original NRP_WATCHDOG_* names
+EP = os.environ.get("NRP_WATCHDOG_S3_ENDPOINT") or "https://s3-west.nrp-nautilus.io"
+MAX_LINES, MAX_BYTES = 200, 256 * 1024
+UNREACHABLE = re.compile(r"Could not connect|EndpointConnectionError|timed? ?out|\((5\d\d)\)|\b5\d\d\b.*(Service|Gateway|Server)|Service Unavailable|Connection (reset|refused)|Name or service not known", re.I)
+LS_SCRIPT = 'aws s3 ls "$1" | head -n %d' % MAX_LINES
+CAT_SCRIPT = 'aws s3 cp "$1" - | head -c %d' % (MAX_BYTES + 1)
+
+
+def incluster(verb, uri, why):
+    """Read-only fallback: run the same ls/cat in one in-cluster Job via nrp-monitor's helper. Returns the output text or None."""
+    if os.environ.get("NRP_WATCHDOG_S3_INCLUSTER", "auto").strip().lower() in ("off", "0", "no", "false", "never"):
+        return None
+    for d in (os.path.dirname(os.path.abspath(__file__)), os.path.expanduser("~/.local/bin")):
+        src = os.path.join(d, "nrp-monitor")
+        if os.path.isfile(src):
+            break
+    else:
+        return None
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("nrpwd", importlib.machinery.SourceFileLoader("nrpwd", src)))
+    mod.__spec__.loader.exec_module(mod)
+    print("[external S3 failed (%s); reading through one in-cluster Job]" % why[:80], file=sys.stderr)
+    return mod.incluster_job(LS_SCRIPT if verb == "ls" else CAT_SCRIPT, [uri], "--tail=%d" % MAX_LINES if verb == "ls" else "--limit-bytes=%d" % (MAX_BYTES + 1))
+
+
+def main(argv):
+    if len(argv) != 2 or argv[0] not in ("ls", "cat") or not argv[1].startswith("s3://") or len(argv[1]) <= 5:
+        print(__doc__.strip().split("\n\n")[1], file=sys.stderr)
+        return 2
+    verb, uri = argv
+    base = ["aws", "--endpoint-url", EP, "s3"]
+    if verb == "ls":
+        r = subprocess.run(base + ["ls", uri], capture_output=True, text=True, timeout=120)
+        if r.returncode not in (0, 1) and UNREACHABLE.search(r.stderr or ""):
+            out = incluster("ls", uri, r.stderr.strip()[-80:])
+            if out is not None:
+                r = subprocess.CompletedProcess(None, 0, out, "")
+        lines = r.stdout.splitlines()
+        print("\n".join(lines[:MAX_LINES]) + ("\n[... %d more lines]" % (len(lines) - MAX_LINES) if len(lines) > MAX_LINES else ""))
+        if r.returncode not in (0, 1):
+            print(r.stderr.strip()[-300:], file=sys.stderr)
+        return r.returncode
+    p = subprocess.Popen(base + ["cp", uri, "-"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    data = p.stdout.read(MAX_BYTES + 1)
+    truncated = len(data) > MAX_BYTES
+    if truncated:
+        p.kill()
+    _, err = p.communicate(timeout=120)
+    if p.returncode and not data and UNREACHABLE.search(err.decode(errors="replace")):
+        out = incluster("cat", uri, err.decode(errors="replace").strip()[-80:])
+        if out is not None:
+            data, truncated, err = out.encode()[:MAX_BYTES + 1], len(out.encode()) > MAX_BYTES, b""
+            p.returncode = 0
+    if b"\0" in data[:4096]:
+        print("binary object, not printed (%s)" % uri, file=sys.stderr)
+        return 3
+    sys.stdout.write(data[:MAX_BYTES].decode("utf-8", errors="replace"))
+    if truncated:
+        print("\n[... truncated at 256 KB]")
+        return 0
+    if p.returncode:
+        print(err.decode(errors="replace").strip()[-300:], file=sys.stderr)
+    return p.returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

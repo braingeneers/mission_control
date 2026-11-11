@@ -1,0 +1,3 @@
+#!/bin/sh
+# nrp-task: the only shell command a monitor fix agent gets (NRP_TASK names its task). See `nrp-monitor tool`.
+exec "$(dirname "$0")/nrp-monitor" tool "$@"

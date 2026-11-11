@@ -1,0 +1,405 @@
+#!/usr/bin/env python3
+"""Check NRP pod utilization against requests from NRP's own metrics (thanos), not in-pod logs or kubectl top.
+
+usage: nrp-util-check [-n ns] [--min-age 300] [--frac F] [--policy] [--window 10] [--watch -m 540 -i 600] prefix [prefix ...]
+  prefixes match pod names (e.g. t33- t38-ev). Pods younger than --min-age seconds are skipped.
+Prints ONE line per flagged pod plus a summary line; quiet otherwise. A flagged line ends `[tag] rule=R`: R is `gpu` (any GPU flag),
+`nrp` (a CPU / memory band NRP counts as a violation) or `lab` (only the lab floor flagged it; NRP does not count it).
+
+Every number is read from NRP's public Prometheus (https://thanos.nrp-nautilus.io), the store behind NRP's Grafana
+dashboards, averaged over the last --window minutes (capped at the pod's age):
+  requests  kube_pod_container_resource_requests (cpu, memory, nvidia_com_gpu)
+  CPU       rate(container_cpu_usage_seconds_total)        memory  container_memory_working_set_bytes (mean and max)
+  GPU       DCGM_FI_DEV_GPU_UTIL per GPU (the GPU dashboard's series)
+Flags (a pod is LOW if any holds):
+  - lab rule: CPU, memory or GPU under --frac (40 %, from the skill's policy file) of the request;
+  - NRP policy bands (nrp.ai policies page): CPU outside 20-200 % of request, memory outside 20-150 %, GPU under 40 %.
+    NRP says its CPU / memory restrictions "do not apply to pods requesting 1 CPU core and 2GB memory" (its wording; it does not say Gi or "up to").
+    The optional local `small_pod_exempt` models that; the lab rule still applies to such pods and the line says so).
+    NRP blocks new submissions once a user has more than 4 violating pods: the summary counts the account's
+    running pods in the namespace outside NRP's bands (all sessions, by the nrp.ai username annotation).
+kubectl is used only for pod state (FAILED, STUCK on a node, queued), which metrics show late.
+Only a GPU pod with no DCGM series (some nodes publish none) falls back to nvidia-smi exec (max of 3 samples);
+that line says so: re-check before deleting. Metrics lag ~3 min.
+exit 0: all checked pods OK (line starts OK)      exit 4: at least one pod LOW / STUCK / FAILED
+exit 3: --watch hit max wait with all OK (RUNNING) exit 5: no pods match (NONE); queued-only pods count as OK
+exit 2: kubectl or thanos error
+--watch: re-check every -i seconds; exit as soon as a pod is flagged, or no pods are left after some were seen.
+"""
+import argparse, json, os, subprocess, sys, time, urllib.parse, urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+
+THANOS = "https://thanos.nrp-nautilus.io/api/v1/query"
+
+
+for _k in [k for k in os.environ if k.startswith("NRP_MONITOR_")]: os.environ.setdefault("NRP_WATCHDOG_" + _k[12:], os.environ[_k])   # NRP_MONITOR_* aliases the original NRP_WATCHDOG_* names
+STATE = Path(os.environ.get("NRP_WATCHDOG_STATE") or Path.home() / ".local/state/nrp-watchdog")
+
+
+def _user_annotation():
+    """The nrp.ai/username annotation value of your pods (every session of one person shares it): NRP_USER_ANNOTATION or
+    NRP_WATCHDOG_USER_ANNOTATION, else nrp_user_annotation in the watchdog's config.json. Empty = the account check is skipped."""
+    v = os.environ.get("NRP_USER_ANNOTATION") or os.environ.get("NRP_WATCHDOG_USER_ANNOTATION")
+    if v:
+        return v
+    try:
+        return str(json.loads((STATE / "config.json").read_text()).get("nrp_user_annotation") or "")
+    except (OSError, ValueError):
+        return ""
+
+
+USER = _user_annotation()
+
+# The numbers. The SHARED policy is the nrp-cluster skill's references/utilization-policy.json and holds only numbers that
+# skill states: GPU utilization above 40 %, limits within 20 % of requests, at most 400 concurrent jobs. It is read from the
+# first place below that has one; the built-in copy is only a fallback (tests/test_util_policy.py checks it equals the
+# shared file). A person or lab may add stricter rules in an OPTIONAL local override, <state dir>/utilization-policy.local.json
+# (env NRP_UTIL_POLICY_LOCAL): lab_floor, cpu_band, memory_band, small_pod_exempt, account_block_after_violating_pods, and
+# lower values of the shared numbers. A key that is in neither file means that check is OFF. A local value that would loosen
+# a shared number is ignored with a warning. `nrp-util-check --policy` prints what is in force and where each key came from.
+POLICY_BUILTIN = {"gpu_floor": 0.40, "limit_to_request_tolerance": 0.20, "max_concurrent_jobs": 400}
+POLICY_FILES = [os.environ.get("NRP_UTIL_POLICY")] + [f"~/{d}/skills/nrp-cluster/references/utilization-policy.json"
+                                                       for d in (".claude", ".agents", ".codex")]
+POLICY_LOCAL_FILE = os.environ.get("NRP_UTIL_POLICY_LOCAL") or str(STATE / "utilization-policy.local.json")
+SHARED_KEYS = ("gpu_floor", "limit_to_request_tolerance", "max_concurrent_jobs")
+LOCAL_ONLY_KEYS = ("lab_floor", "cpu_band", "memory_band", "small_pod_exempt", "account_block_after_violating_pods")
+META_KEYS = ("version", "description")
+
+
+def _num(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _frac(x):
+    return _num(x) and 0 < x <= 1
+
+
+def _band(b):
+    return isinstance(b, list) and len(b) == 2 and all(_num(x) for x in b) and 0 < b[0] < b[1]
+
+
+def _count(x):
+    return isinstance(x, int) and not isinstance(x, bool) and x > 0
+
+
+def _small(x):
+    return isinstance(x, dict) and all(_num(x.get(k)) and x[k] > 0 for k in ("cpu", "memory_bytes"))
+
+
+VALID = {"gpu_floor": _frac, "limit_to_request_tolerance": _frac, "max_concurrent_jobs": _count, "lab_floor": _frac,
+         "cpu_band": _band, "memory_band": _band, "small_pod_exempt": _small, "account_block_after_violating_pods": _count}
+# a local value may only be stricter than the shared one: (key, True) = must be >= shared, (key, False) = must be <= shared
+STRICTER = {"gpu_floor": lambda loc, sh: loc >= sh, "limit_to_request_tolerance": lambda loc, sh: loc <= sh,
+            "max_concurrent_jobs": lambda loc, sh: loc <= sh}
+
+
+def valid_policy(p):
+    """A usable SHARED file: a JSON object whose gpu_floor and max_concurrent_jobs are valid (tolerance too, if present)."""
+    return (isinstance(p, dict) and VALID["gpu_floor"](p.get("gpu_floor")) and VALID["max_concurrent_jobs"](p.get("max_concurrent_jobs"))
+            and ("limit_to_request_tolerance" not in p or VALID["limit_to_request_tolerance"](p["limit_to_request_tolerance"])))
+
+
+def load_policy():
+    """(policy, sources, warnings, info): the effective policy, {key: where it came from}, one-line warnings (not printed here),
+    and info = {"shared": path or "built-in", "local": path or None}. An invalid shared file is reported and NOT silently
+    replaced; an invalid or loosening local value is ignored with a warning."""
+    warnings, info = [], {"shared": "built-in", "local": None}
+    shared, sfile = dict(POLICY_BUILTIN), "built-in"
+    for f in POLICY_FILES:
+        if not f or not Path(f).expanduser().is_file():
+            continue
+        try:
+            p = json.loads(Path(f).expanduser().read_text())
+            if not valid_policy(p):
+                raise ValueError("missing or out-of-range field")
+            shared, sfile = {k: p[k] for k in SHARED_KEYS if k in p}, str(Path(f).expanduser())
+            extra = sorted(set(p) - set(SHARED_KEYS) - set(META_KEYS))
+            if extra:
+                warnings.append(f"shared policy {sfile} has keys that are not shared numbers ({', '.join(extra)}); ignored")
+        except (ValueError, OSError) as e:
+            warnings.append(f"WARNING: {f} is not a valid utilization policy ({e}); using the built-in numbers")
+        break
+    info["shared"] = sfile
+    policy, sources = dict(shared), {k: ("shared file" if sfile != "built-in" else "built-in") for k in shared}
+    lf = Path(POLICY_LOCAL_FILE).expanduser()
+    if lf.is_file():
+        info["local"] = str(lf)
+        try:
+            loc = json.loads(lf.read_text())
+            if not isinstance(loc, dict):
+                raise ValueError("not a JSON object")
+        except (ValueError, OSError) as e:
+            warnings.append(f"WARNING: local policy {lf} ignored ({e})")
+            loc = {}
+        for k, v in loc.items():
+            if k in META_KEYS or k.startswith("_"):
+                continue
+            if k not in VALID:
+                warnings.append(f"WARNING: local policy {lf}: unknown key {k}; ignored")
+            elif not VALID[k](v):
+                warnings.append(f"WARNING: local policy {lf}: {k} {json.dumps(v)} is not a valid value; ignored")
+            elif k in STRICTER and k in shared and not STRICTER[k](v, shared[k]):
+                warnings.append(f"WARNING: local policy {lf}: {k} {v} would loosen the shared {shared[k]}; ignored "
+                                f"(a local override can only be stricter)")
+            else:
+                policy[k], sources[k] = v, "local override"
+    return policy, sources, warnings, info
+
+
+POLICY, POLICY_SOURCES, POLICY_WARNINGS, POLICY_INFO = load_policy()
+POLICY_SRC = POLICY_INFO["shared"]
+NRP_GPU = POLICY["gpu_floor"]
+NRP_CPU, NRP_MEM = tuple(POLICY["cpu_band"]) if "cpu_band" in POLICY else None, tuple(POLICY["memory_band"]) if "memory_band" in POLICY else None
+SMALL = POLICY.get("small_pod_exempt")                        # None: no exemption
+ACCT_MAX = POLICY.get("account_block_after_violating_pods")   # None: no account check
+
+
+def small_pod(rc, rm):
+    return bool(SMALL) and rc <= SMALL["cpu"] and rm <= SMALL["memory_bytes"]
+
+
+def q(cmd):
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if r.returncode:
+        raise RuntimeError(r.stderr.strip()[:200])
+    return r.stdout
+
+
+def prom(expr):
+    with urllib.request.urlopen(THANOS + "?" + urllib.parse.urlencode({"query": expr}), timeout=90) as r:
+        d = json.load(r)
+    if d.get("status") != "success":
+        raise RuntimeError(f"thanos: {str(d)[:150]}")
+    return d["data"]["result"]
+
+
+def by_pod(expr):
+    return {x["metric"]["pod"]: float(x["value"][1]) for x in prom(expr) if x["metric"].get("pod")}
+
+
+def metrics(ns, pods, window):
+    """{pod: {"req": {resource: value}, "cpu", "mem", "mem_max", "gpus": [(index, model, mean %)]}} over `window` min."""
+    sel = f'namespace="{ns}",pod=~"{"|".join(pods)}"'
+    c = f'{sel},container!="",container!="POD"'
+    w = f"{window}m"
+    out = {p: {"req": {}, "gpus": []} for p in pods}
+    # max by container first guards against duplicate kube-state-metrics series; then sum the containers
+    for x in prom(f"sum by (pod, resource) (max by (pod, container, resource) (kube_pod_container_resource_requests{{{sel}}}))"):
+        m = x["metric"]
+        if m.get("pod") in out:
+            out[m["pod"]]["req"][m.get("resource")] = float(x["value"][1])
+    for k, expr in (("cpu", f"sum by (pod) (rate(container_cpu_usage_seconds_total{{{c}}}[{w}]))"),
+                    ("mem", f"sum by (pod) (avg_over_time(container_memory_working_set_bytes{{{c}}}[{w}]))"),
+                    ("mem_max", f"sum by (pod) (max_over_time(container_memory_working_set_bytes{{{c}}}[{w}]))")):
+        for p, v in by_pod(expr).items():
+            if p in out:
+                out[p][k] = v
+    for x in prom(f"avg_over_time(DCGM_FI_DEV_GPU_UTIL{{{sel}}}[{w}])"):
+        m = x["metric"]
+        if m.get("pod") in out:
+            out[m["pod"]]["gpus"].append((m.get("gpu", "?"), m.get("modelName", "?"), float(x["value"][1])))
+    return out
+
+
+def nrp_bad(m):
+    """Policy bands this pod is outside of (empty = compliant). GPU below the shared floor is always checked; the CPU and
+    memory bands only when the effective policy has them (local override)."""
+    rc, rm, rg = m["req"].get("cpu", 0), m["req"].get("memory", 0), m["req"].get("nvidia_com_gpu", 0)
+    bad = []
+    if rg and any(g < 100 * NRP_GPU for _, _, g in m["gpus"]):
+        bad.append("gpu")
+    if small_pod(rc, rm):
+        return bad  # exempt from the CPU / memory bands
+    if NRP_CPU and rc and "cpu" in m and not NRP_CPU[0] * rc <= m["cpu"] <= NRP_CPU[1] * rc:
+        bad.append("cpu")
+    if NRP_MEM and rm and "mem" in m and not NRP_MEM[0] * rm <= m["mem"] <= NRP_MEM[1] * rm:
+        bad.append("mem")
+    return bad
+
+
+def account_violations(ns, window):
+    """(violating, running) over the account's running pods in `ns` (only called when the policy has a block threshold)."""
+    if not USER:
+        raise RuntimeError("nrp_user_annotation not set")
+    mine = set(by_pod(f'max by (pod) (kube_pod_annotations{{namespace="{ns}",annotation_nrp_ai_username="{USER}"}})'))
+    run = set(by_pod(f'max by (pod) (kube_pod_status_phase{{namespace="{ns}",phase="Running"}} == 1)'))
+    pods = sorted(mine & run)
+    n = 0
+    for i in range(0, len(pods), 150):
+        n += sum(bool(nrp_bad(m)) for m in metrics(ns, pods[i:i + 150], window).values())
+    return n, len(pods)
+
+
+def smi(ns, name):
+    smp = []
+    for k in range(3):
+        g = q(["kubectl", "-n", ns, "exec", name, "--", "nvidia-smi", "--query-gpu=name,utilization.gpu",
+               "--format=csv,noheader,nounits"]).strip().splitlines()
+        smp.append([[x.strip() for x in gl.rsplit(",", 1)] for gl in g])
+        if k < 2:
+            time.sleep(2)
+    return [(gname, max(float(s[i][1]) for s in smp if i < len(s))) for i, (gname, _) in enumerate(smp[0])]
+
+
+def pod_lines(a, n, age, m, w):
+    rc, rm, rg = m["req"].get("cpu", 0), m["req"].get("memory", 0), int(m["req"].get("nvidia_com_gpu", 0))
+    if not m["req"] or "cpu" not in m or "mem" not in m:
+        return None  # series not in thanos yet (lag): not judged this round
+    nb, bad = nrp_bad(m), []
+    fr = a.frac or 0                                    # lab floor: off unless a local override or --frac sets it
+    if rc and ((fr and m["cpu"] < fr * rc) or "cpu" in nb):
+        bad.append(f"cpu {m['cpu']:.2f}/{rc:.2f} ({100*m['cpu']/rc:.0f}%)")
+    if rm and ((fr and m["mem"] < fr * rm) or "mem" in nb):
+        bad.append(f"mem {m['mem']/2**30:.1f}/{rm/2**30:.1f}Gi ({100*m['mem']/rm:.0f}%, max {m.get('mem_max', 0)/2**30:.1f})")
+    if rg:
+        floor = 100 * max(fr, NRP_GPU)
+        if m["gpus"]:
+            if len(m["gpus"]) < rg:
+                bad.append(f"gpu DCGM series for {len(m['gpus'])} of {rg} GPUs")
+            bad += [f"gpu {gu:.0f}% (gpu {gi}, {model})" for gi, model, gu in m["gpus"] if gu < floor]
+        else:
+            try:
+                bad += [f"gpu {gu:.0f}% nvidia-smi max of 3 (no DCGM series; {gname}): re-check before deleting"
+                        for gname, gu in smi(a.n, n) if gu < floor]
+            except Exception as e:
+                bad.append(f"gpu ?(no DCGM series; {str(e)[:40]})")
+    if not bad:
+        return ""
+    lab = f"lab {100 * fr:.0f}% rule"
+    tag = "NRP violation" if nb else (f"{lab}; NRP-exempt size" if small_pod(rc, rm) else lab)
+    # which rule flagged the pod, for scripts: gpu (any GPU flag), nrp (a CPU/memory band NRP counts), lab (the lab floor only)
+    rule = "gpu" if any(b.startswith("gpu") for b in bad) else ("nrp" if nb else "lab")
+    return f"LOW {n} age {age/60:.0f}m, {w}m mean: " + ", ".join(bad) + f" [{tag}] rule={rule}"
+
+
+def check(a):
+    pods = json.loads(q(["kubectl", "-n", a.n, "get", "pods", "-o", "json"]))["items"]
+    now = datetime.now(timezone.utc)
+    sel, stuck, pending = [], [], 0
+    for p in pods:
+        name = p["metadata"]["name"]
+        if not any(name.startswith(x) for x in a.prefix) or p["metadata"].get("deletionTimestamp"):
+            continue
+        phase = p["status"].get("phase")
+        ct = p["metadata"]["creationTimestamp"]
+        cage = (now - datetime.fromisoformat(ct.replace("Z", "+00:00"))).total_seconds()
+        if phase == "Failed":
+            stuck.append(f"FAILED {name} age {cage/60:.0f}m: delete the Job (house rule) and read its logs")
+            continue
+        waiting = [c.get("state", {}).get("waiting", {}).get("reason") for c in p["status"].get("containerStatuses", [])]
+        waiting = [w for w in waiting if w]
+        if phase == "Pending":
+            sched = any(c.get("type") == "PodScheduled" and c.get("status") == "True" for c in p["status"].get("conditions", []))
+            if not sched:
+                pending += 1  # queued for a node: holds nothing
+                continue
+            st = p["status"].get("startTime")
+            sage = (now - datetime.fromisoformat(st.replace("Z", "+00:00"))).total_seconds() if st else cage
+            if any(w in ("ErrImagePull", "ImagePullBackOff", "CreateContainerConfigError", "CrashLoopBackOff") for w in waiting) or sage > a.stuck_age:
+                stuck.append(f"STUCK {name} on a node {sage/60:.0f}m, not running ({','.join(waiting) or 'creating'}): holds its request unused")
+            continue
+        if phase != "Running":
+            continue
+        if "CrashLoopBackOff" in waiting:
+            stuck.append(f"STUCK {name}: CrashLoopBackOff")
+            continue
+        st = p["status"].get("startTime")
+        sel.append((name, (now - datetime.fromisoformat(st.replace("Z", "+00:00"))).total_seconds() if st else 0))
+    if not sel and not stuck:
+        if pending:
+            return 0, [f"OK checked 0 pods (0 low, {pending} queued, not scheduled)"]
+        return 5, ["NONE no pods match " + " ".join(a.prefix)]
+    old = [(n, age) for n, age in sel if age >= a.min_age]
+    young = len(sel) - len(old)
+    low, ok, lag = [], 0, 0
+    groups = {}  # one thanos round per window length (window capped at the pod's age, whole minutes)
+    for n, age in old:
+        groups.setdefault(max(2, min(a.window, int(age // 60) - 1)), []).append((n, age))
+    for w, items in groups.items():
+        for i in range(0, len(items), 150):
+            chunk = items[i:i + 150]
+            met = metrics(a.n, [n for n, _ in chunk], w)
+            for n, age in chunk:
+                line = pod_lines(a, n, age, met[n], w)
+                if line is None:
+                    lag += 1
+                elif line:
+                    low.append(line)
+                else:
+                    ok += 1
+    low += stuck
+    acct = ""
+    if ACCT_MAX:
+        try:
+            nv, nrun = account_violations(a.n, a.window)
+            acct = f"; account: {nv} of {nrun} running pods outside NRP bands" + (f" (NRP blocks submits past {ACCT_MAX})" if nv > ACCT_MAX else "")
+        except Exception as e:
+            acct = f"; account check skipped ({str(e)[:60]})"
+    summ = (f"{'LOW' if low else 'OK'} checked {ok + len(low)} pods ({len(low)} low/stuck/failed, "
+            f"{young} younger than {a.min_age}s, {lag} not yet in thanos, {pending} queued){acct}")
+    return (4 if low else 0), low + [summ]
+
+
+def policy_text():
+    """The effective policy, key by key, with where each value came from."""
+    names = list(SHARED_KEYS) + list(LOCAL_ONLY_KEYS)
+    lines = [f"shared policy: {POLICY_INFO['shared']}",
+             f"local override: {POLICY_INFO['local'] or 'none'} ({POLICY_LOCAL_FILE})"]
+    for k in names:
+        if k in POLICY:
+            note = "  (stated by the skill; no check uses it yet)" if k == "limit_to_request_tolerance" else ""
+            lines.append(f"  {k:36} {json.dumps(POLICY[k]):28} from {POLICY_SOURCES[k]}{note}")
+    off = [k for k in names if k not in POLICY]
+    if off:
+        lines.append("  off (in neither file): " + ", ".join(off))
+    return "\n".join(lines)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-n", default="braingeneers")
+    ap.add_argument("--min-age", type=int, default=300)
+    ap.add_argument("--frac", type=float, default=POLICY.get("lab_floor"),
+                    help="lab floor for CPU, memory and GPU (default: lab_floor of a local override; none = off)")
+    ap.add_argument("--policy", action="store_true", help="print the numbers in force and where they came from, then exit")
+    ap.add_argument("--window", "--gpu-window", type=int, default=10, help="minutes to average (capped at pod age)")
+    ap.add_argument("--stuck-age", type=int, default=900, help="scheduled but not running after this many s = STUCK")
+    ap.add_argument("--watch", action="store_true")
+    ap.add_argument("-m", type=int, default=540)
+    ap.add_argument("-i", type=int, default=600)
+    ap.add_argument("prefix", nargs="*")
+    a = ap.parse_args()
+    for w in POLICY_WARNINGS:
+        print(w, file=sys.stderr)
+    if a.policy:
+        print(policy_text())
+        return 0
+    if not a.prefix:
+        ap.error("the following arguments are required: prefix")
+    t0, errs, seen = time.time(), 0, False
+    while True:
+        try:
+            code, lines = check(a)
+            errs = 0
+        except Exception as e:
+            errs += 1
+            if errs >= 3 or not a.watch:
+                print(f"ERROR {str(e)[:200]}")
+                sys.exit(2)
+            time.sleep(30)
+            continue
+        if code != 5:
+            seen = True
+        if not a.watch or code == 4 or (code == 5 and seen):
+            print("\n".join(lines))
+            sys.exit(code)
+        left = a.m - (time.time() - t0)
+        if left <= 5:
+            print("RUNNING " + lines[-1])
+            sys.exit(3)
+        time.sleep(min(a.i, max(left - 5, 1)))
+
+
+if __name__ == "__main__":
+    main()
