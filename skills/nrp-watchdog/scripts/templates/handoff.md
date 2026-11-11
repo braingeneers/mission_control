@@ -5,7 +5,12 @@
 
 <!-- You write this section, once. Later agents read it and cannot change it. At least 200 characters; aim for 1 to 3 KB. Cover:
      what is being done and why; what each stage produces (paths); what to check when it finishes and what to check when it fails;
-     decisions already made (and who made them); things NOT to do; where the code, manifests and outputs are. -->
+     decisions already made (and who made them); things NOT to do; where the code, manifests and outputs are.
+     ALSO write, in your own words, who handles failures (the monitor warns when this chat's handoff never says it). Something like:
+       "Failures are handled by the monitor's own subagents (Tier 1 triage, Tier 2 fixer), not by me. If they cannot fix it, the monitor
+        wakes this chat (as a last resort) with a short summary; I then fix it and `nrp-watchdog task resume NAME`, or cancel. The owner is
+        notified only after that, when I run `nrp-watchdog task needs-owner NAME --reason ...`. I am also woken once when the plan step
+        finishes (not once per pod or Job)." -->
 
 ## Fix log
 

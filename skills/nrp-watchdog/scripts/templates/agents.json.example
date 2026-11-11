@@ -1,5 +1,9 @@
 {
   "runners": ["claude", "codex"],
+  "tiers": {
+    "triage": [{"runner": "gemini", "model": "gemini-3.8-flash", "thinking": "lowest"}, {"runner": "claude", "model": "haiku"}],
+    "task":   [{"runner": "claude", "model": "sonnet"}, {"runner": "codex", "model": "gpt-6.1-sol"}]
+  },
   "models": {
     "triage":      {"claude": "haiku",  "codex": "gpt-6.1-sol"},
     "repair":      {"claude": "sonnet", "codex": "gpt-6.1-sol"},

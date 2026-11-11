@@ -58,8 +58,28 @@ the owner is needed.
    or a delivered wake nobody answers for 24 hours, falls back to `NEEDS_OWNER` with that reason. Watch-only tasks, GPU approval
    expiry and a 6-hour utilization block still go straight to the owner: only a person can decide those.
 
-Tier models are the `models` entries `triage` (Tier 1) and `task` (Tier 2) of `agents.json` (agents.md); Tier 3 uses no model, it wakes
-the chat that already has the context.
+Tier backends are the `tiers` entries `triage` (Tier 1) and `task` (Tier 2) of `agents.json`, chosen by `nrp-watchdog setup` (agents.md; Hunter's
+choice: Tier 1 Gemini Flash with the lowest thinking, Tier 2 Sonnet, no separate Opus tier). Tier 3 uses no model: it wakes the chat that already
+has the context.
+
+### Waking the coordinator chat (any harness)
+
+The task's `origin` says how to reach its chat: `harness` t3 (the task's webhook relay, as before), `claude` (a Claude Code session id) or
+`codex` (a Codex session id), plus the session's `cwd`. Register with `--origin-harness claude|codex [--origin-session ID] [--origin-cwd DIR]`
+(without `--origin-session` the id is read from `CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID` of the shell that runs the command, only when the
+harness is named; a delegated child session gets a warning) or `nrp-watchdog origin task NAME --harness ... --session ... --evidence ...`.
+Delivery never starts a thread: for `claude` the monitor runs `claude -p --resume ID` in the chat's directory, for `codex` `codex exec resume
+ID -` (prompt on stdin), so the wake lands in that chat's history. The Claude wake may run only `nrp-watchdog task show|resume|cancel|needs-owner`,
+`digest` and `status`. A failed delivery counts toward `WAKE_MAX_TRIES` exactly like a failed webhook (an escalation falls back to
+`NEEDS_OWNER`; a done/failure wake is dropped with a digest `fault` line).
+
+**What wakes the chat:** (1) once when a plan step finishes (several tasks of one step send one wake, from the last task to finish, naming
+all of them); (2) as a last resort, once per escalation, when Tier 0/1/2 could not fix a failure (`escalation`); (3) a watch-only task's final
+failure. A failure that is still going up the ladder no longer sends its own `failure` wake (v2 woke the chat at the failure and again at
+escalation). Per-Job callback Secrets do not exist: the monitor sends every wake. Escalations are per task (a step's sibling tasks that fail
+separately each escalate). If the last waiting sibling of a step is cancelled, the finished ones never send the step wake (known-issues.md).
+The registering agent's handoff must say all this (SKILL.md step 7); `task add` prints the text to write and warns about a handoff that never
+mentions it.
 
 ### Deadline timeouts (Tier 0, tasks)
 

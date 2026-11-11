@@ -17,7 +17,8 @@ import test_tasks as TT  # noqa: E402
 REGISTRAR = ("Sam is rebuilding the quality-control table for the pilot recordings. Stage a builds the per-recording summary under "
              "s3://braingeneersdev/sam/qc/a.txt; a good result has one row per recording and no empty units. If it fails, check the "
              "memory peak first; the input list was fixed by Sam on 2026-11-05 and must not be changed. Do NOT lower the unit count "
-             "or drop recordings to make it pass. Code is in the lab repo under qc/, outputs under the s3 prefix above.")
+             "or drop recordings to make it pass. Code is in the lab repo under qc/, outputs under the s3 prefix above. Failures are handled by "
+             "the monitor's subagents first; this chat is woken only as a last resort, and the owner only after it.")
 SECTIONS = ("Registrar", "Fix log", "Continuation", "For the owner")
 
 

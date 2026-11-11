@@ -15,7 +15,7 @@ lab S3, and, for the background repair agents, at least one agent CLI: `claude` 
 Two different things use an assistant. The **session** is the assistant you type to: it follows this skill, writes
 `TASK.json` and runs `nrp-watchdog task add`. That needs only a shell, so any assistant that loads skills can do it
 (Codex, Claude Code, GitHub Copilot, Gemini CLI, Cursor). The **background agents** are started by the scheduler, not by
-a chat, and today there are two runners: `claude` and `codex` (agents.md). Neither depends on which assistant started
+a chat, and today there are three runners: `claude`, `codex` and (read-only triage tier only) `gemini` (agents.md). Neither depends on which assistant started
 the task, so a Cursor or Gemini session can register work that Claude or Codex repairs overnight.
 
 | Assistant | Loads the skill from | Registers tasks | Reminder hook |
@@ -27,9 +27,9 @@ the task, so a Cursor or Gemini session can register work that Claude or Codex r
 | Cursor | `~/.cursor/skills` | yes, explicitly | none |
 
 Verified by the author: Claude Code and Codex (sessions and background runners). Copilot, Gemini CLI and Cursor sessions
-are expected to work because registration is a plain command, but have not been run. A Copilot, Gemini or Cursor
-*background runner* does not exist yet; it would need the same allowlist and sandbox as the two above, so it is not
-included unverified.
+are expected to work because registration is a plain command, but have not been run. A Copilot or Cursor
+*background runner* does not exist yet; it would need the same allowlist and sandbox as the ones above, so it is not
+included unverified. The Gemini CLI runner exists for the triage tier only (agents.md).
 
 ## Steps
 
@@ -48,7 +48,9 @@ included unverified.
    `~/.local/state/nrp-watchdog/utilization-policy.local.json` and edit it (utilization.md, "Optional: local rules"). Without it
    only the shared numbers apply (GPU floor 40%, 400 concurrent jobs). The 5% single-item skip limit in the fix agent's prompt is
    the optional `skip_limit_fraction` setting in `config.json` (or `NRP_WATCHDOG_SKIP_LIMIT_FRACTION`).
-5. Optional: `agents.json` (agents.md). Optional, Claude Code only: a SessionStart hook that runs
+5. `agents.json` (agents.md): `install.sh` runs `nrp-watchdog setup` when it is missing and a terminal is attached; it asks which subscriptions you have
+   (Claude Code, Codex, Gemini CLI, T3) and which backend and model each of Tier 1 and Tier 2 uses (`NRP_WATCHDOG_SETUP=skip` never asks).
+   Without a terminal it prints the command; run it later, or write the file by hand. Until then agents use Claude only with built-in models. Optional, Claude Code only: a SessionStart hook that runs
    `nrp-watchdog status --quiet` so a session starts with a warning if the scheduler has stalled.
 
 `launchd` cannot read `~/Desktop` or `~/Documents`, so the programs are copied, never symlinked, and code for follow-up

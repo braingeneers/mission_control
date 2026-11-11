@@ -18,7 +18,9 @@ Required: `name` (lowercase letters, digits and `-`, at most 40), `goal`, `appro
   them with `nrp-watchdog task code NAME --pkg-dir DIR --extra-pkg-dir finetune --extra-pkg-dir bwb`.
 - `namespace` (default `braingeneers`), `mode` (`auto`: agents repair and resubmit, `watch`: any failure goes to the
   person), `max_retries` (0-10, default 4), `label`.
-- `origin` (**required** for `task add`): `{title, link, assistant?, collaborator?}` of the chat or ticket the work came from. Without it
+- `origin` (**required** for `task add`): `{title, link, assistant?, collaborator?, harness?, session?, cwd?}` of the chat or ticket the work came from.
+  `harness` + `session` + `cwd` make the chat wakeable whatever it runs in: `claude` (Claude Code session id), `codex` (Codex session id) or
+  `t3` (link + the task's webhook); flags `--origin-harness`, `--origin-session`, `--origin-cwd` (operations.md, "Waking the coordinator chat"). Without it
   the task is refused (v3; an alert would name no chat and wake nobody). Pass it in the file or with `--origin-title/--origin-link`.
   A continuation registered by a continue agent inherits its parent's origin (only a warning if the parent had none).
 - Continuation, at least one of (a task with none is a warning, or a refusal with
@@ -75,5 +77,5 @@ Derive the deadline from measured runtime with margin; the queue counts toward i
 `nrp-watchdog task list`, `task show NAME`, `task code NAME` (declare reship's code dirs), `task handoff NAME FILE`, `task watch NAME`, `task resume NAME` (continue after a person or the coordinator chat decided, from
 `NEEDS_OWNER` or `WITH_COORDINATOR`; `--gpu-ok-until DATE` after extending a GPU approval), `task needs-owner NAME --reason TEXT` (run by the
 coordinator chat only when the owner is truly needed: sets `NEEDS_OWNER`, sends the one DM), `task cancel NAME`, `status`, `digest --hours N`,
-`origin task NAME --title .. --link ..` (add or fix attribution later). Agents use `nrp-task`, a wrapper that validates
+`origin task NAME --title .. --link .. [--harness claude|codex --session ID --cwd DIR]` (add or fix attribution and the wake target later). Agents use `nrp-task`, a wrapper that validates
 every argument; it is their only shell tool for task work.

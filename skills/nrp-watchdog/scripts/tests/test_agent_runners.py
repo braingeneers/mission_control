@@ -82,7 +82,7 @@ class Unit(unittest.TestCase):
         self.assertEqual(w.agent_cfg()['followup_ladder'], ['repair'])
 
     def test_invalid_config_falls_back_to_defaults_and_says_why(self):
-        for bad in ('[1]', '{not json', {'runners': ['gemini']}, {'runners': []}, {'runners': ['claude', 'claude']},
+        for bad in ('[1]', '{not json', {'runners': ['nope']}, {'runners': []}, {'runners': ['claude', 'claude']},
                     {'models': {'nope': {'claude': 'x'}}}, {'models': {'triage': {'claude': 'a b'}}}, {'followup_ladder': ['triage', 'x']},
                     {'followup_ladder': []}, {'limits': {'repair': {'turns': -1}}}, {'limits': {'repair': {'color': 1}}}, {'extra': 1}):
             self.cfg(bad)
@@ -335,7 +335,7 @@ class EndToEnd(unittest.TestCase):
         self.assertIn('runner 1: claude', out)
         self.assertIn('runner 2: codex', out)
         self.assertIn('job follow-up ladder: triage -> repair -> repair -> a person', out)
-        (h.state / 'agents.json').write_text('{"runners": ["gemini"]}')
+        (h.state / 'agents.json').write_text('{"runners": ["nope"]}')
         rc, out, _ = h.wd('agents')
         self.assertIn('PROBLEM: agents.json ignored', out)
         self.assertIn('runner 1: claude', out)

@@ -64,13 +64,17 @@ class Webhooks(unittest.TestCase):
     def deliver(self, dry_run=False):
         self.wd.process_task_webhooks(SimpleNamespace(dry_run=dry_run), {})
 
-    def test_failure_retry_idempotence_and_payload(self):
+    def test_failure_does_not_wake_but_a_queued_event_retries_idempotently(self):
+        # v3: a failure goes up the ladder first, so task_fail itself sends no wake (the escalation wake is the one that reaches the chat)
         self.wd.task_fail("example", "a", "code", "signature", "secret log")
         self.wd.task_fail("example", "a", "code", "signature", "secret log")
         task = self.wd.task_load("example")
+        self.assertFalse(task.get("webhook_outbox"))
+        self.assertNotIn("event_id", task["failure"])
+        self.wd.task_txn("example", lambda t: self.wd.queue_task_webhook(t, "failure"))
+        task = self.wd.task_load("example")
         event = task["webhook_outbox"][0]
         self.assertEqual(len(task["webhook_outbox"]), 1)
-        self.assertEqual(task["failure"]["event_id"], event["event_id"])
         self.assertEqual(set(event), {"task", "event_type", "event_id", "generation"})
         Handler.status = 503
         self.deliver()

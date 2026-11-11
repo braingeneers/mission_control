@@ -4,6 +4,8 @@
 v2 (owner decision 2026-11-05, design docs/design.md): approved work is a TASK.
   nrp-watchdog task add TASK.json | list | show NAME | resume NAME [--skip STAGE] [--retries N] [--note TEXT] [--gpu-ok-until DATE] | cancel NAME
   nrp-watchdog task handoff NAME FILE                  attach a handoff to a task that was registered without one (written once; see Task field handoff)
+  nrp-watchdog setup [--non-interactive ...]          choose which assistant (claude / codex / gemini) runs Tier 1 and Tier 2; writes agents.json
+  task add ... --origin-harness t3|claude|codex [--origin-session ID --origin-cwd DIR]   where the coordinator chat runs: the monitor wakes THAT chat
   nrp-watchdog digest [--hours 24]                    silent events + what needs the owner
   nrp-task ...                                        (wrapper for `nrp-watchdog tool`) the fix agent's only shell tool
   nrp-watchdog plan sync PATH#ID | list | show ID      plan-run plans (on_done continuation; OFF unless <state>/on_done.enabled exists)
@@ -284,7 +286,13 @@ def save(d):
 # the agent's own (possibly delegated) thread, not the chat the person talks to. No origin -> "origin not recorded" plus
 # the goal and code repo so the person can still find the owner.
 ORIGIN_MISSING = "origin not recorded"
-ORIGIN_FIELDS = ("title", "link", "assistant", "collaborator", "note", "evidence")
+ORIGIN_FIELDS = ("title", "link", "assistant", "collaborator", "note", "evidence", "harness", "session", "cwd")
+# v3: the origin also says HOW to wake that same chat. `harness` is t3 (the task's webhook relay, link = the T3 thread), claude (a Claude Code
+# session id, resumed with `claude -p --resume ID`) or codex (a Codex session id, `codex exec resume ID`). `session` is that id and `cwd` the
+# directory the chat ran in (Claude Code finds a session by its project directory). A wake lands in that chat's own history; it never starts one.
+ORIGIN_HARNESSES = ("t3", "claude", "codex")
+ORIGIN_SESSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{3,99}$")
+SESSION_ENV = {"claude": "CLAUDE_CODE_SESSION_ID", "codex": "CODEX_THREAD_ID"}   # set in the shell of a Claude Code / Codex session
 ORIGIN_LINK_RE = re.compile(r"^(t3-thread://[^\s<>|]+|https?://[^\s<>|]+)$")
 
 
@@ -301,29 +309,56 @@ def norm_origin(raw, source="registered"):
     bad = sorted(set(raw) - set(ORIGIN_FIELDS))
     if bad:
         raise ChainError("origin: unknown field(s) %s (allowed: %s)" % (", ".join(bad), ", ".join(ORIGIN_FIELDS)))
-    o = {k: one_line(raw[k], {"title": 120, "link": 300, "note": 200, "evidence": 300}.get(k, 80))
+    o = {k: one_line(raw[k], {"title": 120, "link": 300, "note": 200, "evidence": 300, "cwd": 300}.get(k, 80))
          for k in ORIGIN_FIELDS if raw.get(k) not in (None, "")}
+    if o.get("harness") and o["harness"] not in ORIGIN_HARNESSES:
+        raise ChainError("origin.harness: one of %s (got %r)" % (", ".join(ORIGIN_HARNESSES), o["harness"][:20]))
+    if o.get("session") and not ORIGIN_SESSION_RE.match(o["session"]):
+        raise ChainError("origin.session: a session id (letters, digits, . _ : -; 4-100 characters), got %r" % o["session"][:40])
+    if o.get("session") and o.get("harness") not in ("claude", "codex"):
+        raise ChainError("origin.session needs origin.harness claude or codex (a T3 chat is reached through its webhook and link)")
+    if o.get("harness") in ("claude", "codex") and not o.get("session"):
+        raise ChainError("origin.harness %s needs origin.session: the id of the chat to wake (--origin-session ID; %s is read when it is "
+                         "set in this shell)" % (o["harness"], SESSION_ENV[o["harness"]]))
+    if o.get("cwd") and not (o["cwd"].startswith("/") and ".." not in o["cwd"].split("/")):
+        raise ChainError("origin.cwd: an absolute directory path without ..")
     link = o.get("link", "")
     if link.startswith("<") and link.endswith(">"):                    # T3 prints links as <t3-thread://...>
         link = o["link"] = link[1:-1]
     if link and not ORIGIN_LINK_RE.match(link):
         raise ChainError("origin.link: a t3-thread://... or https://... link without spaces, <, > or | (got %r)" % link[:60])
-    if not o.get("title") and not link:
+    if not o.get("title") and not link and not o.get("session"):
         raise ChainError("origin: needs the chat title and/or its exact link (the chat a person returns to)")
     o.setdefault("collaborator", OWNER_NAME)
     o["recorded"], o["source"] = iso(), source
     return o
 
 
+def detect_session(harness):
+    """The session id of the assistant running THIS command, from its environment, or "". Used only when --origin-harness is given
+    without --origin-session: the person said which harness, the id is read, never guessed from anything else. A delegated child agent has
+    its own session, not the chat's, so a Claude Code child session gets a warning."""
+    v = os.environ.get(SESSION_ENV.get(harness, ""), "")
+    if v and harness == "claude" and os.environ.get("CLAUDE_CODE_CHILD_SESSION"):
+        print("warning: CLAUDE_CODE_CHILD_SESSION is set: %s may be a delegated child agent's session, not the chat the person talks to. "
+              "Pass --origin-session with the chat's own id if they differ." % SESSION_ENV[harness], file=sys.stderr)
+    return v
+
+
 def origin_overlay(raw_origin, a):
-    """JSON origin (dict or None) overlaid with --origin-* flags; the flags win."""
-    flags = {k: getattr(a, "origin_" + k, None) for k in ("title", "link", "assistant", "collaborator")}
+    """JSON origin (dict or None) overlaid with --origin-* flags; the flags win. A claude/codex harness without a session takes the id from
+    the environment of the assistant running this command, and without a cwd the current directory."""
+    flags = {k: getattr(a, "origin_" + k, None) for k in ("title", "link", "assistant", "collaborator", "harness", "session", "cwd")}
     flags = {k: v for k, v in flags.items() if v}
-    if not flags:
-        return raw_origin
     if raw_origin not in (None, {}) and not isinstance(raw_origin, dict):
         return raw_origin                                              # let norm_origin refuse it
-    return dict(raw_origin or {}, **flags)
+    merged = dict(raw_origin or {}, **flags) if flags else raw_origin
+    if isinstance(merged, dict) and merged.get("harness") in ("claude", "codex"):
+        if not merged.get("session"):
+            merged = dict(merged, session=detect_session(merged["harness"]))
+        if not merged.get("cwd"):
+            merged = dict(merged, cwd=os.getcwd())
+    return merged
 
 
 def add_origin_args(p):
@@ -331,6 +366,10 @@ def add_origin_args(p):
     p.add_argument("--origin-link", help="exact link of that chat, e.g. t3-thread://v2/ENV/THREAD (T3 thread_read prints it)")
     p.add_argument("--origin-assistant", help="assistant and model of that chat, e.g. 'Codex gpt-6-astra' (optional)")
     p.add_argument("--origin-collaborator", help="person the chat works with (default: the owner_name setting)")
+    p.add_argument("--origin-harness", choices=ORIGIN_HARNESSES,
+                   help="where the chat runs, so the monitor wakes THAT chat: t3 (webhook + link), claude (Claude Code session), codex (Codex session)")
+    p.add_argument("--origin-session", help="session id of the claude/codex chat to wake (default: read from CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID)")
+    p.add_argument("--origin-cwd", help="directory the claude/codex chat runs in (default: the current directory); Claude Code finds sessions by it")
 
 
 def require_origin_note(o, kind, name, always=False):
@@ -472,15 +511,29 @@ def clean_env():
 #    "models": {"triage": {"claude": "haiku", "codex": "gpt-6.1-sol"}, "repair": {...}, "task": {...}, "pod": {...}},
 #    "limits": {"repair": {"turns": 25, "budget": 2.0, "timeout": 1500}},      # turns/budget apply to Claude only
 #    "followup_ladder": ["triage", "repair", "repair"]}                         # what a finished job's follow-up tries, in order
+# v3 (`nrp-watchdog setup` writes this): each tier names an ordered list of backends, chosen at install time from the subscriptions the
+# user has. The next entry is used ONLY when the one before it is unavailable (usage/rate limit, not signed in, CLI missing); a bad
+# answer never fails over. Every failover is a line in the task's events and the digest. Without "tiers" the old `runners` x `models`
+# form still loads and means the same ordered list per tier.
+#   "tiers": {"triage": [{"runner": "gemini", "model": "gemini-3.8-flash", "thinking": "lowest"}, {"runner": "claude", "model": "haiku"}],
+#             "task":   [{"runner": "claude", "model": "sonnet"}]}
+# Tier 3 is always the task's coordinator chat (no entry); there is no separate Opus tier.
 # Codex runs `codex exec` with approvals off, a workspace-write sandbox (no network, writes only to the agent's own
 # directories) and an execpolicy rules file generated from the same allowlist: a matching command may use the network,
 # anything else stays in the sandbox. Unlike Claude's dontAsk, a Codex agent can still READ any file the user can.
 AGENTS_CFG, RUNNER_STATE = STATE / "agents.json", STATE / "runners.json"
-KNOWN_RUNNERS = ("claude", "codex")
+KNOWN_RUNNERS = ("claude", "codex", "gemini")
+GEMINI_TIERS = ("triage",)             # the gemini runner only runs the read-only verdict tier (see exec_gemini); config naming it elsewhere is refused
+THINKING_LEVELS = ("lowest", "low", "medium", "high")
 TIERS = ("pod", "triage", "repair", "repair_auth", "task")
 LADDER_STEPS = ("triage", "repair")
 UNAVAILABLE = "AGENT UNAVAILABLE"
-LIMIT_ANY = re.compile(r"(hit your (?:weekly |usage |\w+ )?limit|usage limit|weekly limit|rate.?limit|quota (?:exceeded|exhausted)|out of (?:credits|usage))", re.I)
+LIMIT_ANY = re.compile(r"(hit your (?:weekly |usage |\w+ )?limit|usage limit|weekly limit|rate.?limit|quota (?:exceeded|exhausted)|out of (?:credits|usage)|"
+                       r"resource.?exhausted|exceeded your (?:current )?quota|too many requests)", re.I)
+AUTH_ANY = re.compile(r"(not (?:logged|signed) in|please (?:log ?in|sign in|run /login)|/login\b|invalid (?:api key|authentication)|api key not valid|"
+                      r"authentication (?:failed|error|required)|unauthenticated|failed to (?:log ?in|authenticate)|login required|"
+                      r"please set an auth method|GEMINI_API_KEY|credentials? (?:expired|invalid|not found)|oauth\b.*(?:expired|invalid))", re.I)
+AUTH_BLOCK_S = 3600                    # a runner that is not signed in is set aside this long, then tried again
 LIMIT_START = re.compile(r"^(you['’]ve hit your|you have hit your|claude (?:ai )?usage limit)", re.I)
 
 
@@ -493,46 +546,89 @@ def default_agent_cfg():
                        "repair": {"turns": JOB_TURNS, "budget": JOB_BUDGET, "timeout": 1500},
                        "repair_auth": {"turns": AUTH_TURNS, "budget": AUTH_BUDGET, "timeout": AUTH_TIMEOUT},
                        "task": {"turns": TASK_TURNS, "budget": TASK_BUDGET, "timeout": TASK_TIMEOUT}},
-            "followup_ladder": ["triage"] + ["repair"] * FOLLOWUP_REPAIR_ATTEMPTS}
+            "followup_ladder": ["triage"] + ["repair"] * FOLLOWUP_REPAIR_ATTEMPTS,
+            "tiers": {}}
+
+
+def check_backend(tier, i, b):
+    """One validated `tiers.<tier>[i]` entry: {runner, model?, thinking?} -> normalised dict. Raises ValueError."""
+    w = "tiers.%s[%d]" % (tier, i)
+    if not isinstance(b, dict) or set(b) - {"runner", "model", "thinking"}:
+        raise ValueError("%s: an object {runner, model, thinking}" % w)
+    r = b.get("runner")
+    if r not in KNOWN_RUNNERS:
+        raise ValueError("%s.runner: one of %s" % (w, "/".join(KNOWN_RUNNERS)))
+    if r == "gemini" and tier not in GEMINI_TIERS:
+        raise ValueError("%s: the gemini runner is limited to the %s tier (a read-only verdict); use claude or codex for %s" % (w, "/".join(GEMINI_TIERS), tier))
+    out = {"runner": r}
+    if b.get("model") is not None:
+        if not isinstance(b["model"], str) or not re.fullmatch(r"[A-Za-z0-9._:/-]{1,64}", b["model"]):
+            raise ValueError("%s.model: a model name" % w)
+        out["model"] = b["model"]
+    th = b.get("thinking")
+    if th is not None:
+        if r != "gemini":
+            raise ValueError("%s.thinking: only the gemini runner takes a thinking setting" % w)
+        if not ((isinstance(th, str) and th in THINKING_LEVELS) or (isinstance(th, int) and not isinstance(th, bool) and 0 <= th <= 32768)):
+            raise ValueError("%s.thinking: one of %s, or a token budget (integer)" % (w, ", ".join(THINKING_LEVELS)))
+        out["thinking"] = th
+    return out
+
+
+def parse_agent_cfg(raw):
+    """The effective config for a parsed agents.json object (defaults + overrides). Raises ValueError naming the first problem."""
+    cfg = default_agent_cfg()
+    if not isinstance(raw, dict):
+        raise ValueError("top level must be an object")
+    bad = sorted(set(raw) - {"runners", "models", "limits", "followup_ladder", "tiers"})
+    if bad:
+        raise ValueError("unknown key(s) %s" % ", ".join(bad))
+    if "runners" in raw:
+        rs = raw["runners"]
+        if not (isinstance(rs, list) and rs and len(set(rs)) == len(rs) and all(r in KNOWN_RUNNERS for r in rs)):
+            raise ValueError("runners: a non-empty list of %s, first = preferred" % "/".join(KNOWN_RUNNERS))
+        cfg["runners"] = list(rs)
+    for tier, per in (raw.get("models") or {}).items():
+        if tier not in TIERS or not isinstance(per, dict):
+            raise ValueError("models.%s: tier must be one of %s with {runner: model}" % (tier, ", ".join(TIERS)))
+        for r, m in per.items():
+            if r not in KNOWN_RUNNERS or not isinstance(m, str) or not re.fullmatch(r"[A-Za-z0-9._:/-]{1,64}", m):
+                raise ValueError("models.%s.%s: a model name" % (tier, r))
+            cfg["models"].setdefault(tier, {})[r] = m
+    for tier, per in (raw.get("limits") or {}).items():
+        if tier not in TIERS or not isinstance(per, dict) or set(per) - {"turns", "budget", "timeout"}:
+            raise ValueError("limits.%s: tier + {turns, budget, timeout}" % tier)
+        for k, v in per.items():
+            if isinstance(v, bool) or not isinstance(v, (int, float, str)) or float(v) <= 0:
+                raise ValueError("limits.%s.%s: a positive number" % (tier, k))
+            cfg["limits"][tier][k] = int(v) if k == "timeout" else str(v)
+    if "followup_ladder" in raw:
+        ld = raw["followup_ladder"]
+        if not (isinstance(ld, list) and 1 <= len(ld) <= 6 and all(x in LADDER_STEPS for x in ld)):
+            raise ValueError("followup_ladder: 1-6 steps, each triage or repair")
+        cfg["followup_ladder"] = list(ld)
+    if "tiers" in raw:
+        tr = raw["tiers"]
+        if not isinstance(tr, dict):
+            raise ValueError("tiers: {tier: [backend, ...]}")
+        for tier, lst in tr.items():
+            if tier not in TIERS or not isinstance(lst, list) or not 1 <= len(lst) <= 4:
+                raise ValueError("tiers.%s: tier must be one of %s with 1-4 backends, first = preferred" % (tier, ", ".join(TIERS)))
+            cfg["tiers"][tier] = [check_backend(tier, i, b) for i, b in enumerate(lst)]
+        if "runners" not in raw:                                          # the runners are the ones the tiers name (status, `agents test`)
+            names = []
+            for lst in cfg["tiers"].values():
+                names += [b["runner"] for b in lst if b["runner"] not in names]
+            cfg["runners"] = names + [r for r in cfg["runners"] if r not in names]
+    return cfg
 
 
 def load_agent_cfg():
     """(config, problem). A missing file is the defaults; an invalid one is the defaults plus a problem text (never a crash)."""
-    cfg = default_agent_cfg()
     if not AGENTS_CFG.exists():
-        return cfg, None
+        return default_agent_cfg(), None
     try:
-        raw = json.loads(AGENTS_CFG.read_text())
-        if not isinstance(raw, dict):
-            raise ValueError("top level must be an object")
-        bad = sorted(set(raw) - {"runners", "models", "limits", "followup_ladder"})
-        if bad:
-            raise ValueError("unknown key(s) %s" % ", ".join(bad))
-        if "runners" in raw:
-            rs = raw["runners"]
-            if not (isinstance(rs, list) and rs and len(set(rs)) == len(rs) and all(r in KNOWN_RUNNERS for r in rs)):
-                raise ValueError("runners: a non-empty list of %s, first = preferred" % "/".join(KNOWN_RUNNERS))
-            cfg["runners"] = list(rs)
-        for tier, per in (raw.get("models") or {}).items():
-            if tier not in TIERS or not isinstance(per, dict):
-                raise ValueError("models.%s: tier must be one of %s with {runner: model}" % (tier, ", ".join(TIERS)))
-            for r, m in per.items():
-                if r not in KNOWN_RUNNERS or not isinstance(m, str) or not re.fullmatch(r"[A-Za-z0-9._:/-]{1,64}", m):
-                    raise ValueError("models.%s.%s: a model name" % (tier, r))
-                cfg["models"].setdefault(tier, {})[r] = m
-        for tier, per in (raw.get("limits") or {}).items():
-            if tier not in TIERS or not isinstance(per, dict) or set(per) - {"turns", "budget", "timeout"}:
-                raise ValueError("limits.%s: tier + {turns, budget, timeout}" % tier)
-            for k, v in per.items():
-                if isinstance(v, bool) or not isinstance(v, (int, float, str)) or float(v) <= 0:
-                    raise ValueError("limits.%s.%s: a positive number" % (tier, k))
-                cfg["limits"][tier][k] = int(v) if k == "timeout" else str(v)
-        if "followup_ladder" in raw:
-            ld = raw["followup_ladder"]
-            if not (isinstance(ld, list) and 1 <= len(ld) <= 6 and all(x in LADDER_STEPS for x in ld)):
-                raise ValueError("followup_ladder: 1-6 steps, each triage or repair")
-            cfg["followup_ladder"] = list(ld)
-        return cfg, None
+        return parse_agent_cfg(json.loads(AGENTS_CFG.read_text())), None
     except (ValueError, OSError) as e:
         return default_agent_cfg(), "agents.json ignored (defaults used): %s" % e
 
@@ -553,6 +649,22 @@ def tier_settings(tier, runner):
             "timeout": int(lim["timeout"])}
 
 
+def tier_backends(tier):
+    """The ordered backends a tier may use: `tiers.<tier>` when configured, else the old `runners` x `models` form (the gemini runner only for
+    the tiers it is limited to)."""
+    cfg = agent_cfg()
+    if cfg["tiers"].get(tier):
+        return [dict(b) for b in cfg["tiers"][tier]]
+    return [dict({"runner": r}, **({"model": cfg["models"][tier][r]} if cfg["models"].get(tier, {}).get(r) else {}))
+            for r in cfg["runners"] if r != "gemini" or tier in GEMINI_TIERS]
+
+
+def spec_model(spec, runner):
+    """The model a runner uses for this spec: the backend dispatch chose, else the tier's `models` entry."""
+    b = spec.get("backend") or {}
+    return b.get("model") or tier_settings(spec["tier"], runner)["model"]
+
+
 class AgentCmd(list):
     """The Claude form of an agent command (a list) plus the spec every runner builds its own command from."""
     spec = None
@@ -560,7 +672,7 @@ class AgentCmd(list):
 
 def claude_argv(spec):
     s = tier_settings(spec["tier"], "claude")
-    argv = ["claude", "-p", "--model", s["model"], "--max-turns", s["turns"], "--max-budget-usd", s["budget"],
+    argv = ["claude", "-p", "--model", spec_model(spec, "claude") or s["model"], "--max-turns", s["turns"], "--max-budget-usd", s["budget"],
             "--permission-mode", "dontAsk", "--no-session-persistence"]
     if spec["json"]:
         argv += ["--output-format", "json"]
@@ -582,16 +694,30 @@ def limit_hit(rc, out, err):
     """True when a finished agent process answered with a usage limit instead of doing the work."""
     out = (out or "").strip()
     text = out
-    if out.startswith("{"):                                               # claude --output-format json
+    if out.startswith("{"):                                               # claude --output-format json; gemini -o json has `error`
         try:
             j = json.loads(out)
-            text = str(j.get("result") or "")
-            rc = rc or (1 if j.get("is_error") else 0)
+            text = str(j.get("result") or j.get("error") or "")
+            rc = rc or (1 if j.get("is_error") or j.get("error") else 0)
         except ValueError:
             pass
     if rc:
         return bool(LIMIT_ANY.search(text[-600:] + "\n" + (err or "")[-600:]))
     return bool(LIMIT_START.search(text[:200]))
+
+
+def auth_hit(rc, out, err):
+    """True when a finished agent process failed because the CLI is not signed in / its credentials are invalid (not a bad answer)."""
+    out = (out or "").strip()
+    text = out
+    if out.startswith("{"):
+        try:
+            j = json.loads(out)
+            text = str(j.get("result") or j.get("error") or "")
+            rc = rc or (1 if j.get("is_error") or j.get("error") else 0)
+        except ValueError:
+            pass
+    return bool(rc) and bool(AUTH_ANY.search(text[-600:] + "\n" + (err or "")[-600:]))
 
 
 def reset_time(text):
@@ -636,24 +762,32 @@ def unavailable_text():
     st, bits = read_json(RUNNER_STATE, {}), []
     for r in agent_cfg()["runners"]:
         u = float((st.get(r) or {}).get("until", 0))
-        bits.append("%s %s" % (r, ("out of usage until " + datetime.fromtimestamp(u).strftime("%a %H:%M")) if u > now() else
+        bits.append("%s %s" % (r, ("%s until %s" % ("not signed in, retried" if (st.get(r) or {}).get("kind") == "auth" else "out of usage",
+                                                    datetime.fromtimestamp(u).strftime("%a %H:%M"))) if u > now() else
                                "not installed" if not runner_ready(r) else "unavailable"))
     return "%s: %s" % (UNAVAILABLE, "; ".join(bits))
 
 
-def block_runner(runner, out, err):
+def block_runner(runner, out, err, kind="limit"):
+    """Set a runner aside: `limit` until its reset time (usage / rate limit), `auth` for AUTH_BLOCK_S (not signed in)."""
     text = " ".join(((out or "") + " " + (err or "")).split())
-    m = LIMIT_ANY.search(text)
-    why = text[max(0, m.start() - 20):m.end() + 100] if m else text[:120]
-    until = reset_time(text) or now() + 3600
-    until = min(max(until, now() + 300), now() + 8 * 86400)
+    if kind == "auth":
+        m = AUTH_ANY.search(text)
+        why = text[max(0, m.start() - 20):m.end() + 100] if m else text[:120]
+        until = now() + AUTH_BLOCK_S
+    else:
+        m = LIMIT_ANY.search(text)
+        why = text[max(0, m.start() - 20):m.end() + 100] if m else text[:120]
+        until = reset_time(text) or now() + 3600
+        until = min(max(until, now() + 300), now() + 8 * 86400)
     st = read_json(RUNNER_STATE, {})
-    st[runner] = {"until": until, "since": now(), "why": why[:200]}
+    st[runner] = {"until": until, "since": now(), "why": why[:200], "kind": kind}
     STATE.mkdir(parents=True, exist_ok=True)
     write_json(RUNNER_STATE, st)
-    log("agent runner %s is out of usage until %s: %s" % (runner, iso_at(until), why[:160]))
-    digest("fault", "agent runner %s out of usage until %s (%s); %s" % (
-        runner, iso_at(until), why[:100], "work moves to " + ", ".join(available_runners()) if available_runners() else "no runner left: agent work waits"))
+    what = "is not signed in (auth error); tried again after" if kind == "auth" else "is out of usage until"
+    log("agent runner %s %s %s: %s" % (runner, what, iso_at(until), why[:160]))
+    digest("fault", "agent runner %s %s %s (%s); %s" % (
+        runner, what, iso_at(until), why[:100], "work moves to " + ", ".join(available_runners()) if available_runners() else "no runner left: agent work waits"))
     if not available_runners():
         push("agents unavailable: %s. Fix agents and follow-ups wait (no retry is used up) and resume by themselves; "
              "`nrp-watchdog agents` shows the state, or add a runner in agents.json." % unavailable_text().split(": ", 1)[1],
@@ -669,7 +803,9 @@ def exec_claude(spec, prompt, cwd, timeout, env):
         r = subprocess.run(claude_argv(spec), input=prompt, capture_output=True, text=True, cwd=str(cwd), env=env, timeout=timeout)
     except subprocess.TimeoutExpired:
         return "timeout", "", "", None
-    return ("limit" if limit_hit(r.returncode, r.stdout, r.stderr) else "ok"), r.stdout, r.stderr, r.returncode
+    if limit_hit(r.returncode, r.stdout, r.stderr):
+        return "limit", r.stdout, r.stderr, r.returncode
+    return ("auth" if auth_hit(r.returncode, r.stdout, r.stderr) else "ok"), r.stdout, r.stderr, r.returncode
 
 
 def codex_rules(allowed):
@@ -702,8 +838,9 @@ def codex_writable(allowed):
 def exec_codex(spec, prompt, cwd, timeout, env):
     auth = Path(os.environ.get("NRP_WATCHDOG_CODEX_AUTH") or Path.home() / ".codex" / "auth.json")   # env: tests
     if not auth.exists():
-        return "error", "", "codex is not signed in (no %s)" % auth, 1
+        return "auth", "", "codex is not signed in (no %s)" % auth, 1
     s = tier_settings(spec["tier"], "codex")
+    s["model"] = spec_model(spec, "codex")
     WORK.mkdir(parents=True, exist_ok=True)
     home = Path(tempfile.mkdtemp(prefix="codex-home-", dir=str(WORK)))
     try:
@@ -727,6 +864,8 @@ def exec_codex(spec, prompt, cwd, timeout, env):
         text = last.read_text().strip() if last.exists() else ""
         if limit_hit(r.returncode, text or r.stdout, r.stderr):
             return "limit", text or r.stdout, r.stderr, r.returncode
+        if auth_hit(r.returncode, text or r.stdout, r.stderr):
+            return "auth", text or r.stdout, r.stderr, r.returncode
         if spec["json"]:
             text = json.dumps({"result": text or (r.stderr.strip() or r.stdout.strip())[-300:], "is_error": bool(r.returncode),
                                "total_cost_usd": None, "num_turns": None, "permission_denials": [], "runner": "codex"})
@@ -735,19 +874,132 @@ def exec_codex(spec, prompt, cwd, timeout, env):
         shutil.rmtree(str(home), ignore_errors=True)
 
 
-RUNNER_EXEC = {"claude": exec_claude, "codex": exec_codex}
+# ---- gemini runner (v3): the local `gemini` CLI, read-only verdict tiers only (GEMINI_TIERS) ----------------------
+# Non-interactive (`-p`, prompt on stdin), JSON output, approval mode `default` (anything not allowed is denied: there is nobody to ask).
+# The allowlist is enforced by Gemini CLI's policy engine through an ADMIN policy file written per run (highest priority tier): every tool is
+# denied, then only the same `Bash(prefix:*)` commands and `Read(/dir/**)` paths the Claude runner gets are allowed; edit/write rules are never
+# translated, so a gemini agent cannot change a file. Thinking depth is set through a per-run system settings file
+# (GEMINI_CLI_SYSTEM_SETTINGS_PATH) that defines a model alias with a thinkingConfig; the user's own ~/.gemini is not touched. Documented in the CLI's
+# own docs; the policy enforcement itself has not been exercised against the live model (references/agents.md).
+GEMINI_THINKING = {"lowest": "MINIMAL", "low": "LOW", "medium": "MEDIUM", "high": "HIGH"}
 
 
-def dispatch_agent(spec, prompt, cwd, timeout=None, env=None):
-    """(runner, status, out, err, rc). status: ok | timeout | unavailable (every runner is out of usage or missing)."""
+def gemini_policy(allowed):
+    """TOML for Gemini CLI's policy engine from a Claude-style allowlist: deny everything, allow the listed commands and read paths."""
+    prefixes, reads = [], []
+    for a in allowed:
+        m = re.fullmatch(r"Bash\((.*?)(?::\*)?\)", a)
+        if m and m.group(1).strip() and '"' not in m.group(1) and "\\" not in m.group(1):
+            prefixes.append(m.group(1).strip())
+            continue
+        m = re.fullmatch(r"Read\(/(/.*?)/\*\*\)", a)
+        if m and "'" not in m.group(1) and ".." not in m.group(1).split("/"):
+            reads.append(m.group(1))
+    out = ['# generated per run by nrp-watchdog: deny everything, then allow only what the tier is allowed',
+           '[[rule]]', 'toolName = "*"', 'decision = "deny"', 'priority = 1', '']
+    if prefixes:
+        out += ['[[rule]]', 'toolName = "run_shell_command"', 'commandPrefix = [%s]' % ", ".join(json.dumps(x) for x in prefixes),
+                'decision = "allow"', 'priority = 100', '']
+    for d in reads:                                                      # TOML literal strings ('...') keep the backslashes of the regex as they are
+        rx = re.sub(r"([.^$*+?()\[\]{}|\\])", r"\\\1", d)
+        out += ['[[rule]]', 'toolName = "read_file"', "argsPattern = '.*\"file_path\":\"%s/[^\"]*\".*'" % rx, 'decision = "allow"', 'priority = 100', '']
+    if reads:
+        out += ['[[rule]]', 'toolName = "read_file"', "argsPattern = '\\.\\./'", 'decision = "deny"', 'priority = 900', '']
+    return "\n".join(out) + "\n"
+
+
+def gemini_settings(tier, backend):
+    """(alias or None, settings dict) for the system settings file: the model alias carries the thinking setting; MCP servers, auto-update and
+    usage statistics are off for the unattended run."""
+    st = {"privacy": {"usageStatisticsEnabled": False}, "general": {"disableAutoUpdate": True}, "mcp": {"allowed": []}}
+    th, model = backend.get("thinking"), backend.get("model")
+    if th is None or not model:
+        return model, st
+    cfgc = {"thinkingConfig": ({"thinkingLevel": GEMINI_THINKING[th]} if isinstance(th, str) else {"thinkingBudget": int(th)})}
+    alias = "nrp-monitor-%s" % tier
+    st["modelConfigs"] = {"customAliases": {alias: {"extends": "base", "modelConfig": {"model": model, "generateContentConfig": cfgc}}}}
+    return alias, st
+
+
+def gemini_argv(spec, policy_path, alias):
+    argv = ["gemini", "-p", "Answer now, following the instructions above. Reply with the final answer only.",
+            "--approval-mode", "default", "--skip-trust", "-o", "json", "--admin-policy", str(policy_path)]
+    if alias:
+        argv += ["-m", alias]
+    return argv
+
+
+def exec_gemini(spec, prompt, cwd, timeout, env):
+    if spec["tier"] not in GEMINI_TIERS:                                   # also enforced in the config; never run gemini with write power
+        return "error", "", "the gemini runner only runs the %s tier" % "/".join(GEMINI_TIERS), 1
+    b = spec.get("backend") or {}
+    WORK.mkdir(parents=True, exist_ok=True)
+    home = Path(tempfile.mkdtemp(prefix="gemini-run-", dir=str(WORK)))
+    try:
+        (home / "policy.toml").write_text(gemini_policy(spec["allowed"]))
+        alias, settings = gemini_settings(spec["tier"], b)
+        (home / "settings.json").write_text(json.dumps(settings))
+        argv = gemini_argv(spec, home / "policy.toml", alias)
+        try:
+            r = subprocess.run(argv, input=prompt, capture_output=True, text=True, cwd=str(cwd), timeout=timeout,
+                               env=dict(env, GEMINI_CLI_SYSTEM_SETTINGS_PATH=str(home / "settings.json")))
+        except subprocess.TimeoutExpired:
+            return "timeout", "", "", None
+        if limit_hit(r.returncode, r.stdout, r.stderr):
+            return "limit", r.stdout, r.stderr, r.returncode
+        if auth_hit(r.returncode, r.stdout, r.stderr):
+            return "auth", r.stdout, r.stderr, r.returncode
+        text, err = (r.stdout or "").strip(), False
+        try:
+            j = json.loads(text)
+            text, err = str(j.get("response") or "").strip(), bool(j.get("error"))
+        except ValueError:
+            pass
+        if spec["json"]:
+            text = json.dumps({"result": text or (r.stderr.strip() or r.stdout.strip())[-300:], "is_error": bool(r.returncode or err),
+                               "total_cost_usd": None, "num_turns": None, "permission_denials": [], "runner": "gemini"})
+        return "ok", text, r.stderr, r.returncode
+    finally:
+        shutil.rmtree(str(home), ignore_errors=True)
+
+
+RUNNER_EXEC = {"claude": exec_claude, "codex": exec_codex, "gemini": exec_gemini}
+
+
+def backend_name(b):
+    return "%s%s" % (b["runner"], "/" + b["model"] if b.get("model") else "")
+
+
+def note_failover(spec, backends, i, why, on_failover):
+    """One line per failover (log, digest, and the task's events through `on_failover`): which backend was unavailable, why, who takes over."""
+    nxt = next((x for x in backends[i + 1:] if not runner_blocked(x["runner"]) and runner_ready(x["runner"])), None)
+    msg = "backend failover (tier %s): %s unavailable (%s); %s" % (spec["tier"], backend_name(backends[i]), why[:120],
+                                                                     "using " + backend_name(nxt) if nxt else "no backend left for this tier")
+    log(msg)
+    digest("failover", msg)
+    if on_failover:
+        on_failover(msg)
+
+
+def dispatch_agent(spec, prompt, cwd, timeout=None, env=None, on_failover=None):
+    """(runner, status, out, err, rc). status: ok | timeout | unavailable (every backend of the tier is out of usage, not signed in or missing).
+    Backends are tried in the tier's order; the next one is used ONLY when one is unavailable. A timeout or a bad answer is returned as is."""
     cwd.mkdir(parents=True, exist_ok=True)
     env = env or clean_env()
-    for runner in agent_cfg()["runners"]:
-        if runner_blocked(runner) or not runner_ready(runner):
+    backends = tier_backends(spec["tier"])
+    for i, b in enumerate(backends):
+        runner = b["runner"]
+        if not runner_ready(runner):
+            note_failover(spec, backends, i, "not installed", on_failover)
             continue
-        status, out, err, rc = RUNNER_EXEC[runner](spec, prompt, cwd, timeout or tier_settings(spec["tier"], runner)["timeout"], env)
-        if status == "limit":
-            block_runner(runner, out, err)
+        if runner_blocked(runner):
+            u = float((read_json(RUNNER_STATE, {}).get(runner) or {}).get("until", 0))
+            note_failover(spec, backends, i, "set aside until %s" % iso_at(u), on_failover)
+            continue
+        status, out, err, rc = RUNNER_EXEC[runner](dict(spec, backend=b), prompt, cwd, timeout or tier_settings(spec["tier"], runner)["timeout"], env)
+        if status in ("limit", "auth"):
+            block_runner(runner, out, err, status)
+            note_failover(spec, backends, i, "usage limit" if status == "limit" else "not signed in", on_failover)
             continue
         if status == "ok":
             push_clear("agents:unavailable")
@@ -2208,6 +2460,19 @@ def handoff_load(hp, src_file):
     return handoff_join(secs), thin, ("its ## Registrar section is thin (%d characters of text, at least %d expected)" % (n, HANDOFF_MIN_REG)) if thin else ""
 
 
+HANDOFF_ESC_RE = re.compile(r"last resort|escalat|coordinator|sub-?agent", re.I)
+HANDOFF_ESC_ASK = ("In the Registrar, say in your own words how failures are handled: the monitor's script and its subagents (Tier 1 triage, "
+                   "Tier 2 fixer) handle failures and fixes; this chat is woken only as a last resort, after them; the owner is notified only "
+                   "after this chat decides they are needed (`nrp-watchdog task needs-owner`).")
+
+
+def handoff_escalation_missing(text):
+    """True when an accepted handoff's Registrar never says who handles failures (the monitor's subagents first, the chat as a last resort,
+    the owner last). A warning only: the Registrar is the registering agent's own text."""
+    reg = HANDOFF_COMMENT.sub("", handoff_body(handoff_split(text), "Registrar") or "")
+    return not HANDOFF_ESC_RE.search(reg)
+
+
 def handoff_write(path, text):
     tmp = path.with_suffix(".tmp")
     tmp.write_text(text)
@@ -2360,9 +2625,21 @@ def handoff_prompt(t):
     return "\n\n".join(out)
 
 
-def queue_task_webhook(t, kind, **extra):
-    """Called inside the task transaction, so the event and transition are atomic. `extra` (the Tier 3 `summary`) joins the event."""
+def wake_target(t):
+    """How to wake the chat that owns task `t`, or None. The origin's harness decides: claude / codex -> resume that session; otherwise
+    the task's webhook relay (T3), which exists only when an operator configured it. Never a new thread."""
+    o = t.get("origin") or {}
+    if o.get("harness") in ("claude", "codex") and o.get("session"):
+        return {"harness": o["harness"], "session": o["session"], "cwd": o.get("cwd") or ""}
     if (STATE / "webhooks" / t["name"]).exists():
+        return {"harness": "t3"}
+    return None
+
+
+def queue_task_webhook(t, kind, **extra):
+    """Called inside the task transaction, so the event and transition are atomic. `extra` (the `summary`) joins the event. The event goes
+    to the task's wake target: the T3 webhook, or a Claude Code / Codex session resumed non-interactively (process_task_webhooks)."""
+    if wake_target(t):
         generation = uuid.uuid4().hex
         event = dict({"task": t["name"], "event_type": kind, "event_id": generation, "generation": generation}, **extra)
         t.setdefault("webhook_outbox", []).append(event)
@@ -2404,8 +2681,9 @@ class NoWebhookRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def wake_failed(n, event, why):
-    """A webhook delivery failed. Count it on the event; when the task waits on its coordinator chat (Tier 3) and the wake keeps failing,
-    give the wake up and fall back to NEEDS_OWNER so the escalation is never silently lost."""
+    """A wake delivery failed (webhook, or a session resume). Count it on the event. After WAKE_MAX_TRIES passes the wake is given up: when
+    the task waits on its coordinator chat (Tier 3) it falls back to NEEDS_OWNER so the escalation is never silently lost; any other wake
+    (a step's done wake) is dropped with a digest fault line instead of being retried forever."""
     out = {}
 
     def f(t):
@@ -2414,12 +2692,85 @@ def wake_failed(n, event, why):
             return False
         tries = t.setdefault("wake_tries", {})                 # counted beside the outbox, so the delivered payload stays exactly the event
         tries[eid] = out["tries"] = tries.get(eid, 0) + 1
-        if t.get("status") == "WITH_COORDINATOR" and out["tries"] >= WAKE_MAX_TRIES:
-            t["webhook_outbox"] = [e for e in t.get("webhook_outbox") or [] if e.get("event_type") != "escalation"]
-            out["reason"] = t.get("reason", "")
+        if out["tries"] >= WAKE_MAX_TRIES:
+            t["webhook_outbox"] = [e for e in t.get("webhook_outbox") or [] if e.get("event_id") != eid]
+            tries.pop(eid, None)
+            tev(t, "wake %s given up after %d failed deliveries: %s" % (event.get("event_type"), out["tries"], why))
+            if event.get("event_type") == "escalation" and t.get("status") == "WITH_COORDINATOR":
+                out["reason"] = t.get("reason", "")
+            else:
+                out["dropped"] = True
     task_txn(n, f)
     if out.get("reason") is not None:
         escalate(n, "the coordinator chat could not be woken (delivery failed %d passes in a row: %s). %s" % (out["tries"], why, out["reason"]))
+    elif out.get("dropped"):
+        digest("fault", "the %s wake for the coordinator chat was not delivered after %d tries (%s); it is dropped. `nrp-watchdog task show %s`"
+               % (event.get("event_type"), out["tries"], why, n), n)
+
+
+class WakeError(Exception):
+    pass
+
+
+WAKE_TIMEOUT_S = 600
+WAKE_TOOLS = ["Bash(nrp-watchdog task show:*)", "Bash(nrp-watchdog task resume:*)", "Bash(nrp-watchdog task cancel:*)",
+              "Bash(nrp-watchdog task needs-owner:*)", "Bash(nrp-watchdog digest:*)", "Bash(nrp-watchdog status:*)"]
+
+
+def wake_text(t, event):
+    """What a resumed claude/codex chat reads (a T3 relay composes its own text from the event). Short: summary, pointers and the commands."""
+    n, kind = t["name"], event.get("event_type")
+    if event.get("summary"):
+        body = event["summary"]
+    elif kind == "done":
+        body = ("NRP task %s finished: all %d stage(s) succeeded and their success markers exist. Look: `nrp-watchdog task show %s`; "
+                "its handoff is %s." % (n, len(t.get("stages") or []), n, task_dir(n) / "handoff.md"))
+    elif kind == "failure":
+        f = t.get("failure") or {}
+        body = "NRP task %s: stage %s failed [%s] %s. Look: `nrp-watchdog task show %s`." % (n, f.get("stage"), f.get("cls"), (f.get("detail") or "")[:200], n)
+    else:
+        body = "NRP task %s: %s event. Look: `nrp-watchdog task show %s`." % (n, kind, n)
+    return ("[NRP monitor wake: an automated message from the monitor script, not from the owner. The monitor's own subagents already handled "
+            "what they could; you are woken as a last resort, and the owner only after you.]\n%s\nReply with one short line saying what you "
+            "will do. Run only the commands named here now; anything longer belongs in your normal turn." % body)[:3000]
+
+
+def wake_argv(target):
+    if target["harness"] == "claude":      # --resume: the same session, so the wake lands in that chat's history; --no-session-persistence is NOT used
+        return ["claude", "-p", "--resume", target["session"], "--permission-mode", "dontAsk", "--output-format", "json",
+                "--allowedTools"] + WAKE_TOOLS
+    return ["codex", "exec", "resume", "--all", "--skip-git-repo-check", target["session"], "-"]     # prompt on stdin; no --ephemeral (it must persist)
+
+
+def wake_session(target, text, timeout=None):
+    """Resume the owner's own claude / codex session non-interactively with the wake text, so it lands in that chat's history (never a new
+    thread). Raises WakeError with a short reason; the caller counts it toward WAKE_MAX_TRIES."""
+    h = target["harness"]
+    cwd = target.get("cwd") if target.get("cwd") and os.path.isdir(target["cwd"]) else str(Path.home())
+    if shutil.which(h, path=clean_env().get("PATH")) is None:
+        raise WakeError("%s is not installed on this machine" % h)
+    try:
+        r = subprocess.run(wake_argv(target), input=text, capture_output=True, text=True, cwd=cwd, env=clean_env(), timeout=timeout or WAKE_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise WakeError("%s resume timed out after %ds" % (h, timeout or WAKE_TIMEOUT_S))
+    except OSError as e:
+        raise WakeError("%s could not start (%s)" % (h, type(e).__name__))
+    out = (r.stdout or "").strip()
+    err = " ".join((r.stderr or out).split())[-160:]
+    if limit_hit(r.returncode, r.stdout, r.stderr):
+        raise WakeError("%s is out of usage" % h)
+    if r.returncode:
+        raise WakeError("%s resume failed (rc %d): %s" % (h, r.returncode, err))
+    if h == "claude" and out.startswith("{"):
+        try:
+            res = json.loads(out)
+        except ValueError:
+            return
+        if res.get("is_error"):
+            raise WakeError("claude resume reported an error: %s" % " ".join(str(res.get("result") or "").split())[:160])
+
+
+WAKE_EXEC = {"claude": wake_session, "codex": wake_session}     # tests replace these; the T3 relay is the webhook path below
 
 
 def process_task_webhooks(a, st):
@@ -2428,25 +2779,33 @@ def process_task_webhooks(a, st):
     opener = urllib.request.build_opener(NoWebhookRedirect())
     for n in task_names():
         t = task_load(n) or {}
+        target = wake_target(t) or {"harness": "t3"}                   # no target: the webhook path fails and is counted like any failed wake
         for event in (t.get("webhook_outbox") or [])[:10]:
             try:
-                url, workstream = webhook_config(n)
-                payload = dict(event, workstream=workstream)
-                req = urllib.request.Request(url, data=json.dumps(payload).encode(),
-                                             headers={"Content-Type": "application/json", "User-Agent": WEBHOOK_USER_AGENT}, method="POST")
-                with opener.open(req, timeout=5) as response:
-                    if not 200 <= response.status < 300:
-                        raise ValueError("delivery failed")
+                if target["harness"] in WAKE_EXEC:                       # claude / codex: resume that session with the wake text
+                    WAKE_EXEC[target["harness"]](target, wake_text(t, event))
+                else:
+                    url, workstream = webhook_config(n)
+                    payload = dict(event, workstream=workstream)
+                    req = urllib.request.Request(url, data=json.dumps(payload).encode(),
+                                                 headers={"Content-Type": "application/json", "User-Agent": WEBHOOK_USER_AGENT}, method="POST")
+                    with opener.open(req, timeout=5) as response:
+                        if not 200 <= response.status < 300:
+                            raise ValueError("delivery failed")
             except Exception as e:
-                why = ("HTTP %s" % e.code) if isinstance(e, urllib.error.HTTPError) else type(e).__name__
-                if isinstance(e, urllib.error.URLError) and not isinstance(e, urllib.error.HTTPError):
-                    why += " (%s)" % type(e.reason).__name__
-                log("task %s webhook delivery failed: %s; will retry" % (n, why))
+                if isinstance(e, WakeError):
+                    why = str(e)
+                else:
+                    why = ("HTTP %s" % e.code) if isinstance(e, urllib.error.HTTPError) else type(e).__name__
+                    if isinstance(e, urllib.error.URLError) and not isinstance(e, urllib.error.HTTPError):
+                        why += " (%s)" % type(e.reason).__name__
+                log("task %s %s wake delivery failed: %s; will retry" % (n, target["harness"], why))
                 wake_failed(n, event, why)
                 break
             def ack(t):
                 t["webhook_outbox"] = [e for e in t.get("webhook_outbox", []) if e.get("event_id") != event["event_id"]]
                 (t.get("wake_tries") or {}).pop(event["event_id"], None)
+                tev(t, "wake delivered: %s via %s" % (event.get("event_type"), target["harness"]))
             task_txn(n, ack)
 
 
@@ -2895,6 +3254,8 @@ def task_add_raw(raw, src_file, by="session", parent=None):
         if os.environ.get("NRP_WATCHDOG_REQUIRE_HANDOFF") and by == "session":     # a continue agent registering the next step is only warned
             sys.exit("task refused: " + msg)
         warn.append(msg)
+    if htext is not None and not hthin and handoff_escalation_missing(htext):
+        warn.append("the handoff does not say how failures are handled. " + HANDOFF_ESC_ASK)
     # v3: a task registered by a person/chat must name its chat (ft-tables-w6 had none, so its alert woke nobody). A continuation
     # inherits its parent's origin, so one without is only warned about (refusing would strand the approved plan).
     require_origin_note(t["origin"], "task", n, always=(by == "session"))
@@ -2950,6 +3311,14 @@ def task_add_raw(raw, src_file, by="session", parent=None):
     print("task %s added (%s, %s): %d stage(s). The watchdog submits pending stages, checks done_s3, retries failures with a "
           "fresh agent and pushes to the owner only when it needs them.%s" % (n, t["mode"], origin_plain(t["origin"]), len(t["stages"]),
           " Code clone: %s (branch %s)." % (t["code"]["clone"], t["code"]["branch"]) if t["code"] else ""))
+    tgt = wake_target(t)
+    print("Wake: %s. The monitor wakes that same chat (never a new thread) once per finished plan step and, as a last resort, when its own "
+          "subagents cannot fix a failure; nothing else wakes it." % (
+          {"t3": "T3 webhook relay", "claude": "Claude Code session %s" % (tgt or {}).get("session"),
+           "codex": "Codex session %s" % (tgt or {}).get("session")}[tgt["harness"]] if tgt else
+           "NO wake target (no webhook, no --origin-harness/--origin-session): a failure that needs the chat goes to the owner instead"))
+    if htext is None or hthin or handoff_escalation_missing(htext):
+        print("HANDOFF: " + HANDOFF_ESC_ASK + " Attach it with `nrp-watchdog task handoff %s FILE` (templates/handoff.md)." % n)
     return 0
 
 
@@ -3041,10 +3410,7 @@ def task_fail(n, sid, cls, sig, detail, logs=None, extra=None):
         s = tstage(t, sid)
         s["state"] = "failed"
         t["failure"] = dict({"stage": sid, "job": s["job"], "cls": cls, "sig": sig, "detail": detail[:400], "logs": logs, "ts": now()}, **(extra or {}))
-        event_id = queue_task_webhook(t, "failure")
-        if event_id:
-            t["failure"]["event_id"] = event_id
-        tev(t, "stage %s FAILED [%s] %s" % (sid, cls, detail[:200]))
+        tev(t, "stage %s FAILED [%s] %s" % (sid, cls, detail[:200]))     # no wake here: a failure goes up the ladder first (Tier 0/1/2 handle it)
     return task_txn(n, f)
 
 
@@ -3152,8 +3518,8 @@ def to_coordinator(n, reason, a=None):
     configured for the task there is nobody to wake, so the owner is told instead (NEEDS_OWNER) and nothing is lost. A wake that cannot
     be delivered (wake_failed) or an answer that never comes (check_coordinator_waits) falls back the same way."""
     reason = " ".join(reason.split())
-    if not (STATE / "webhooks" / n).exists():
-        escalate(n, "%s [no coordinator webhook is configured for this task, so the owner is told]" % reason[:290], a)
+    if not wake_target(task_load(n) or {"name": n}):
+        escalate(n, "%s [no coordinator webhook or harness session is configured for this task, so the owner is told]" % reason[:290], a)
         return
     out = {}
 
@@ -3462,7 +3828,8 @@ def run_task_agent(n, prompt_text, a, kind="fix"):
     cwd = WORK / "task"
     task_txn(n, lambda t: (t.update(agent_started=now()), t.pop("report", None), t.pop("util_ok_claim", None)))
     log("task %s: %s agent start" % (n, kind))
-    runner, status, out, _, _ = dispatch_agent(cmd.spec, prompt_text, cwd, None, env)
+    runner, status, out, _, _ = dispatch_agent(cmd.spec, prompt_text, cwd, None, env,
+                                               on_failover=lambda m: task_txn(n, lambda t: tev(t, m)))
     if status == "unavailable":                                    # the last runner ran out mid-call
         task_txn(n, lambda t: t.pop("agent_started", None))
         return out, []
@@ -3762,6 +4129,11 @@ def handle_failure(n, a):
     used = len(t["attempts"][since:])
     cls_used = sum(1 for x in t["attempts"][since:] if x["cls"] == f["cls"])
     if t["mode"] == "watch":
+        # a watch-only task has no ladder: the failure is final, so this is the one `failure` wake (the chat hears it, and so does the owner)
+        if not a.dry_run:
+            task_txn(n, lambda t: queue_task_webhook(t, "failure", summary="NRP task %s (watch-only): stage %s failed [%s] %s. Look: "
+                     "`nrp-watchdog task show %s`. The owner is notified too: a watch-only task has no automatic fixes."
+                     % (n, f["stage"], f["cls"], f["detail"][:200], n)))
         escalate(n, "watch-only task, stage %s failed [%s]: %s" % (f["stage"], f["cls"], f["detail"]), a)
         return
     if f["cls"] == "slow" and not a.dry_run and tier0_timeout(n, f):
@@ -3909,12 +4281,19 @@ def advance_task(n, jobs, a):
                 return
     t = task_load(n)
     if all(s["state"] == "done" for s in t["stages"]) and t["status"] in TASK_LIVE:
+        sib = step_mates(t)
+
         def finish(t):
             t.update(status="done", finished=now())
-            event_id = queue_task_webhook(t, "done")
+            tev(t, "all %d stages done" % len(t["stages"]))
+            waiting = [x["name"] for x in sib if x["status"] in TASK_LIVE + TASK_HELD]
+            if waiting:                                                  # one wake per plan step: the last task of the step sends it
+                tev(t, "step %s: done wake held until task(s) %s finish" % (t["on_done"]["from_step"], ", ".join(waiting)))
+                return
+            extra = {"summary": step_done_summary(t, sib)} if sib else {}
+            event_id = queue_task_webhook(t, "done", **extra)
             if event_id:
                 t["done_event_id"] = event_id
-            tev(t, "all %d stages done" % len(t["stages"]))
         task_txn(n, finish)
         digest("task-done", "%s: all %d stage(s) done in %s; %d retr%s" % (t["label"], len(t["stages"]), ago(t["created"]),
                len(t["attempts"]), "y" if len(t["attempts"]) == 1 else "ies"), n)
@@ -4487,6 +4866,25 @@ def continue_task(n, a):
     if status == "FAILED" and den:
         line = "the continue agent was denied %d tool call(s) (watchdog fault): %s" % (len(den), line)
     close_continuation(n, status, rep.get("line") or line)
+
+
+def step_mates(t):
+    """Other tasks of task `t`'s plan step (empty without on_done or when the plan state is unreadable)."""
+    if not t.get("on_done"):
+        return []
+    try:
+        return step_siblings(t)
+    except Exception as e:
+        log("task %s: step siblings unreadable: %s: %s" % (t["name"], type(e).__name__, str(e)[:120]))
+        return []
+
+
+def step_done_summary(t, sib):
+    """The one wake for a finished plan step: every task of the step, not one wake per task."""
+    names = sorted([x["name"] for x in sib] + [t["name"]])
+    return ("NRP plan step %s (plan %s) is done: tasks %s all finished and their success markers exist. Look: %s. The continuation (if the plan "
+            "has auto-continue on) runs once for the step." % (t["on_done"]["from_step"], t["on_done"]["plan"], ", ".join(names),
+            "; ".join("`nrp-watchdog task show %s`" % x for x in names)))[:1600]
 
 
 def step_siblings(t):
@@ -5123,6 +5521,8 @@ def cmd_task_handoff(a):
         sys.exit("handoff refused: %s" % why)
     if thin:
         print("warning: %s; fix agents will have little to go on" % why, file=sys.stderr)
+    elif handoff_escalation_missing(text):
+        print("warning: the handoff does not say how failures are handled. " + HANDOFF_ESC_ASK, file=sys.stderr)
     src = handoff_path(a.file, str(Path.cwd() / "x"))
 
     def attach(t):
@@ -5145,7 +5545,10 @@ def cmd_task_cancel(a):
 def cmd_origin(a):
     """Metadata-only: record (or show) which chat owns a task/chain/legacy job. Same locks as the runner; no state, approval,
     submission or ownership changes. Refuses to overwrite an existing origin without --replace; --evidence is required."""
-    flags = {k: getattr(a, k) for k in ("title", "link", "assistant", "collaborator", "note") if getattr(a, k)}
+    flags = {k: getattr(a, k) for k in ("title", "link", "assistant", "collaborator", "note", "harness", "session", "cwd") if getattr(a, k)}
+    if flags.get("harness") in ("claude", "codex"):                     # same defaults as `task add --origin-harness`
+        flags.setdefault("session", detect_session(flags["harness"]))
+        flags.setdefault("cwd", os.getcwd())
     kind, name = a.kind, a.name
     if not flags:
         cur = {"task": lambda: (task_load(name) or {}).get("origin"), "chain": lambda: (chain_load(name) or {}).get("origin"),
@@ -5167,7 +5570,7 @@ def cmd_origin(a):
             return False
         if old:
             new["collaborator"] = flags.get("collaborator") or old.get("collaborator", OWNER_NAME)
-            for k in ("assistant", "title", "link"):                    # --replace changes only the fields given
+            for k in ("assistant", "title", "link", "harness", "session", "cwd"):          # --replace changes only the fields given
                 if k not in flags and old.get(k):
                     new[k] = old[k]
         rec["origin"] = new
@@ -5604,6 +6007,189 @@ def cmd_chain_wait(a):
         time.sleep(min(WAIT_POLL_S, max(1, a.m - (now() - start))) if a.m else WAIT_POLL_S)
 
 
+# ---- setup: choose each tier's backend from the subscriptions the user has (writes agents.json) ----------------------
+# Tier 1 (triage) and Tier 2 (fixer) are configurable; Tier 3 is always the coordinator chat and there is no separate Opus tier.
+SUBSCRIPTIONS = ("claude", "codex", "gemini", "t3")          # t3 only changes what is explained: it is a harness for the coordinator chat, not a runner
+SETUP_TIERS = (("triage", "Tier 1 triage (reads one event, answers benign / no fix / escalate)"),
+               ("task", "Tier 2 fixer (edits manifests and code, resubmits)"))
+SETUP_DEFAULT_MODEL = {("claude", "triage"): "haiku", ("claude", "task"): "sonnet", ("codex", "triage"): "gpt-6.1-sol", ("codex", "task"): "gpt-6.1-sol",
+                       ("gemini", "triage"): "gemini-3.8-flash"}
+
+
+def installed_runners():
+    return [r for r in KNOWN_RUNNERS if shutil.which(r)]
+
+
+def suggest_tiers(have):
+    """The suggested ordered backends per tier for the runners `have` (installed AND subscribed). Gemini flash with the lowest thinking for
+    triage when available (its only tier), Sonnet for the fixer; the other available runner is listed after as the failover."""
+    tiers = {}
+    tri = []
+    if "gemini" in have:
+        tri.append({"runner": "gemini", "model": SETUP_DEFAULT_MODEL[("gemini", "triage")], "thinking": "lowest"})
+    for r in ("claude", "codex"):
+        if r in have:
+            tri.append({"runner": r, "model": SETUP_DEFAULT_MODEL[(r, "triage")]})
+    fix = [{"runner": r, "model": SETUP_DEFAULT_MODEL[(r, "task")]} for r in ("claude", "codex") if r in have]
+    if tri:
+        tiers["triage"] = tri[:3]
+    if fix:
+        tiers["task"] = fix[:3]
+    return tiers
+
+
+def parse_backend_spec(tier, text, i=0):
+    """'runner[:model[:thinking]]' -> a validated backend dict (ValueError names the problem)."""
+    parts = [x.strip() for x in text.split(":")]
+    if not parts[0] or len(parts) > 3:
+        raise ValueError("backend %r: runner[:model[:thinking]]" % text)
+    b = {"runner": parts[0]}
+    if len(parts) > 1 and parts[1]:
+        b["model"] = parts[1]
+    if len(parts) > 2 and parts[2]:
+        b["thinking"] = int(parts[2]) if parts[2].isdigit() else parts[2]
+    return check_backend(tier, i, b)
+
+
+def parse_backend_list(tier, text):
+    return [parse_backend_spec(tier, x, i) for i, x in enumerate(t for t in text.split(",") if t.strip())]
+
+
+def backend_label(b):
+    return "%s%s%s" % (b["runner"], "/" + b["model"] if b.get("model") else " (CLI default model)", ", thinking " + str(b["thinking"]) if b.get("thinking") is not None else "")
+
+
+def setup_config(old, tiers):
+    """The agents.json object to write: whatever the user already had (limits, models, follow-up ladder) plus `tiers`, and `runners` (the
+    tiers' runners, fixer first, for the legacy repair/pod tiers; gemini cannot run those)."""
+    cfg = {k: v for k, v in (old or {}).items() if k != "tiers"}
+    cfg["tiers"] = tiers
+    runners = []
+    for tier in ("task", "triage"):
+        for b in tiers.get(tier, []):
+            if b["runner"] != "gemini" and b["runner"] not in runners:
+                runners.append(b["runner"])
+    if runners:
+        cfg["runners"] = runners
+    else:
+        cfg.pop("runners", None)
+    return {k: cfg[k] for k in ("runners", "tiers", "models", "limits", "followup_ladder") if k in cfg}
+
+
+def write_agents_cfg(new_text):
+    """Atomically replace agents.json with `new_text`, keeping the old file as agents.json.bak. Returns the backup path or None."""
+    AGENTS_CFG.parent.mkdir(parents=True, exist_ok=True)
+    bak = None
+    if AGENTS_CFG.exists():
+        bak = AGENTS_CFG.with_name(AGENTS_CFG.name + ".bak")
+        shutil.copy2(str(AGENTS_CFG), str(bak))
+    tmp = AGENTS_CFG.with_name(AGENTS_CFG.name + ".tmp")
+    tmp.write_text(new_text)
+    os.chmod(str(tmp), 0o600)
+    os.replace(str(tmp), str(AGENTS_CFG))
+    return bak
+
+
+def setup_ask(prompt, default=""):
+    try:
+        ans = input("%s%s: " % (prompt, " [%s]" % default if default else "")).strip()
+    except EOFError:
+        sys.exit("setup needs answers: run it in a terminal, or use --non-interactive with --triage/--fixer")
+    return ans or default
+
+
+def cmd_setup(a):
+    import difflib
+    installed = installed_runners()
+    interactive = not a.non_interactive
+    if interactive and not sys.stdin.isatty() and not os.environ.get("NRP_WATCHDOG_SETUP_ANYSTDIN"):
+        sys.exit("setup is interactive and stdin is not a terminal. Run it in a terminal, or pass --non-interactive "
+                 "[--subscriptions claude,gemini] [--triage RUNNER:MODEL[:THINKING],...] [--fixer RUNNER:MODEL,...] [--dry-run].")
+    print("NRP monitor setup: which assistants run its background agents (Tier 1 triage, Tier 2 fixer).")
+    print("Tier 3 is always the chat that owns the work (woken once per finished step, or as a last resort); there is no separate Opus tier.\n")
+    print("Installed CLIs: %s" % (", ".join("%s (%s)" % (r, shutil.which(r)) for r in installed) or "none found on PATH"))
+    if a.subscriptions is not None:
+        subs = [x.strip() for x in a.subscriptions.split(",") if x.strip()]
+    elif interactive:
+        ans = setup_ask("Which do you have a subscription or API access for? (%s)" % ", ".join(SUBSCRIPTIONS), ",".join(installed) or "claude")
+        subs = [x.strip().lower() for x in ans.replace(" ", ",").split(",") if x.strip()]
+    else:
+        subs = list(installed)
+    bad = [x for x in subs if x not in SUBSCRIPTIONS]
+    if bad:
+        sys.exit("unknown subscription(s) %s (choose from %s)" % (", ".join(bad), ", ".join(SUBSCRIPTIONS)))
+    for r in subs:
+        if r in KNOWN_RUNNERS and r not in installed:
+            print("note: you named %s but its CLI is not on PATH; install it before using it (it is left out of the suggestions)." % r)
+    have = [r for r in KNOWN_RUNNERS if r in subs and r in installed]
+    if "t3" in subs:
+        print("T3: the coordinator chat is woken through the task's webhook relay (configured per task by the operator); the T3 chat itself "
+              "may run Claude or Codex, which is a separate choice from the agents below.")
+    sugg = suggest_tiers(have)
+    tiers, explicit = {}, {"triage": a.triage, "task": a.fixer}
+    for tier, title in SETUP_TIERS:
+        if explicit[tier]:
+            try:
+                tiers[tier] = parse_backend_list(tier, explicit[tier])
+            except ValueError as e:
+                sys.exit("--%s: %s" % ("fixer" if tier == "task" else "triage", e))
+            if not tiers[tier]:
+                sys.exit("--%s: at least one backend" % ("fixer" if tier == "task" else "triage"))
+            continue
+        default = sugg.get(tier, [])
+        if not default:
+            sys.exit("no backend is available for %s: it needs %s installed and in your subscriptions" % (title, "Claude Code or Codex" if tier == "task" else "Claude Code, Codex or Gemini CLI"))
+        if interactive:
+            print("\n%s\n  suggested, in order (the next is used only when the one before is unavailable):" % title)
+            for i, b in enumerate(default, 1):
+                print("   %d. %s" % (i, backend_label(b)))
+            print("  Enter to accept, or type backends as runner[:model[:thinking]],... (e.g. gemini:gemini-3.8-flash:lowest,claude:haiku).")
+            while True:
+                ans = setup_ask("%s backends" % ("Tier 1" if tier == "triage" else "Tier 2"), "")
+                try:
+                    tiers[tier] = parse_backend_list(tier, ans) if ans else default
+                    unavailable = [b["runner"] for b in tiers[tier] if b["runner"] not in have]
+                    if unavailable:
+                        print("  %s: not installed or not in your subscriptions; they stay in the list but will be skipped." % ", ".join(sorted(set(unavailable))))
+                    break
+                except ValueError as e:
+                    print("  %s" % e)
+        else:
+            tiers[tier] = default
+    old, old_text = None, ""
+    if AGENTS_CFG.exists():
+        old_text = AGENTS_CFG.read_text()
+        try:
+            old = json.loads(old_text)
+            if not isinstance(old, dict):
+                raise ValueError("not an object")
+        except ValueError:
+            sys.exit("%s exists but is not valid JSON; fix or move it first (setup will not overwrite what it cannot read)" % AGENTS_CFG)
+    new = setup_config(old, tiers)
+    try:
+        parse_agent_cfg(new)
+    except ValueError as e:
+        sys.exit("the chosen configuration is invalid: %s" % e)
+    new_text = json.dumps(new, indent=2) + "\n"
+    old_lines = old_text.splitlines(True)
+    if old_lines and not old_lines[-1].endswith("\n"):
+        old_lines[-1] += "\n"
+    diff = "".join(difflib.unified_diff(old_lines, new_text.splitlines(True), "agents.json (current)" if old is not None else "(new file)", "agents.json (proposed)"))
+    if not diff:
+        print("\nagents.json already matches: nothing to change.")
+        return 0
+    print("\n" + diff)
+    if a.dry_run:
+        print("(dry run: nothing written)")
+        return 0
+    if interactive and setup_ask("Write %s%s? (y/n)" % (AGENTS_CFG, " (the old file is kept as .bak)" if old is not None else ""), "y").lower() not in ("y", "yes"):
+        print("nothing written")
+        return 1
+    bak = write_agents_cfg(new_text)
+    print("wrote %s%s. Check with `nrp-watchdog agents` and `nrp-watchdog agents test`." % (AGENTS_CFG, " (previous version: %s)" % bak if bak else ""))
+    return 0
+
+
 def cmd_agents(a):
     cfg, problem = load_agent_cfg()
     if a.acmd == "unblock":
@@ -5625,9 +6211,10 @@ def cmd_agents(a):
                 rc = 1
                 continue
             t0 = time.time()
-            status, out, err, code = RUNNER_EXEC[r](spec, "Reply with exactly the single word OK and nothing else.", WORK / "followup", 180, clean_env())
-            if status == "limit":
-                block_runner(r, out, err)
+            bk = next((x for x in tier_backends("triage") if x["runner"] == r), {"runner": r})
+            status, out, err, code = RUNNER_EXEC[r](dict(spec, backend=bk), "Reply with exactly the single word OK and nothing else.", WORK / "followup", 180, clean_env())
+            if status in ("limit", "auth"):
+                block_runner(r, out, err, status)
             ok = status == "ok" and not code and out.strip().upper().startswith("OK")
             print("%-7s %s in %.0fs: %s" % (r, "works" if ok else "FAILED (%s)" % status, time.time() - t0,
                                            " ".join((out or err or "").split())[-120:]))
@@ -5643,9 +6230,11 @@ def cmd_agents(a):
               "out of usage until %s (%s)" % (iso_at(u), st[r].get("why", "")[:70]) if u > now() else "ready"))
     for tier in TIERS:
         lim = cfg["limits"][tier]
-        print("  %-11s models %s  turns %s budget $%s timeout %ss (turns/budget: Claude only)" % (
-              tier, ", ".join("%s=%s" % (r, cfg["models"].get(tier, {}).get(r, "(Codex default)")) for r in cfg["runners"]),
+        print("  %-11s %s  turns %s budget $%s timeout %ss (turns/budget: Claude only)" % (
+              tier, " -> ".join("%s%s%s" % (x["runner"], "/" + x["model"] if x.get("model") else " (default model)",
+                                           " thinking=%s" % x["thinking"] if x.get("thinking") is not None else "") for x in tier_backends(tier)) or "(no backend)",
               lim["turns"], lim["budget"], lim["timeout"]))
+    print("Tier 3 (every task): its coordinator chat, woken through its origin (t3 webhook / claude or codex session); no model entry")
     print("job follow-up ladder: " + " -> ".join(cfg["followup_ladder"]) + " -> a person")
     return 0
 
@@ -5926,6 +6515,9 @@ def main():
     o.add_argument("--link", help="exact chat link (t3-thread://v2/ENV/THREAD or https://...)")
     o.add_argument("--assistant", help="assistant and model, e.g. 'Codex gpt-6-astra'")
     o.add_argument("--collaborator", help="person the chat works with (default: the owner_name setting)")
+    o.add_argument("--harness", choices=ORIGIN_HARNESSES, help="where the chat runs, so the monitor wakes it: t3, claude or codex")
+    o.add_argument("--session", help="claude/codex session id of the chat (default: read from CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID)")
+    o.add_argument("--cwd", help="directory the claude/codex chat runs in (default: the current directory)")
     o.add_argument("--note", help="short free text")
     o.add_argument("--evidence", help="REQUIRED when recording: how the chat was verified (no guessing)")
     o.add_argument("--replace", action="store_true", help="overwrite an existing origin (only the fields given change)")
@@ -5936,7 +6528,14 @@ def main():
     t = sub.add_parser("status", help="heartbeat age; warns (exit 3) when stale while chains or jobs are active")
     t.add_argument("--quiet", action="store_true", help="print only the warning (for a SessionStart hook)")
     t.set_defaults(f=cmd_status)
-    ag = sub.add_parser("agents", help="which CLI runs the agents (Claude, then Codex when Claude is out of usage), models, follow-up ladder")
+    x = sub.add_parser("setup", help="choose which assistant runs each tier (Claude Code / Codex / Gemini CLI) from the subscriptions you have; writes agents.json after showing a diff")
+    x.add_argument("--non-interactive", action="store_true", help="no prompts: use the flags, else the suggestions for the installed CLIs, and write")
+    x.add_argument("--subscriptions", help="comma list of what you have: claude,codex,gemini,t3 (default: the installed CLIs)")
+    x.add_argument("--triage", help="Tier 1 backends in order, RUNNER[:MODEL[:THINKING]],... (gemini thinking: lowest|low|medium|high or a token budget)")
+    x.add_argument("--fixer", help="Tier 2 backends in order, RUNNER[:MODEL],... (claude or codex)")
+    x.add_argument("--dry-run", action="store_true", help="show the diff, write nothing")
+    x.set_defaults(f=cmd_setup)
+    ag = sub.add_parser("agents", help="which CLI runs each tier's agents (Claude / Codex / Gemini CLI, in order; the next only when one is unavailable), models, follow-up ladder")
     ags = ag.add_subparsers(dest="acmd")
     ag.set_defaults(f=cmd_agents, acmd="show", runner=None)
     ags.add_parser("show").set_defaults(f=cmd_agents, runner=None)

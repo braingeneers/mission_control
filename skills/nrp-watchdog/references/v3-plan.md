@@ -1,6 +1,6 @@
 # v3: rename to nrp-monitor, tiered escalation, one coordinator thread  <!-- plan:nrp-monitor-v3 -->
 
-Status: design agreed with Hunter 2026-11-10. Built so far (2026-11-11): the task ladder (Tier 1 Haiku, Tier 2 Sonnet, Tier 3 coordinator chat via `WITH_COORDINATOR`, `task needs-owner`) and the Tier 0 deadline rules; see operations.md. Not built: the rest. Source of truth for the monitor is this skill (mission_control skills/nrp-watchdog); the copy in braindance_proj/tools/nrp-watchdog is stale. Review answers still open: questions in "Open questions" below, plus the PR #7 questions (repo location, delete-after-two-flags).
+Status: design agreed with Hunter 2026-11-10. Built so far (2026-11-11): the task ladder (Tier 1 Haiku, Tier 2 Sonnet, Tier 3 coordinator chat via `WITH_COORDINATOR`, `task needs-owner`) and the Tier 0 deadline rules; see operations.md. Built 2026-11-11 (step 2 and 5): one coordinator chat woken whatever harness it runs in (T3 webhook, Claude Code session, Codex session), one wake per plan step, per-tier backends chosen by `nrp-watchdog setup` (Claude / Codex / Gemini CLI). Not built: the rest. Source of truth for the monitor is this skill (mission_control skills/nrp-watchdog); the copy in braindance_proj/tools/nrp-watchdog is stale. Review answers still open: the fan-out-from-profile question in "Open questions" below, plus the PR #7 questions (repo location, delete-after-two-flags).
 **Central question:** can the script do almost all monitoring, with models woken only for judgement, all in the plan's own thread?
 **What changes with the answer:** models stop polling and doing clerk work (12 manager wakes for one T71 fan-out, 2026-11-10);
 Hunter hears only when he is truly needed.
@@ -32,6 +32,12 @@ may_touch: tools/nrp-watchdog/, docs/agents/
 - Tier 3 is the coordinator chat, not a separate Opus fixer: "I think the chat since it has all of the context to help fix".
 - "we need to actually implement and push to main not a PR for this".
 
+**Hunter's answers to the open questions** (build session, 2026-11-11, verbatim):
+- Q1, how a non-T3 coordinator binds to "the coordinator thread": "regardless of claude code or codex or t3 it should wake the same chat yeah. and then importantly I hope this is how it would work is if there is a long running agent that built and sent the job it would write in the handoff for this and let the subagents handle only going to the main chat as a last resort and me as a last last resort"
+- Q2, one subscription per tier or failover: "that should be prompted when the user downloads the skill as to what subscription the user has and what they want to use for each. for instance I think for me I would actually like to have my low level agent be changed to gemini flash with lowest tier thinking for this and escalate to a sonnet agent and then opus agent"
+- Follow-up (asked whether to add a separate Opus agent between Sonnet and the coordinator chat), verbatim: "close and yes update but after the sonnet agent just send to the coordinator chat"
+- Resulting ladder: Tier 1 Gemini Flash (lowest thinking) -> Tier 2 Sonnet -> Tier 3 coordinator chat -> Hunter. No separate Opus agent.
+
 **Added 2026-11-11 (seen live on ft-tables-w6, spike-tokenizer-scaling):**
 - Deadline timeouts (`slow` class) go straight to NEEDS_OWNER in v2 (`handle_failure`), skipping every agent. v3: Tier 0 first
   (pod still progressing, i.e. per-item outputs or log lines advancing -> extend `activeDeadlineSeconds` in place, or resubmit once
@@ -60,8 +66,9 @@ may_touch: tools/nrp-watchdog/, docs/agents/
 - Fix in passing: allow several tasks per plan step; queue time must not eat the run deadline.
 
 **Open questions:** whether the monitor may launch a fan-out on its own when the profile is inside the plan's rules (my recommendation:
-yes, those rules are already approved); how a non-T3 harness binds to "the coordinator thread" (Codex/Claude Code session ids vs T3 threads);
-one subscription per tier or failover between them.
+yes, those rules are already approved). ANSWERED 2026-11-11 (above, built): how a non-T3 harness binds to "the coordinator thread" (the
+origin records harness + session id; the monitor resumes that session), and one subscription per tier vs failover (each tier has an ordered
+backend list chosen at install time; the next entry only on unavailable/auth/limit errors).
 
 ## Start here (handoff for the build session, 2026-11-10)
 - Approved by Hunter 2026-11-10: "I think that this all sounds good as a plan!" and push straight to main (no PR needed). Build v3 in
@@ -76,5 +83,5 @@ one subscription per tier or failover between them.
   OOM resize, cleanup, fan-out from a profile inside the plan's sizing rules; (4) Haiku triage tier with a fixed action menu
   ("no fix needed" closes the event, never NEEDS_OWNER); (5) per-tier backend config (Claude Code / Codex / T3, several subscriptions);
   (6) several tasks per plan step.
-- Answer the open questions with Hunter before (2) and (5).
+- Open questions for (2) and (5) answered 2026-11-11 (see Hunter's answers); built in the same session.
 - Delegation: Sonnet/Sol agents for coding and tests (Hunter's preference); keep the build session small and relay with a handoff.

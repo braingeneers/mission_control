@@ -38,13 +38,17 @@ and never start an agent whose only job is to wait.
    with none of these only lands in the digest and nothing acts on it; do not hand back unattended work that still has
    requested analysis, review or delivery remaining.
 5. **Record the origin** (required: `task add` refuses a task without it): the chat or ticket the work came from (`origin.title`,
-   `origin.link`, or `--origin-title/--origin-link`). It is attribution, not a callback.
+   `origin.link`, or `--origin-title/--origin-link`) and where it runs, so the monitor wakes that same chat and never a new thread:
+   `--origin-harness claude|codex` (the session id is read from `CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID`, or pass `--origin-session`),
+   or `t3` with its webhook (operations.md, "Waking the coordinator chat").
 6. **Register and verify**: `nrp-watchdog task add TASK.json`, then `nrp-watchdog task show NAME` and
    `nrp-watchdog status`. Report what is registered and what will and will not resume on its own.
 7. **Write the handoff before you return.** Once the monitor is started, copy `scripts/templates/handoff.md` and fill
    its `## Registrar` section for the agents that will take over later: what is being done and why, what each stage
    produces, what to check when it finishes and when it fails, decisions already made, what NOT to do, where the code
-   and outputs are (worked example in [handoff](references/handoff.md)). Attach it with
+   and outputs are (worked example in [handoff](references/handoff.md)). **Also write who handles failures:** the monitor's
+   subagents (Tier 1 triage, Tier 2 fixer) handle failures and fixes; the main chat is woken only as a last resort, after them; the owner only
+   after the chat decides he is needed (`nrp-watchdog task needs-owner`). `task add` prints this reminder and warns about a handoff that does not say it. Attach it with
    `nrp-watchdog task handoff NAME FILE` (or name it in the task's `handoff` field before `task add`), then confirm
    `nrp-watchdog task show NAME` prints `handoff: accepted`. A task without one only gets a warning, and its fix and
    continue agents start with nothing but the task fields.
@@ -62,10 +66,10 @@ submitter.
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).
-- Handles a failure at the cheapest level that can fix it (script rules, Haiku triage, a Sonnet fixer, then the task's own coordinator
-  chat; the person hears only if that chat says so): see
-  [operations](references/operations.md). Which agent runs, in what order, and what happens when one is out of usage is
-  configured in `agents.json`: see [agents](references/agents.md). A healthy Job that only the lab floor flags can be waived
+- Handles a failure at the cheapest level that can fix it (script rules, a cheap triage agent, a Sonnet fixer, then the task's own coordinator
+  chat, woken in whatever harness it runs; the person hears only if that chat says so): see
+  [operations](references/operations.md). Which agent runs each tier (Claude Code, Codex or Gemini CLI), in what order, and what happens when one is unavailable is
+  chosen by `nrp-watchdog setup` and stored in `agents.json`: see [agents](references/agents.md). A healthy Job that only the lab floor flags can be waived
   (`UTIL_OK`, limited per task, decided by the script): see [utilization](references/utilization.md).
 - When a task finishes with `on_done`, runs one continue agent that checks the plan step's "done when" and registers the
   next approved step. It never goes past the approved range or a named stop.
@@ -93,4 +97,4 @@ submitter.
 - [Utilization](references/utilization.md): the checker, shared numbers, optional local rules, strikes.
 - [Install](references/install.md): installing, the owner settings, the scheduler.
 - [Known issues](references/known-issues.md): what is broken or unproven.
-- [v3 plan](references/v3-plan.md): agreed next design (rename to nrp-monitor, tiered Haiku/Sonnet/manager escalation, one coordinator thread); not built yet.
+- [v3 plan](references/v3-plan.md): agreed design (rename to nrp-monitor, tiered escalation, one coordinator chat in any harness, per-tier backends); partly built.

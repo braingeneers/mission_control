@@ -153,6 +153,18 @@ launchd actually runs (`~/.local/bin/nrp-watchdog`) is still the old script unti
   (`NODE_FAULT_RE`); extend it as new faults are seen. The OOM rule needs NRP's Prometheus; without a number it does nothing.
 - Several tasks per plan step; the step is done when all are (tasks.md).
 
+## v3 steps 2 and 5 (2026-11-11; fake claude/codex programs and mocked runners, nothing run live)
+- Not verified live: that `claude -p --resume ID` with `--permission-mode dontAsk` reaches a session that is open interactively at the same
+  time (Claude may start a copy; its `--bg --resume` help says so for background sessions); that `codex exec resume --all ID -` accepts a
+  session from another directory and runs the shell commands the wake names under the user's own Codex sandbox/approval settings (the resume
+  subcommand has no sandbox flags); that `CODEX_THREAD_ID` equals the id `codex exec resume` takes (it is in the Codex binary's environment
+  list; not run). A wake that does not land is retried for `WAKE_MAX_TRIES` passes, then falls back to the owner.
+- A wake blocks the pass while it runs (timeout 600 s). Several failing wakes in one pass can make a pass long; the pass lock keeps the next one from overlapping.
+- If the last waiting task of a plan step is cancelled, the finished tasks of that step never send the step wake (nothing re-checks the step).
+- Gemini runner: the allowlist rests on Gemini CLI's policy engine (admin policy, `commandPrefix`, `argsPattern`) as documented in the CLI's own docs;
+  it was not run against the live model. `gemini -m ALIAS` with a custom alias and `thinkingLevel MINIMAL` for "lowest" are per those docs; a model
+  that rejects MINIMAL needs `thinking: low` or a budget. Hence it is limited to the triage tier.
+
 ## Seen live 2026-11-10 (T71 step 6 fan-out, braindance_proj)
 - False STUCK: a pod flagged "stuck creating 142 min" at the moment it started; the fix agent correctly left it running, but the
   task then went NEEDS_OWNER (owner had to `task resume --skip`). A "no fix needed" verdict should close the event, not page the owner.

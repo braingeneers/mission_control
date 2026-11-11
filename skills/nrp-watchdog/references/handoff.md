@@ -69,6 +69,9 @@ handoff but add nothing.
 - Decisions already made, with who made them and when, so a fix agent does not reopen them.
 - Things NOT to do: inputs not to change, numbers not to lower, jobs and namespaces not to touch.
 - Where the code, manifests and outputs are.
+- Who handles failures: the monitor's subagents (Tier 1 triage, Tier 2 fixer) fix things; the registering chat is woken only as a last
+  resort, after them, with a short summary and the commands to resume, cancel or (only if the owner is truly needed) `task needs-owner`; the
+  owner hears only after that. `task add` prints this reminder and warns when the handoff never says it (the template shows wording).
 
 It is not a log (the script keeps that) and not a copy of the task file. One to three KB is plenty.
 

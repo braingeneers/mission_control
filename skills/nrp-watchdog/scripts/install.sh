@@ -25,6 +25,15 @@ dirty=$(git -C "$here" status --porcelain -- . 2>/dev/null | head -1)
 echo "commit $commit${dirty:+ (+uncommitted changes)}  installed $(date '+%Y-%m-%dT%H:%M:%S')" > "$state/INSTALLED"
 echo "installed: $(cat "$state/INSTALLED")"
 [ -f "$state/config.json" ] || echo "NOTE: $state/config.json is missing. Create it with {\"nrp_user_annotation\": \"http://cilogon.org/serverE/users/NNNN\", \"slack_user_id\": \"U...\"}; without it pod checks and the Slack DM are off."
+# Which assistant runs each tier (Claude Code / Codex / Gemini CLI): asked once, only when agents.json is missing and a person is at the
+# terminal. Otherwise say how to run it. NRP_WATCHDOG_SETUP=skip never asks. Setup failing never fails the install.
+if [ ! -f "$state/agents.json" ]; then
+  if [ "${NRP_WATCHDOG_SETUP:-auto}" != "skip" ] && [ -t 0 ]; then
+    NRP_WATCHDOG_STATE="$state" "$HOME/.local/bin/nrp-watchdog" setup || echo "NOTE: setup did not finish; run 'nrp-watchdog setup' again (until then agents use Claude only, built-in models)."
+  else
+    echo "NOTE: $state/agents.json is missing, so background agents use Claude only with built-in models. Choose what each tier uses with: nrp-watchdog setup"
+  fi
+fi
 if [ "${1:-}" = "--launchd" ]; then
   launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
   launchctl bootstrap "gui/$(id -u)" "$plist"
