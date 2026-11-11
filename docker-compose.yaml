@@ -876,6 +876,32 @@ services:
       secret-fetcher:
         condition: service_healthy
 
+  # Local-daemon maintenance. Socket access is privileged even with a :ro bind.
+  # Policy/state live in the image and local volume; no host cron/config changes.
+  docker-maintenance:
+    image: braingeneers/docker-maintenance:20261111-c39dfe6d4a53
+    container_name: docker-maintenance
+    restart: unless-stopped
+    stop_grace_period: 3m
+    environment:
+      MAINTENANCE_SERVER: "braingeneers.gi.ucsc.edu"
+      MAINTENANCE_SLACK_CHANNEL_ID: "C08NSDULLR1"
+    networks:
+      - braingeneers-net
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+        bind:
+          create_host_path: false
+      - local:/local
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # Data Explorer dataset browser
   data-explorer:
     image: braingeneers/data-explorer:20261106-d0ea27e4f905

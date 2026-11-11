@@ -6,6 +6,8 @@ SQL_DB_IMAGE ?= braingeneers/sql-db
 SQL_DB_TAG ?= $(IMAGE_DATE)-$(IMAGE_SHA)
 REPLICATED_VOLUME_BACKUP_IMAGE ?= braingeneers/replicated-volume-backup
 REPLICATED_VOLUME_BACKUP_TAG ?= $(IMAGE_DATE)-$(IMAGE_SHA)
+DOCKER_MAINTENANCE_IMAGE ?= braingeneers/docker-maintenance
+DOCKER_MAINTENANCE_TAG ?= $(IMAGE_DATE)-$(IMAGE_SHA)
 DATA_LIFECYCLE_IMAGE ?= braingeneers/data-lifecycle
 DATA_LIFECYCLE_VERSION ?= $(shell cat data-lifecycle/VERSION)
 DATA_LIFECYCLE_TAG ?= v$(DATA_LIFECYCLE_VERSION)
@@ -25,6 +27,7 @@ DATA_LIFECYCLE_STAGE4_POC_RCLONE_UPLOAD_CONCURRENCY ?= 0
 DATA_LIFECYCLE_STAGE4_POC_DESTINATION_URL ?= $(DATA_LIFECYCLE_STAGE4_POC_DESTINATION_PREFIX)$(notdir $(DATA_LIFECYCLE_STAGE4_POC_SOURCE_FILE))
 
 .PHONY: help test compose-validate service-proxy-test notification-service-compose-test data-explorer-compose-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test replicated-volume-backup-compose-test verify-uploader-deployment sql-db-build sql-db-push sql-db-shell sql-db-test-backup replicated-volume-backup-build replicated-volume-backup-push replicated-volume-backup-shell replicated-volume-backup-test data-lifecycle-build data-lifecycle-test data-lifecycle-push data-lifecycle-shell data-lifecycle-run-local data-lifecycle-stage4-upload-repro
+.PHONY: docker-maintenance-build docker-maintenance-test docker-maintenance-push docker-maintenance-shell docker-maintenance-compose-test
 
 help:
 	@printf '%s\n' \
@@ -47,6 +50,11 @@ help:
 		'  make replicated-volume-backup-push' \
 		'  make replicated-volume-backup-shell' \
 		'  make replicated-volume-backup-test' \
+		'  make docker-maintenance-build' \
+		'  make docker-maintenance-test' \
+		'  make docker-maintenance-push' \
+		'  make docker-maintenance-shell' \
+		'  make docker-maintenance-compose-test' \
 		'  make data-lifecycle-build' \
 		'  make data-lifecycle-test' \
 		'  make data-lifecycle-push' \
@@ -57,7 +65,7 @@ help:
 compose-validate:
 	docker compose -f docker-compose.yaml config -q
 
-test: compose-validate service-proxy-test notification-service-compose-test data-explorer-compose-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test replicated-volume-backup-compose-test
+test: compose-validate service-proxy-test notification-service-compose-test data-explorer-compose-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test replicated-volume-backup-compose-test docker-maintenance-compose-test
 
 service-proxy-test:
 	./service-proxy/test-default-auth-config.sh
@@ -79,6 +87,31 @@ workflows-compose-test:
 
 replicated-volume-backup-compose-test:
 	./scripts/test-replicated-volume-backup-compose-contract.sh
+
+docker-maintenance-compose-test:
+	./scripts/test-docker-maintenance-compose-contract.sh
+
+docker-maintenance-build:
+	docker build --build-arg SOURCE_REVISION=$$(git rev-parse HEAD) \
+		-t $(DOCKER_MAINTENANCE_IMAGE):$(DOCKER_MAINTENANCE_TAG) docker-maintenance
+
+docker-maintenance-test: docker-maintenance-build
+	docker run --rm --network none --read-only --tmpfs /tmp \
+		-v "$$(pwd)/docker-maintenance/test_maintenance.py:/tests/test_maintenance.py:ro" \
+		--entrypoint python3 $(DOCKER_MAINTENANCE_IMAGE):$(DOCKER_MAINTENANCE_TAG) \
+		/tests/test_maintenance.py
+	docker run --rm --network none --read-only \
+		$(DOCKER_MAINTENANCE_IMAGE):$(DOCKER_MAINTENANCE_TAG) --help
+	docker run --rm --network none --read-only --entrypoint python3 \
+		$(DOCKER_MAINTENANCE_IMAGE):$(DOCKER_MAINTENANCE_TAG) \
+		-c 'import os; assert os.listdir("/app") == ["maintenance.py"]; print("Runtime present; tests excluded")'
+
+docker-maintenance-push:
+	docker push $(DOCKER_MAINTENANCE_IMAGE):$(DOCKER_MAINTENANCE_TAG)
+
+docker-maintenance-shell:
+	docker run --rm -it --network none --entrypoint /bin/sh \
+		$(DOCKER_MAINTENANCE_IMAGE):$(DOCKER_MAINTENANCE_TAG)
 
 verify-uploader-deployment:
 	@test -n "$(SERVICE)" || { echo "SERVICE=uploader or SERVICE=uploader-dev is required" >&2; exit 2; }

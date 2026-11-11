@@ -80,6 +80,17 @@ docker compose logs my-service
 docker compose ps
 ```
 
+## Docker maintenance
+
+The independent `docker-maintenance` service removes unused images created more
+than fourteen days ago and checks shared storage every five minutes. Critical
+conditions go to `#braingeneers-helpdesk` through notification-service; routine
+results stay in container logs. It never prunes containers or volumes. Its Docker
+socket mount is a deliberate privileged infrastructure exception; no host cron
+or daemon configuration changes are needed. See
+[`docker-maintenance/README.md`](docker-maintenance/README.md) for policy, tests,
+deployment, and the required filesystem placement verification.
+
 ## Scheduled data lifecycle backup
 
 The AWS/Glacier backup pipeline has been onboarded as the
