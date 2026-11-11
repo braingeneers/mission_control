@@ -404,7 +404,7 @@ def origin_plain(o, fallback=""):
         return "%s%s" % (ORIGIN_MISSING, " (%s)" % fallback if fallback else "")
     who = ", ".join(x for x in (o.get("assistant"), "with " + o["collaborator"] if o.get("collaborator") else "") if x)
     return "chat %s%s%s" % ('"%s"' % o["title"] if o.get("title") else "(untitled)", " (%s)" % who if who else "",
-                            " " + o["link"] if o.get("link") else "")
+                            " " + o["link"] if o.get("link") else (" %s session %s" % (o.get("harness", ""), o["session"]) if o.get("session") else ""))
 
 
 def origin_tag(o):
@@ -3332,6 +3332,18 @@ def validate_task(raw, warn, plan_gpu=None):
             res = None
         stage = {"id": sid, "job": job, "manifest": os.path.expanduser(m) if isinstance(m, str) else None,
                  "after": after, "done_s3": d3, "state": st0, "attempt": 1}
+        if "queue_wait_ceiling" in s:
+            try:
+                queue_ceiling_seconds(s["queue_wait_ceiling"])
+                stage["queue_wait_ceiling"] = s["queue_wait_ceiling"]
+            except ValueError:
+                bad.append("%s: queue_wait_ceiling must be a positive duration like 6h" % w)
+        if "cpu_fallback" in s:
+            fallback = s["cpu_fallback"]
+            if not ((isinstance(fallback, str) and fallback.strip()) or (isinstance(fallback, dict) and fallback)):
+                bad.append("%s: cpu_fallback must be a manifest path or resources override" % w)
+            else:
+                stage["cpu_fallback"] = fallback
         runtime = s.get("measured_runtime_seconds")
         if runtime is not None:
             if isinstance(runtime, (int, float)) and not isinstance(runtime, bool) and runtime > 0:
@@ -4045,7 +4057,7 @@ OOM_FACTOR = 1.3
 OOM_MAX_GI_DEFAULT = 128
 NODE_EXCLUDE_MAX = 3                       # nodes excluded per stage by Tier 0; a fourth fault goes to the agents
 PENDING_REPORT_S = 30 * 60
-PENDING_REREPORT_S = 6 * 3600
+PENDING_REREPORT_S = 3600
 THANOS_URL = os.environ.get("NRP_MONITOR_THANOS_URL") or "https://thanos.nrp-nautilus.io/api/v1/query"
 NODE_FAULT_RE = re.compile(r"uncorrectable ECC|\bXid\b\W*\d+|no CUDA-capable device is detected|nvidia-container-cli|"
                            r"failed to create (?:pod )?sandbox|FailedMount|MountVolume\.\w+ failed|OCI runtime create failed|"
@@ -4322,27 +4334,77 @@ def pending_reason(t, s):
     return msg
 
 
+def queue_ceiling_seconds(value):
+    m = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)(s|m|h|d)", str(value))
+    if not m or float(m[1]) <= 0:
+        raise ValueError("invalid queue duration")
+    return float(m[1]) * {"s": 1, "m": 60, "h": 3600, "d": 86400}[m[2]]
+
+
 def report_long_pending(n, jobs):
-    """Tier 0: a Job Pending longer than PENDING_REPORT_S gets the scheduler's reason recorded once in the task events and the digest
-    (again when the reason changes, or every PENDING_REREPORT_S). Read-only: no resubmit, no deadline change."""
+    """Record bounded Pending reports and ask the coordinator before a long queue wait continues. Never raises."""
     try:
-        t = task_load(n)
-        for s in t["stages"]:
-            info = jobs.get(s["job"])
-            # a Job whose pod is unscheduled has active=1, so it reads "running" here; "no pod_started" is what says it never started
-            if s["state"] != "running" or not info or info["state"] not in ("running", "pending") or s.get("pod_started"):
-                continue
-            if now() - s.get("submitted", now()) < PENDING_REPORT_S:
-                continue
-            reason = pending_reason(t, s)
-            last = s.get("pending_report") or {}
-            if last.get("reason") == reason and now() - last.get("at", 0) < PENDING_REREPORT_S:
-                continue
+        _report_long_pending(n, jobs)
+    except Exception as e:
+        log("task %s: pending report error: %s: %s" % (n, type(e).__name__, str(e)[:200]))
+
+
+def _report_long_pending(n, jobs):
+    t = task_load(n)
+    for s in t["stages"]:
+        if s["state"] != "running":
+            continue
+        info = jobs.get(s.get("job"))
+        if not info or info["state"] not in ("running", "pending"):
+            continue
+        if s.get("pod_started") and not s.get("queue_wait") and t.get("queue_hold") != s["id"]:
+            continue                                   # already running, nothing queued: no extra kubectl call
+        try:
+            pods = job_pods(t["namespace"], s["job"])
+        except Exception as e:
+            log("task %s: pending observation unavailable: %s" % (n, type(e).__name__))
+            continue
+        scheduled = s.get("pod_started") or any((p.get("spec") or {}).get("nodeName") or any(
+            c.get("type") == "PodScheduled" and c.get("status") == "True"
+            for c in (p.get("status") or {}).get("conditions", [])) for p in pods)
+        q = s.get("queue_wait") or {}
+        if scheduled:
+            def clear(t):
+                tstage(t, s["id"]).pop("queue_wait", None)
+                tstage(t, s["id"]).pop("pending_report", None)
+                if t.get("queue_hold") == s["id"]:
+                    t.pop("queue_hold", None)
+                    t.update(status="running", reason="")
+                    t["webhook_outbox"] = [e for e in t.get("webhook_outbox", []) if e.get("event_type") != "escalation"]
+                    tev(t, "stage %s scheduled; queue hold cleared automatically" % s["id"])
+            task_txn(n, clear)
+            continue
+        unschedulable = any(c.get("type") == "PodScheduled" and c.get("status") == "False" and
+                            c.get("reason") == "Unschedulable" for p in pods
+                            for c in (p.get("status") or {}).get("conditions", []))
+        if q.get("attempt") != s.get("attempt", 1):
+            q = {}
+        if unschedulable and not q:
+            q = {"since": now(), "attempt": s.get("attempt", 1), "multiplier": 1}
+            task_txn(n, lambda t: tstage(t, s["id"]).update(queue_wait=q))
+        reason = pending_reason(t, s)
+        last = s.get("pending_report") or {}
+        if now() - s.get("submitted", now()) >= PENDING_REPORT_S and (
+                last.get("reason") != reason or now() - last.get("at", 0) >= PENDING_REREPORT_S):
             msg = "stage %s Job %s Pending %s: %s" % (s["id"], s["job"], ago(s["submitted"]), reason)
             task_txn(n, lambda t: (tstage(t, s["id"]).update(pending_report={"reason": reason, "at": now()}), tev(t, msg)))
             digest("pending", msg, n)
-    except Exception as e:
-        log("task %s: pending report error: %s: %s" % (n, type(e).__name__, str(e)[:200]))
+        gpu = manifest_gpu(s.get("manifest")) or any(
+            float(((c.get("resources") or {}).get(k) or {}).get("nvidia.com/gpu", 0)) > 0
+            for p in pods for c in (p.get("spec") or {}).get("containers", []) for k in ("requests", "limits"))
+        ceiling = queue_ceiling_seconds(s["queue_wait_ceiling"]) if "queue_wait_ceiling" in s else (6 * 3600 if gpu else None)
+        if ceiling and q and not q.get("fired") and now() - q["since"] >= ceiling * q.get("multiplier", 1) and task_load(n)["status"] not in TASK_HELD:
+            q["fired"] = True
+            task_txn(n, lambda t: (tstage(t, s["id"]).update(queue_wait=q), t.update(queue_hold=s["id"])))
+            choices = "keep waiting (nrp-monitor task resume %s re-arms at 2x)" % n
+            if s.get("cpu_fallback"):
+                choices += ", switch to declared CPU fallback %s" % json.dumps(s["cpu_fallback"])
+            to_coordinator(n, "stage %s queue wait %s: %s. Choose: %s, or cancel. Job stays queued." % (s["id"], ago(q["since"]), reason, choices))
 
 
 def handle_failure(n, a):
@@ -4482,6 +4544,8 @@ def advance_task(n, jobs, a):
             task_txn(n, lambda t: t.update(status="retrying"))
     observe_task(n, jobs)
     report_long_pending(n, jobs)
+    if task_load(n)["status"] in TASK_HELD:
+        return
     process_util_event(n, a)
     t = task_load(n)
     if t.get("failure"):
@@ -4571,7 +4635,10 @@ def process_tasks(a, st):
             if t["namespace"] not in cache:
                 cache[t["namespace"]] = fetch_jobs(t["namespace"])
             if t["status"] in TASK_HELD:
-                if a.dry_run or not recover_held_completion(n, cache[t["namespace"]]):
+                if t.get("queue_hold") and not a.dry_run:
+                    report_long_pending(n, cache[t["namespace"]])
+                    t = task_load(n)
+                if t["status"] in TASK_HELD and (a.dry_run or not recover_held_completion(n, cache[t["namespace"]])):
                     continue
             advance_task(n, cache[t["namespace"]], a)
         except Exception as e:
@@ -5662,6 +5729,17 @@ def render_digest(hours):
         if night:
             lines.append("Finished, started and stopped in this window:")
             lines += ["- %s %s" % (r["t"][5:16], r["msg"][:260]) for r in night[-20:]]
+    # Pending history stays on disk; show each stage's current wait once.
+    for n in task_names():
+        t = task_load(n)
+        if not t or t["status"] not in TASK_LIVE + TASK_HELD:
+            continue
+        for stage in t["stages"]:
+            report = stage.get("pending_report")
+            if report and stage["state"] == "running" and not stage.get("pod_started"):
+                since = (stage.get("queue_wait") or {}).get("since", stage.get("submitted", now()))
+                lines.append("- %s stage %s Pending %s: %s" % (n, stage["id"], ago(since), report["reason"]))
+    rows = [r for r in rows if r["kind"] != "pending"]
     cnt = collections.Counter(r["kind"] for r in rows)
     lines.append("\n## Events: " + (", ".join("%s %d" % kv for kv in sorted(cnt.items())) or "none"))
     for r in rows[-60:]:
@@ -5792,6 +5870,8 @@ def cmd_task_show(a):
     print("%s [%s] mode=%s ns=%s created %s ago  retries %d/%d" % (t["name"], t["status"], t["mode"], t["namespace"], ago(t["created"]),
           len(t["attempts"]), t["max_retries"]))
     print("goal: %s\napproved: %s\norigin: %s" % (t["goal"], t["approved"], origin_plain(t.get("origin"), "no chat recorded; goal and code repo above identify it")))
+    for old in t.get("origin_history", []):
+        print("previous origin (%s): %s" % (old.get("replaced_at", "?"), origin_plain(old)))
     if t.get("reason"):
         print("reason: " + t["reason"])
     if (t.get("code") or {}).get("extra_pkg_dirs") or (t.get("code") or {}).get("pkg_dir"):
@@ -5845,7 +5925,11 @@ def cmd_task_resume(a):
             return False
         who[0] = "the coordinator chat" if t["status"] == "WITH_COORDINATOR" else "a person"
         t["webhook_outbox"] = [e for e in t.get("webhook_outbox") or [] if e.get("event_type") != "escalation"]   # the question is answered
+        t.pop("queue_hold", None)
         for s in t["stages"]:
+            q = s.get("queue_wait") or {}
+            if q.get("fired") and q.get("attempt") == s.get("attempt", 1):
+                q.update(fired=False, multiplier=q.get("multiplier", 1) * 2)
             if s["state"] == "failed":
                 s["state"] = "done" if s["id"] in (a.skip or []) else "pending"
                 s["attempt"] = s.get("attempt", 1) + (0 if s["state"] == "done" else 1)
@@ -5930,6 +6014,15 @@ def cmd_task_cancel(a):
 def cmd_origin(a):
     """Metadata-only: record (or show) which chat owns a task/chain/legacy job. Same locks as the runner; no state, approval,
     submission or ownership changes. Refuses to overwrite an existing origin without --replace; --evidence is required."""
+    chat = getattr(a, "chat", None)
+    if chat:
+        chat = chat.strip().strip("<>")
+        if re.fullmatch(r"t3-thread://v2/[^/]+/[^/]+", chat):
+            a.harness, a.link = "t3", chat
+        elif a.harness in ("claude", "codex"):
+            a.session = chat
+        else:
+            sys.exit("--chat needs a T3 v2 link or --harness claude|codex for a session id")
     flags = {k: getattr(a, k) for k in ("title", "link", "assistant", "collaborator", "note", "harness", "session", "cwd") if getattr(a, k)}
     if flags.get("harness") in ("claude", "codex"):                     # same defaults as `task add --origin-harness`
         flags.setdefault("session", detect_session(flags["harness"]))
@@ -5955,11 +6048,16 @@ def cmd_origin(a):
             return False
         if old:
             new["collaborator"] = flags.get("collaborator") or old.get("collaborator", OWNER_NAME)
-            for k in ("assistant", "title", "link", "harness", "session", "cwd"):          # --replace changes only the fields given
-                if k not in flags and old.get(k):
-                    new[k] = old[k]
+            changed_chat = any(k in flags and flags[k] != old.get(k) for k in ("link", "session"))
+            if not changed_chat:
+                for k in ("assistant", "title", "link", "harness", "session", "cwd"):
+                    if k not in flags and old.get(k):
+                        new[k] = old[k]
+            rec.setdefault("origin_history", []).append(dict(old, replaced_at=iso(), replacement_evidence=a.evidence,
+                                                             by=getattr(a, "by", None) or os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CODEX_THREAD_ID") or "cli"))
         rec["origin"] = new
-        log_fn("origin %s: %s (evidence: %s)" % ("replaced" if old else "recorded", origin_plain(new), new.get("evidence", "")[:120]))
+        by = getattr(a, "by", None) or os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CODEX_THREAD_ID") or "cli"
+        log_fn("origin %s -> %s by %s (evidence: %s)" % (origin_plain(old), origin_plain(new), by, a.evidence))
     if kind == "task":
         ok = task_txn(name, lambda t: apply(t, lambda m: tev(t, m)))
     elif kind == "chain":
@@ -6919,9 +7017,10 @@ def main():
     add_origin_args(d)
     d.set_defaults(f=cmd_add)
     sub.add_parser("list").set_defaults(f=cmd_list)
-    o = sub.add_parser("origin", help="record/show which chat owns a task, chain or legacy job (metadata only; backfill for work registered without one)")
-    o.add_argument("kind", choices=("task", "chain", "job"))
+    o = tk.add_parser("origin", help="record/show which chat owns a task, chain or legacy job (metadata only; backfill for work registered without one)")
     o.add_argument("name")
+    o.add_argument("--chat", help="T3 v2 link or session id (requires --harness)")
+    o.add_argument("--by", help="who changed the origin (default: current session or cli)")
     o.add_argument("--title", help="chat title")
     o.add_argument("--link", help="exact chat link (t3-thread://v2/ENV/THREAD or https://...)")
     o.add_argument("--assistant", help="assistant and model, e.g. 'Codex gpt-6-astra'")
@@ -6931,7 +7030,23 @@ def main():
     o.add_argument("--cwd", help="directory the claude/codex chat runs in (default: the current directory)")
     o.add_argument("--note", help="short free text")
     o.add_argument("--evidence", help="REQUIRED when recording: how the chat was verified (no guessing)")
-    o.add_argument("--replace", action="store_true", help="overwrite an existing origin (only the fields given change)")
+    o.add_argument("--replace", action="store_true", help="replace an origin; a new chat clears old chat fields")
+    o.set_defaults(f=cmd_origin, kind="task")
+    o = sub.add_parser("origin", help="record/show which chat owns a task, chain or legacy job (metadata only; backfill for work registered without one)")
+    o.add_argument("kind", choices=("task", "chain", "job"))
+    o.add_argument("name")
+    o.add_argument("--chat", help="T3 v2 link or session id (requires --harness)")
+    o.add_argument("--by", help="who changed the origin (default: current session or cli)")
+    o.add_argument("--title", help="chat title")
+    o.add_argument("--link", help="exact chat link (t3-thread://v2/ENV/THREAD or https://...)")
+    o.add_argument("--assistant", help="assistant and model, e.g. 'Codex gpt-6-astra'")
+    o.add_argument("--collaborator", help="person the chat works with (default: the owner_name setting)")
+    o.add_argument("--harness", choices=ORIGIN_HARNESSES, help="where the chat runs, so the monitor wakes it: t3, claude or codex")
+    o.add_argument("--session", help="claude/codex session id of the chat (default: read from CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID)")
+    o.add_argument("--cwd", help="directory the claude/codex chat runs in (default: the current directory)")
+    o.add_argument("--note", help="short free text")
+    o.add_argument("--evidence", help="REQUIRED when recording: how the chat was verified (no guessing)")
+    o.add_argument("--replace", action="store_true", help="replace an origin; a new chat clears old chat fields")
     o.set_defaults(f=cmd_origin)
     l = sub.add_parser("log")
     l.add_argument("-n", type=int, default=30)

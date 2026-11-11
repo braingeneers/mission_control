@@ -436,7 +436,7 @@ class AddFlags(unittest.TestCase):
         self.assertEqual(rc, 0, err)
         o = self.task("t1")["origin"]
         self.assertEqual((o["harness"], o["session"]), ("codex", SID_X))
-        self.assertTrue(o["title"], "--replace changes only the fields given")
+        self.assertNotIn("title", o, "a new session clears the previous chat title")
 
 
 if __name__ == "__main__":

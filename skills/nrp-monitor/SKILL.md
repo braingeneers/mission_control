@@ -140,3 +140,13 @@ Missing binaries, nonzero exits, timeouts and an unavailable server count as una
 Claude and Codex origins still resume their recorded sessions. Plan-step completion keeps one aggregate wake per step.
 
 Held tasks still check completion each pass. A Complete Job with every exact S3 marker clears its hold and continues the plan. Missing or unreadable markers keep the hold with an updated reason.
+
+Change a task's owning chat with `nrp-monitor task origin NAME --replace --chat REF --evidence TEXT [--by ID]`.
+Use a T3 `t3-thread://v2/ENV/THREAD` link, or a session id with `--harness claude|codex`.
+With no flags it shows the origin. A new chat clears old chat details, keeps the collaborator, and saves the previous origin in `task show`.
+
+Pending reports repeat only when the scheduler reason changes or after an hour. The digest shows the current wait once.
+GPU stages have a default six-hour unschedulable queue ceiling; CPU stages have none. Set a stage's `queue_wait_ceiling`
+to a duration such as `6h` to override it. At the ceiling the monitor asks the coordinator and leaves the Job queued.
+`task resume NAME` keeps waiting and doubles the ceiling. Scheduling clears the queue hold automatically.
+An optional stage `cpu_fallback` declares a manifest path or resources override for the coordinator to consider; the monitor never switches automatically.
