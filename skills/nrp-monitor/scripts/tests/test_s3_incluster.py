@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent.parent
-os.environ["NRP_WATCHDOG_STATE"] = tempfile.mkdtemp(prefix="wds3_incl_")
+os.environ["NRP_MONITOR_STATE"] = tempfile.mkdtemp(prefix="wds3_incl_")
 WD = importlib.machinery.SourceFileLoader("wd_s3_incl_under_test", str(HERE / "nrp-monitor")).load_module()
 A, B, C, D = ("s3://braingeneersdev/alice/x/%s/DONE" % n for n in "abcd")
 E503 = "An error occurred (503) when calling the HeadObject operation (reached max retries: 2): Service Unavailable"
@@ -72,7 +72,7 @@ class Fallback(unittest.TestCase):
                 p.stop()
 
     def test_job_manifest_matches_the_spec(self):
-        m = WD.s3_check_job_manifest("nrpwd-s3check-1", [A, B])
+        m = WD.s3_check_job_manifest("nrpmon-s3check-1", [A, B])
         sp, pod = m["spec"], m["spec"]["template"]["spec"]
         ct = pod["containers"][0]
         self.assertEqual((m["metadata"]["namespace"], ct["image"]), ("braingeneers", "amazon/aws-cli:2.22.35"))
@@ -86,7 +86,7 @@ class Fallback(unittest.TestCase):
         self.assertEqual((env["AWS_SHARED_CREDENTIALS_FILE"], env["AWS_CONFIG_FILE"]), ("/.aws/credentials", "/.aws/.s3cfg"))
         self.assertEqual({(v["mountPath"], v["subPath"]) for v in ct["volumeMounts"]}, {("/.aws/credentials", "credentials"), ("/.aws/.s3cfg", ".s3cfg")})
         self.assertEqual(pod["volumes"][0]["secret"]["secretName"], "prp-s3-credentials")
-        self.assertEqual(m["metadata"]["labels"], {"pv3/user": WD.OWNER_LABEL, "nrp-watchdog/kind": "s3check"})
+        self.assertEqual(m["metadata"]["labels"], {"pv3/user": WD.OWNER_LABEL, "nrp-monitor/kind": "s3check"})
         self.assertEqual(pod["restartPolicy"], "Never")
         self.assertNotIn("gpu", json.dumps(m).lower())
 
@@ -141,10 +141,10 @@ class Fallback(unittest.TestCase):
     def test_switch_off_never_creates_a_job(self):
         for val in ("off", "OFF", "0", "false"):
             cl = Cluster({A: None}, "EXISTS %s\n" % A)
-            self.assertEqual(self.check(cl, [A], NRP_WATCHDOG_S3_INCLUSTER=val), {A: None})
+            self.assertEqual(self.check(cl, [A], NRP_MONITOR_S3_INCLUSTER=val), {A: None})
             self.assertEqual(cl.created, [])
         cl = Cluster({A: None}, "EXISTS %s\n" % A)
-        self.assertEqual(self.check(cl, [A], NRP_WATCHDOG_S3_INCLUSTER="auto"), {A: True})
+        self.assertEqual(self.check(cl, [A], NRP_MONITOR_S3_INCLUSTER="auto"), {A: True})
 
     def test_bad_uris_never_reach_the_job(self):
         with patch.object(WD, "log"):
@@ -196,7 +196,7 @@ class Prepass(unittest.TestCase):
 
     def test_prepass_off_makes_no_job(self):
         cl = Cluster({A: None, D: None}, "EXISTS %s\n" % A)
-        got, _, _ = self.run_prepass(cl, NRP_WATCHDOG_S3_INCLUSTER="off")
+        got, _, _ = self.run_prepass(cl, NRP_MONITOR_S3_INCLUSTER="off")
         self.assertEqual((got, cl.created), ({}, []))
 
 
@@ -223,7 +223,7 @@ class S3Read(unittest.TestCase):
 
     def test_ls_switch_off_does_not_run_a_job(self):
         m = self.m
-        with patch.dict(os.environ, {"NRP_WATCHDOG_S3_INCLUSTER": "off"}):
+        with patch.dict(os.environ, {"NRP_MONITOR_S3_INCLUSTER": "off"}):
             self.assertIsNone(m.incluster("ls", "s3://b/p/", "503"))
 
     def test_scripts_are_read_only(self):

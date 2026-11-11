@@ -54,7 +54,7 @@ class Tier0(Base):
         Thanos.value, Thanos.queries = None, []
         self.srv = http.server.HTTPServer(("127.0.0.1", 0), Thanos)
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
-        self.env["NRP_WATCHDOG_THANOS_URL"] = "http://127.0.0.1:%d/api/v1/query" % self.srv.server_port
+        self.env["NRP_MONITOR_THANOS_URL"] = "http://127.0.0.1:%d/api/v1/query" % self.srv.server_port
 
     def tearDown(self):
         self.srv.shutdown()

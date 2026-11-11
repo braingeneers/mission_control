@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """nrp-monitor: agent-free NRP monitoring, approved tasks and Job chains (no model runs unless something needs a decision).
-Formerly nrp-watchdog: that command is still installed as an alias, and the state dir (~/.local/state/nrp-watchdog), launchd label and
-NRP_WATCHDOG_* variables keep their names (NRP_MONITOR_* work as aliases).
+(Former name nrp-watchdog: the old command is a quiet shim, NRP_WATCHDOG_* variables are honored as a fallback, and install.sh migrates the
+old state dir, which stays reachable through a symlink.)
 
 v2 (owner decision 2026-11-05, design docs/design.md): approved work is a TASK.
   nrp-monitor task add TASK.json | list | show NAME | resume NAME [--skip STAGE] [--retries N] [--note TEXT] [--gpu-ok-until DATE] | cancel NAME
   nrp-monitor task handoff NAME FILE                  attach a handoff to a task that was registered without one (written once; see Task field handoff)
+  nrp-monitor task stage NAME STAGE --resumable        mark a stage of a registered task as resumable (re-run skips finished items; one 2x deadline resubmit)
   nrp-monitor setup [--non-interactive ...]          choose which assistant (claude / codex / gemini) runs Tier 1 and Tier 2; writes agents.json
   task add ... --origin-harness t3|claude|codex [--origin-session ID --origin-cwd DIR]   where the coordinator chat runs: the monitor wakes THAT chat
   nrp-monitor digest [--hours 24]                    silent events + what needs the owner
@@ -13,10 +14,10 @@ v2 (owner decision 2026-11-05, design docs/design.md): approved work is a TASK.
   nrp-monitor plan sync PATH#ID | list | show ID      plan-run plans (on_done continuation; OFF unless <state>/on_done.enabled exists)
   Task field on_done {plan: PATH#ID, from_step: STEP}: when the task is done, ONE Sonnet continue agent checks the step's "done when"
   and may register the next step (nrp-task next-add) only inside approved_through, never a stop_for_owner step, each step once;
-  for that step it may also write + test code on a watchdog/<task> branch (nrp-task code-begin|code-test|code-commit|code-ship), inside may_touch.
+  for that step it may also write + test code on a monitor/<task> branch (nrp-task code-begin|code-test|code-commit|code-ship), inside may_touch.
   Task field handoff: path to a markdown file (absolute, ~, or relative to the TASK.json's folder) written by the registering agent from
   templates/handoff.md once the monitor is started. `task add` checks it (warns when missing, empty or without a substantial `## Registrar`
-  section of 200+ characters; NRP_WATCHDOG_REQUIRE_HANDOFF=1 refuses instead, like NRP_WATCHDOG_REQUIRE_CONTINUATION) and COPIES it to
+  section of 200+ characters; NRP_MONITOR_REQUIRE_HANDOFF=1 refuses instead, like NRP_MONITOR_REQUIRE_CONTINUATION) and COPIES it to
   <task dir>/handoff.md: agents only ever see that copy. Fix, continue and follow-up prompts embed it. Fix and continue agents end their answer
   with a HANDOFF_ENTRY: block; the script appends it (UTC time, agent kind, attempt) to `## Fix log` / `## Continuation` (a FOR_OWNER: line goes to
   `## For the owner`; no block: one automatic line) and restores the Registrar from handoff.orig.md if its hash ever changes. A finished task with
@@ -42,23 +43,23 @@ v2 (owner decision 2026-11-05, design docs/design.md): approved work is a TASK.
   nrp-monitor run [--dry-run] [--fake-util FILE] [--fake-finished JOB[,JOB]]   one pass (launchd every 5 min, or a terminal loop)
   nrp-monitor add JOB [--resume FILE] [--label TEXT] [-n NS]                   register a job to follow (resume <= 20 KB, copied)
   nrp-monitor list                                                              registered jobs and status
-  nrp-monitor log [-n N]                                                        tail of watchdog.log
+  nrp-monitor log [-n N]                                                        tail of monitor.log
   nrp-monitor status [--quiet]                                                  heartbeat age; exit 3 + warning if stale (>25 min) while work is active
   nrp-monitor chain add FILE [--dry-run]                                        validate + copy a chain file; the next pass starts it
   nrp-monitor chain list | show NAME | cancel NAME
   nrp-monitor chain wait NAME [-m SECONDS]                                      block on the state file; ONE line; exit 0 finished,
-                                                                                 1 stopped/cancelled, 2 no chain, 3 -m reached, 4 manual gate, 5 watchdog stalled
+                                                                                 1 stopped/cancelled, 2 no chain, 3 -m reached, 4 manual gate, 5 monitor stalled
   nrp-monitor chain resume NAME [--skip STEP] [--edit-step STEP KEY=VALUE]      clear a stop or gate after a person decides
 
-State: ~/.local/state/nrp-watchdog (env NRP_WATCHDOG_STATE overrides):
-  jobs.json watchdog.log lock state.lock heartbeat templates/ work/ resume/<job>.md chains/<name>/{chain.json,spec.original.json,logs/}
+State: ~/.local/state/nrp-monitor (env NRP_MONITOR_STATE overrides):
+  jobs.json monitor.log lock state.lock heartbeat templates/ work/ resume/<job>.md chains/<name>/{chain.json,spec.original.json,logs/}
   Nothing under Desktop/Documents/Downloads is read at run time (macOS TCC blocks launchd there): resume notes and chain files
   are copied here when added, and chain cwd under those folders is refused.
 
 One pass (plan: docs/design.md, owner decision 2026-11-04):
  0. Chains (first, because submits are time-critical), per active chain, using ONE `kubectl get jobs -o json` per namespace:
     - a step is ready when all `after` steps are done, it is not gated, its Job does not exist, and fewer than the cap of our
-      Jobs are unfinished (policy max_concurrent_jobs: 400 shared, a local override may lower it; NRP_WATCHDOG_MAX_JOBS lowers it for a run). Order: state "submitting" is saved, argv runs (clean env, step cwd),
+      Jobs are unfinished (policy max_concurrent_jobs: 400 shared, a local override may lower it; NRP_MONITOR_MAX_JOBS lowers it for a run). Order: state "submitting" is saved, argv runs (clean env, step cwd),
       then "running". After a crash a "submitting" step whose Job exists is adopted; one whose Job is missing fails.
     - succeeded Job: last 200 log lines + `describe` job/pods saved to chains/<name>/logs/<step>.txt, `done_s3` URIs checked
       EXACTLY with `aws s3api head-object` (never a prefix `s3 ls`), the Job deleted by name, step done.
@@ -114,14 +115,24 @@ from pathlib import Path
 
 NS = "braingeneers"
 
-for _k in [k for k in os.environ if k.startswith("NRP_MONITOR_")]: os.environ.setdefault("NRP_WATCHDOG_" + _k[12:], os.environ[_k])   # NRP_MONITOR_* aliases the original NRP_WATCHDOG_* names
-STATE = Path(os.environ.get("NRP_WATCHDOG_STATE") or Path.home() / ".local/state/nrp-watchdog")   # env: tests
+for _k in [k for k in os.environ if k.startswith("NRP_WATCHDOG_")]: os.environ.setdefault("NRP_MONITOR_" + _k[13:], os.environ[_k])   # former variable names, honored silently when the new one is unset
+
+
+def default_state_dir():
+    """~/.local/state/nrp-monitor; only when that does not exist yet and a real old nrp-watchdog dir does (install.sh has not migrated it
+    yet) is the old dir used, so a pass never splits its state in two."""
+    base = Path.home() / ".local/state"
+    old = base / "nrp-watchdog"
+    return old if not (base / "nrp-monitor").exists() and old.is_dir() and not old.is_symlink() else base / "nrp-monitor"
+
+
+STATE = Path(os.environ.get("NRP_MONITOR_STATE") or default_state_dir())   # env: tests
 
 
 def _owner_cfg():
     """Who this installation works for: <state>/config.json, each key overridable by an environment variable. Keys:
     nrp_user_annotation (the nrp.ai/username annotation value on your pods, e.g. http://cilogon.org/serverE/users/NNNN),
-    slack_user_id (the Slack user who gets the one DM), owner_label (label value on the watchdog's own check Jobs), owner_name (how messages and agent prompts name you),
+    slack_user_id (the Slack user who gets the one DM), owner_label (label value on the monitor's own check Jobs), owner_name (how messages and agent prompts name you),
     skip_limit_fraction (optional; the share of skipped items above which a failure goes to you; default 0.05),
     tier0_mem_cap_gi (optional; the largest memory in GiB the Tier 0 OOM rule may set without asking an agent; default 128),
     util_waiver_max (optional; how many util waivers one task may get before the owner is asked; default 3; 0 = never waive),
@@ -134,10 +145,10 @@ def _owner_cfg():
 
 
 OWNER = _owner_cfg()
-USER_ANN = os.environ.get("NRP_WATCHDOG_USER_ANNOTATION") or OWNER.get("nrp_user_annotation") or ""
-OWNER_LABEL = os.environ.get("NRP_WATCHDOG_OWNER_LABEL") or OWNER.get("owner_label") or getpass.getuser()
-OWNER_NAME = os.environ.get("NRP_WATCHDOG_OWNER_NAME") or OWNER.get("owner_name") or OWNER_LABEL      # how messages and agent prompts name the person
-JOBS, LOG, LOCK = STATE / "jobs.json", STATE / "watchdog.log", STATE / "lock"
+USER_ANN = os.environ.get("NRP_MONITOR_USER_ANNOTATION") or OWNER.get("nrp_user_annotation") or ""
+OWNER_LABEL = os.environ.get("NRP_MONITOR_OWNER_LABEL") or OWNER.get("owner_label") or getpass.getuser()
+OWNER_NAME = os.environ.get("NRP_MONITOR_OWNER_NAME") or OWNER.get("owner_name") or OWNER_LABEL      # how messages and agent prompts name the person
+JOBS, LOG, LOCK = STATE / "jobs.json", STATE / "monitor.log", STATE / "lock"
 TPL, WORK = STATE / "templates", STATE / "work"
 SLOCK, CHAINS, RESUME_DIR, HEART = STATE / "state.lock", STATE / "chains", STATE / "resume", STATE / "heartbeat"
 RESIZE_LOG = STATE / "resize.log"
@@ -172,10 +183,10 @@ DEFAULT_MAX_JOBS = 400                 # the nrp-cluster skill's "max concurrent
 
 def max_jobs():
     """Cap on our unfinished Jobs at once: `max_concurrent_jobs` of the effective policy (shared default 400; a local override
-    may only lower it). NRP_WATCHDOG_MAX_JOBS can lower it further for one run."""
+    may only lower it). NRP_MONITOR_MAX_JOBS can lower it further for one run."""
     n = util_policy().get("max_concurrent_jobs") or DEFAULT_MAX_JOBS
     try:
-        e = int(os.environ.get("NRP_WATCHDOG_MAX_JOBS") or 0)
+        e = int(os.environ.get("NRP_MONITOR_MAX_JOBS") or 0)
     except ValueError:
         e = 0
     return min(n, e) if e > 0 else n
@@ -183,8 +194,8 @@ def max_jobs():
 
 def _skip_limit():
     """Fraction of items whose single-item skips make a failure a pattern that goes to the owner (settings: skip_limit_fraction in
-    config.json or NRP_WATCHDOG_SKIP_LIMIT_FRACTION; default 0.05, from the owner's house rules)."""
-    v = os.environ.get("NRP_WATCHDOG_SKIP_LIMIT_FRACTION") or OWNER.get("skip_limit_fraction")
+    config.json or NRP_MONITOR_SKIP_LIMIT_FRACTION; default 0.05, from the owner's house rules)."""
+    v = os.environ.get("NRP_MONITOR_SKIP_LIMIT_FRACTION") or OWNER.get("skip_limit_fraction")
     try:
         v = float(v)
         if 0 < v <= 1:
@@ -199,9 +210,9 @@ def skip_limit_text():
 
 
 def util_waiver_max():
-    """How many util waivers one task may be given (settings: util_waiver_max in config.json or NRP_WATCHDOG_UTIL_WAIVER_MAX; default 3;
+    """How many util waivers one task may be given (settings: util_waiver_max in config.json or NRP_MONITOR_UTIL_WAIVER_MAX; default 3;
     0 turns waivers off). Once a task has used them, a util flag that survives the fix agent goes to the owner again."""
-    v = os.environ.get("NRP_WATCHDOG_UTIL_WAIVER_MAX")
+    v = os.environ.get("NRP_MONITOR_UTIL_WAIVER_MAX")
     v = OWNER.get("util_waiver_max") if v in (None, "") else v
     try:
         v = int(v)
@@ -213,8 +224,8 @@ def util_waiver_max():
 
 
 def util_waiver_hours():
-    """How long one util waiver suppresses the lab-floor flag of its Job (util_waiver_hours in config.json or NRP_WATCHDOG_UTIL_WAIVER_HOURS; default 6)."""
-    v = os.environ.get("NRP_WATCHDOG_UTIL_WAIVER_HOURS")
+    """How long one util waiver suppresses the lab-floor flag of its Job (util_waiver_hours in config.json or NRP_MONITOR_UTIL_WAIVER_HOURS; default 6)."""
+    v = os.environ.get("NRP_MONITOR_UTIL_WAIVER_HOURS")
     v = OWNER.get("util_waiver_hours") if v in (None, "") else v
     try:
         v = float(v)
@@ -229,7 +240,7 @@ MISSING_GRACE_S = 10 * 60              # a just-submitted chain Job not yet list
 SUBMIT_TIMEOUT_S = 900
 HEART_WARN_S = 25 * 60                 # `status` warns past this when work is active
 HEART_STALL_S = 30 * 60                # `chain wait` gives up (exit 5) past this
-WAIT_POLL_S = int(os.environ.get("NRP_WATCHDOG_POLL_S") or 30)
+WAIT_POLL_S = int(os.environ.get("NRP_MONITOR_POLL_S") or 30)
 DEFAULT_S3 = "https://s3-west.nrp-nautilus.io"
 POD_DEDUPE_S = 30 * 60
 STRIKE_GAP_S = 8 * 60          # strike 2 needs a flag this long after the OVERSIZED verdict: the second pass after it (passes run every 5 min)
@@ -376,13 +387,13 @@ def add_origin_args(p):
 
 
 def require_origin_note(o, kind, name, always=False):
-    """Refuse (always=True, or when NRP_WATCHDOG_REQUIRE_ORIGIN is set) or warn on stderr; returns nothing."""
+    """Refuse (always=True, or when NRP_MONITOR_REQUIRE_ORIGIN is set) or warn on stderr; returns nothing."""
     if o:
         return
     msg = ("%s %s has no origin: alerts will say 'origin not recorded' and the person cannot tell which chat owns it. "
            "Add \"origin\": {\"title\": ..., \"link\": ...} (or --origin-title/--origin-link) naming the chat that asked for it; "
            "for existing work: nrp-monitor origin %s %s --title ... --link ... --evidence ..." % (kind, name, kind, name))
-    if always or os.environ.get("NRP_WATCHDOG_REQUIRE_ORIGIN"):
+    if always or os.environ.get("NRP_MONITOR_REQUIRE_ORIGIN"):
         sys.exit("%s refused: %s" % (kind, msg))
     print("warning: " + msg, file=sys.stderr)
 
@@ -462,14 +473,14 @@ def slack_text(body, refs):
     refs = list(dict.fromkeys(refs or []))
     lines = []
     if not refs:
-        lines.append("*Not tied to one chat* (account-wide or watchdog check; no single chat owns it).")
+        lines.append("*Not tied to one chat* (account-wide or monitor check; no single chat owns it).")
     for ref in refs[:4]:
         o, fb = lookup_origin(ref)
         pl = origin_slack(o, fb)
         lines += pl if len(refs) == 1 else ["%s %s" % (slack_esc(ref), pl[0])] + pl[1:]
     if len(refs) > 4:
         lines.append("(+%d more registrations)" % (len(refs) - 4))
-    lines.append("*NRP watchdog* (automated script, working with %s; not a chat): " % OWNER_NAME + slack_esc(body))
+    lines.append("*NRP monitor* (automated script, working with %s; not a chat): " % OWNER_NAME + slack_esc(body))
     return "\n".join(lines)[:3900]
 
 
@@ -500,7 +511,7 @@ def notify(msg, state=None, key=None, dry=False, ref="-"):
 # ---- headless agents -----------------------------------------------------------------------------------------
 def clean_env():
     keep = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "SHELL", "KUBECONFIG", "XDG_CONFIG_HOME",
-            "NRP_WATCHDOG_STATE", "NRP_TASK_CACHE", "NRP_WATCHDOG_NO_PUSH", "NRP_WATCHDOG_S3_ENDPOINT", "NRP_TASK_PYTHON")
+            "NRP_MONITOR_STATE", "NRP_TASK_CACHE", "NRP_MONITOR_NO_PUSH", "NRP_MONITOR_S3_ENDPOINT", "NRP_TASK_PYTHON")
     return {k: v for k, v in os.environ.items() if k in keep}
 
 
@@ -839,7 +850,7 @@ def codex_writable(allowed):
 
 
 def exec_codex(spec, prompt, cwd, timeout, env):
-    auth = Path(os.environ.get("NRP_WATCHDOG_CODEX_AUTH") or Path.home() / ".codex" / "auth.json")   # env: tests
+    auth = Path(os.environ.get("NRP_MONITOR_CODEX_AUTH") or Path.home() / ".codex" / "auth.json")   # env: tests
     if not auth.exists():
         return "auth", "", "codex is not signed in (no %s)" % auth, 1
     s = tier_settings(spec["tier"], "codex")
@@ -849,7 +860,7 @@ def exec_codex(spec, prompt, cwd, timeout, env):
     try:
         (home / "rules").mkdir()
         os.symlink(str(auth), str(home / "auth.json"))
-        (home / "rules" / "watchdog.rules").write_text(codex_rules(spec["allowed"]))
+        (home / "rules" / "monitor.rules").write_text(codex_rules(spec["allowed"]))
         last = home / "last.txt"
         argv = ["codex", "exec", "-s", "workspace-write", "-c", 'approval_policy="never"',
                 "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true", "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
@@ -1089,7 +1100,7 @@ def kubectl(*args, timeout=120):
 def my_pods():
     """{name: owner_job_or_None} for the owner's pods that are Running, Pending or Failed (by annotation)."""
     if not USER_ANN:
-        raise RuntimeError("nrp_user_annotation is not set (config.json or NRP_WATCHDOG_USER_ANNOTATION): cannot tell which pods are yours")
+        raise RuntimeError("nrp_user_annotation is not set (config.json or NRP_MONITOR_USER_ANNOTATION): cannot tell which pods are yours")
     r = kubectl("-n", NS, "get", "pods", "-o", "json")
     if r.returncode:
         raise RuntimeError(r.stderr.strip()[:150])
@@ -1131,7 +1142,7 @@ def acct_alarm(st, lines, bad, dry, mine=None):
     if hi and st.get("acct_hi", 0) >= 2:
         owners = [o for o in (owner_of_job(st, (mine or {}).get(p)) for p in nrp) if o]     # chats whose pods are flagged (may be none)
         push("NRP counts %d of your running pods outside its utilization bands on 2 passes in a row (it blocks new submits "
-             "past 4)%s. The watchdog deletes and resizes task and chain pods at strike 2; other pods need you."
+             "past 4)%s. The monitor deletes and resizes task and chain pods at strike 2; other pods need you."
              % (acct, ("; flagged: " + ", ".join(nrp))[:160] if nrp else ""), "acct", dry, refs=owners)
     elif acct < 2 and not nrp:
         push_clear("acct")
@@ -1236,7 +1247,7 @@ def record_resize(st, pod, owner, flag_line, verdict):
     if resume and Path(resume).resolve().is_relative_to(RESUME_DIR.resolve()):
         try:
             with open(resume, "a") as f:
-                f.write("\n\nWATCHDOG RESIZE NOTE (%s): %s\nReport this resize in your one line; whoever resubmits must use it.\n"
+                f.write("\n\nMONITOR RESIZE NOTE (%s): %s\nReport this resize in your one line; whoever resubmits must use it.\n"
                         % (iso(), " ".join(verdict.split())))
         except OSError as e:
             log("resize note to %s failed: %s" % (resume, str(e)[:80]))
@@ -1306,7 +1317,7 @@ def check_jobs(a, st):
         if followup_solved(res):
             notify("job %s %s: %s" % (label, status, res[:300]), ref="job:" + job)
         else:
-            push("NRP watchdog (working with %s): job %s needs you: %s" % (OWNER_NAME, label, res[:200]),
+            push("NRP monitor (working with %s): job %s needs you: %s" % (OWNER_NAME, label, res[:200]),
                  "job:%s:%d" % (job, int(rec["handled"])), refs=["job:" + job])
 
 
@@ -1661,7 +1672,7 @@ def step_env(s):
 def job_complete(succeeded, completions, active, complete_cond):
     """A Job is finished successfully only when ALL its completions succeeded. `status.succeeded >= 1` is NOT that: an Indexed Job
     (pv3 --parallel N, completions=N) has succeeded >= 1 as soon as its first shard exits, while the other shards still run; treating
-    that as success made the watchdog check a root marker too early and delete the Job's pods (finch-feature-followup, 2026-11-06).
+    that as success made the monitor check a root marker too early and delete the Job's pods (finch-feature-followup, 2026-11-06).
     Complete=True is authoritative; else succeeded >= spec.completions; completions unset (work-queue Job) = one success and no pod active."""
     if complete_cond:
         return True
@@ -1723,13 +1734,13 @@ done'''
 
 
 def s3_incluster_on():
-    """NRP_WATCHDOG_S3_INCLUSTER: auto (default) = check through one in-cluster Job when the external endpoint fails; off = never."""
-    return os.environ.get("NRP_WATCHDOG_S3_INCLUSTER", "auto").strip().lower() not in ("off", "0", "no", "false", "never")
+    """NRP_MONITOR_S3_INCLUSTER: auto (default) = check through one in-cluster Job when the external endpoint fails; off = never."""
+    return os.environ.get("NRP_MONITOR_S3_INCLUSTER", "auto").strip().lower() not in ("off", "0", "no", "false", "never")
 
 
 def s3_check_job_manifest(name, args, script=S3_JOB_SCRIPT):
     """Job that runs `bash -c SCRIPT s3check ARGS...` with the in-cluster Ceph endpoint (pods reach it when the laptop cannot reach the public one)."""
-    labels = {"pv3/user": OWNER_LABEL, "nrp-watchdog/kind": "s3check"}
+    labels = {"pv3/user": OWNER_LABEL, "nrp-monitor/kind": "s3check"}
     return {"apiVersion": "batch/v1", "kind": "Job", "metadata": {"name": name, "namespace": NS, "labels": labels},
             "spec": {"activeDeadlineSeconds": 300, "backoffLimit": 0, "ttlSecondsAfterFinished": 3600,
                      "template": {"metadata": {"labels": labels}, "spec": {
@@ -1753,7 +1764,7 @@ def s3_check_job_manifest(name, args, script=S3_JOB_SCRIPT):
 def incluster_job(script, args, log_flag):
     """Run ONE short in-cluster Job (read-only S3 script), wait at most S3_JOB_WAIT_S, return its logs (str) or None when it could not
     be created or gave no logs; the Job is always deleted by name. `log_flag` is the `kubectl logs` size flag, e.g. --tail=60."""
-    name = "nrpwd-s3check-%s" % uuid.uuid4().hex[:8]
+    name = "nrpmon-s3check-%s" % uuid.uuid4().hex[:8]
     text = None
     try:
         r = subprocess.run(["kubectl", "-n", NS, "create", "-f", "-"], input=json.dumps(s3_check_job_manifest(name, args, script)),
@@ -1802,7 +1813,7 @@ def s3_incluster(uris):
 
 def s3_check_many(uris, c=None):
     """{uri: True|False|None}: the external head-object for each; every URI it could not answer (not a 404) goes through ONE in-cluster Job
-    (unless NRP_WATCHDOG_S3_INCLUSTER=off). None is never success."""
+    (unless NRP_MONITOR_S3_INCLUSTER=off). None is never success."""
     out = {u: s3_exists(u, c) for u in dict.fromkeys(uris)}
     todo = [u for u, v in out.items() if v is None and s3_split(u)]
     if todo and s3_incluster_on():
@@ -1859,7 +1870,7 @@ def s3_prepass(a):
 def s3_exists(uri, c):
     """EXACT object check: True (this key exists) / False (404 Not Found) / None (could not tell). Fail-closed.
     Uses `aws s3api head-object`, never `aws s3 ls`: `ls s3://b/k` is a PREFIX match, so `.../DONE` was satisfied by `.../DONE.1`
-    (and `DONE.1` by `DONE.10`), the watchdog declared an Indexed Job finished while shards were still running and deleted its pods
+    (and `DONE.1` by `DONE.10`), the monitor declared an Indexed Job finished while shards were still running and deleted its pods
     (finch-feature-followup, 2026-11-06). None = 403/5xx/network/timeout/odd output/a URI that is not one object; callers retry and
     escalate after repeated passes, they never treat None as success. `c` may be {} (aws_profile, s3_endpoint)."""
     c = c or {}
@@ -1870,7 +1881,7 @@ def s3_exists(uri, c):
     if S3_PASS is not None and uri in S3_PASS:                              # answered earlier in this pass (s3_prepass)
         return S3_PASS[uri]
     cmd = ["aws"]
-    ep = os.environ.get("NRP_WATCHDOG_S3_ENDPOINT") or c.get("s3_endpoint") or DEFAULT_S3
+    ep = os.environ.get("NRP_MONITOR_S3_ENDPOINT") or c.get("s3_endpoint") or DEFAULT_S3
     if ep:
         cmd += ["--endpoint-url", ep]
     if c.get("aws_profile"):
@@ -2181,9 +2192,9 @@ def run_chain_followups(a, st):
 
 # ---- digest and push (v2: routine events are silent; one push when the owner is needed) ---------------------------
 DIGEST, PUSHED, ORPHANS = STATE / "digest.log", STATE / "pushed.json", STATE / "orphans.json"
-SLACK_URL = os.environ.get("NRP_WATCHDOG_SLACK_URL") or "https://notifications.braingeneers.gi.ucsc.edu/v1/slack"
-SLACK_USER = os.environ.get("NRP_WATCHDOG_SLACK_USER") or OWNER.get("slack_user_id") or ""   # the owner's own DM, never a channel or a chat
-JWT_FILE = Path(os.environ.get("NRP_WATCHDOG_JWT") or Path.home() / ".ssh/braingeneers_jwt_token.json")   # env: tests
+SLACK_URL = os.environ.get("NRP_MONITOR_SLACK_URL") or "https://notifications.braingeneers.gi.ucsc.edu/v1/slack"
+SLACK_USER = os.environ.get("NRP_MONITOR_SLACK_USER") or OWNER.get("slack_user_id") or ""   # the owner's own DM, never a channel or a chat
+JWT_FILE = Path(os.environ.get("NRP_MONITOR_JWT") or Path.home() / ".ssh/braingeneers_jwt_token.json")   # env: tests
 
 
 def read_json(p, default):
@@ -2269,7 +2280,7 @@ def push(msg, key, dry=False, refs=None):
         write_json(PUSHED, sent)
     log("PUSH [%s] %s%s" % (key, tag, msg))
     digest("push", tag + msg, refs[0] if len(refs) == 1 else "-")
-    if os.environ.get("NRP_WATCHDOG_NO_PUSH"):                 # tests: no Slack, no Claude; the (fake) banner records it
+    if os.environ.get("NRP_MONITOR_NO_PUSH"):                 # tests: no Slack, no Claude; the (fake) banner records it
         banner(tag + msg, "NRP test push")
         return True
     ok_s, ok_c = slack_dm(slack_text(msg, refs)), claude_push((tag + msg)[:190])
@@ -2324,7 +2335,7 @@ TRANSIENT_RE = re.compile(r"ConnectionError|EndpointConnectionError|ReadTimeout|
                           r"SlowDown|503 Service|Connection reset|BrokenPipe|Name or service not known|urlopen error", re.I)
 EXC_RE = re.compile(r"^\s*([A-Za-z_][\w.]*(Error|Exception|Interrupt))(:.*)?$")
 FLAG_RES = re.compile(r"\b(cpu|mem|gpu)\s+([\d.]+)/([\d.]+)(?:Gi)?\s+\((\d+)%(?:,\s*max\s+([\d.]+))?")
-GIT_ID = ["-c", "user.name=nrp-watchdog", "-c", "user.email=nrp-watchdog@localhost"]
+GIT_ID = ["-c", "user.name=nrp-monitor", "-c", "user.email=nrp-monitor@localhost"]
 
 
 def task_dir(n):
@@ -2352,9 +2363,12 @@ def task_txn(n, fn):
         t = task_load(n)
         if t is None:
             return False
+        previous = t.get("status")
         r = fn(t)
         if r is False:
             return False
+        if t.get("status") != previous and t.get("status") in ("done", "failed", "cancelled"):
+            terminal_wake(t)
         task_write(t)
         return True if r is None else r
 
@@ -2624,7 +2638,7 @@ def handoff_prompt(t):
         keep.reverse()
         note = "[%d older entr%s omitted; the full file is %s]\n" % (len(ents) - len(keep), "y" if len(ents) - len(keep) == 1 else "ies",
                                                                      d / "handoff.md") if len(ents) > len(keep) else ""
-        out.append("== %s (appended by the watchdog from agents' answers) ==\n%s%s" % (head, note, "\n\n".join(keep) or "(no entries yet)"))
+        out.append("== %s (appended by the monitor from agents' answers) ==\n%s%s" % (head, note, "\n\n".join(keep) or "(no entries yet)"))
     return "\n\n".join(out)
 
 
@@ -2718,7 +2732,7 @@ class WakeError(Exception):
 WAKE_TIMEOUT_S = 600
 WAKE_TOOLS = ["Bash(nrp-monitor task show:*)", "Bash(nrp-monitor task resume:*)", "Bash(nrp-monitor task cancel:*)",
               "Bash(nrp-monitor task needs-owner:*)", "Bash(nrp-monitor digest:*)", "Bash(nrp-monitor status:*)"]
-# a resumed chat may still run the old command name from its handoff; `nrp-watchdog` is an installed alias of nrp-monitor
+# a resumed chat may still run the old command name from its handoff; `nrp-watchdog` is an installed shim of nrp-monitor
 WAKE_TOOLS += [t.replace("nrp-monitor", "nrp-watchdog") for t in WAKE_TOOLS]
 
 
@@ -2884,7 +2898,7 @@ def manifest_check(path, ns, job):
         bad.append("spec.activeDeadlineSeconds required (it counts queue time: include the expected wait)")
     ttl = spec.get("ttlSecondsAfterFinished")
     if ttl is not None and ttl < 3600:
-        bad.append("ttlSecondsAfterFinished %s: at least 3600, so the watchdog sees the Job finish and saves its logs" % ttl)
+        bad.append("ttlSecondsAfterFinished %s: at least 3600, so the monitor sees the Job finish and saves its logs" % ttl)
     pod = ((spec.get("template") or {}).get("spec")) or {}
     if pod.get("restartPolicy") not in ("Never", "OnFailure"):
         bad.append("template.spec.restartPolicy must be Never")
@@ -2918,12 +2932,12 @@ def manifest_gpu(path):
 
 
 def today_iso():
-    return os.environ.get("NRP_WATCHDOG_TODAY") or datetime.now().strftime("%Y-%m-%d")
+    return os.environ.get("NRP_MONITOR_TODAY") or datetime.now().strftime("%Y-%m-%d")
 
 
 def gpu_expired(s):
     """None, or the reason a stage that asks for a GPU may not be (re)submitted today. the owner's GPU OK is per day; a stage
-    declares the last day it covers in `gpu_ok_until` (YYYY-MM-DD) and the watchdog never submits a GPU Job after it."""
+    declares the last day it covers in `gpu_ok_until` (YYYY-MM-DD) and the monitor never submits a GPU Job after it."""
     if not s.get("manifest") or not manifest_gpu(s["manifest"]):
         return None
     if s.get("gpu_plan"):                            # covered by the approval date of an approved plan step (see plan_gpu_cover)
@@ -2964,7 +2978,7 @@ def manifest_mem(t, s):
 
 
 def aws_cmd(c=None):
-    cmd = ["aws", "--endpoint-url", os.environ.get("NRP_WATCHDOG_S3_ENDPOINT") or (c or {}).get("s3_endpoint") or DEFAULT_S3]
+    cmd = ["aws", "--endpoint-url", os.environ.get("NRP_MONITOR_S3_ENDPOINT") or (c or {}).get("s3_endpoint") or DEFAULT_S3]
     if (c or {}).get("aws_profile"):
         cmd += ["--profile", c["aws_profile"]]
     return cmd
@@ -2986,7 +3000,7 @@ def git(*args, cwd=None, inp=None):
 
 def clone_code(name, code, warn):
     """Clone the repo at a commit into ~/.cache/nrp-tasks/<task>/repo (launchd can read there, not ~/Desktop),
-    on branch watchdog/<task>; uncommitted tracked changes under subdir are applied and committed."""
+    on branch monitor/<task>; uncommitted tracked changes under subdir are applied and committed."""
     repo = Path(os.path.expanduser(code["repo"])).resolve()
     sub = (code.get("subdir") or "").strip("/")
     r = git("rev-parse", "--show-toplevel", cwd=str(repo))
@@ -3019,7 +3033,7 @@ def clone_code(name, code, warn):
             raise ChainError("git clone failed: %s" % r.stderr.strip()[:200])
     if sub:
         git("sparse-checkout", "set", "--cone", *scope, cwd=str(dest))
-    r = git("checkout", "-q", "-B", "watchdog/" + name, sha, cwd=str(dest))        # -B: a night-code work clone already has this branch
+    r = git("checkout", "-q", "-B", "monitor/" + name, sha, cwd=str(dest))        # -B: a night-code work clone already has this branch
     if r.returncode:
         raise ChainError("git checkout failed: %s" % r.stderr.strip()[:200])
     if not code.get("commit"):
@@ -3051,7 +3065,7 @@ def clone_code(name, code, warn):
         if skipped:
             warn.append("%d untracked file(s) under %s are NOT in the clone (not source or over %d MiB; e.g. %s); commit them or set code.commit"
                         % (len(skipped), sub or repo, CLONE_MAX_FILE >> 20, skipped[0]))
-    out = {"repo": str(repo), "base": sha, "clone": str(dest), "branch": "watchdog/" + name, "subdir": sub}
+    out = {"repo": str(repo), "base": sha, "clone": str(dest), "branch": "monitor/" + name, "subdir": sub}
     if code.get("pkg_dir"):
         out["pkg_dir"] = code["pkg_dir"]
     if shipped_extras:
@@ -3158,6 +3172,17 @@ def validate_task(raw, warn, plan_gpu=None):
                 bad.append("%s: manifest (path to the Job yaml) required and must exist" % w)
             else:
                 bad += ["%s: %s" % (w, p) for p in manifest_check(os.path.expanduser(m), ns, job)]
+        purpose = str(s.get("purpose") or s.get("type") or s.get("kind") or sid).lower()
+        smoke = s.get("smoke") is True or s.get("profile") is True or purpose in ("smoke", "profile")
+        if smoke and isinstance(m, str) and os.path.isfile(os.path.expanduser(m)):
+            try:
+                spec = manifest_doc(os.path.expanduser(m))["spec"]
+                counts = [spec.get(k, 1) for k in ("parallelism", "completions")]
+                cap = util_policy().get("smoke_max_jobs", 3)
+                if any(not isinstance(v, int) or isinstance(v, bool) or v < 1 for v in counts) or max(counts) > cap:
+                    bad.append("%s: smoke/profile parallelism and completions must be 1..%d (smoke_max_jobs); include the largest/longest item" % (w, cap))
+            except (OSError, ValueError, KeyError, TypeError):
+                bad.append("%s: cannot determine smoke/profile pod count" % w)
         after = s.get("after", [])
         if not isinstance(after, list):
             bad.append("%s: after = list of stage ids" % w)
@@ -3180,6 +3205,8 @@ def validate_task(raw, warn, plan_gpu=None):
             res = None
         stage = {"id": sid, "job": job, "manifest": os.path.expanduser(m) if isinstance(m, str) else None,
                  "after": after, "done_s3": d3, "state": st0, "attempt": 1}
+        if smoke:
+            stage["purpose"] = "profile" if purpose == "profile" or s.get("profile") else "smoke"
         if res:
             stage["resumable"] = True
         if a3:
@@ -3244,7 +3271,7 @@ def task_add_raw(raw, src_file, by="session", parent=None):
         msg = ("no continuation: when this task finishes nothing will act on it, so the result only reaches the digest. Add "
                "\"on_done\": {\"plan\": \"PATH#ID\", \"from_step\": \"N\"} so a continue agent moves the approved plan on, "
                "\"followup\" for a one-shot report, or \"digest_only\": \"why nothing else is pending\".")
-        if os.environ.get("NRP_WATCHDOG_REQUIRE_CONTINUATION"):
+        if os.environ.get("NRP_MONITOR_REQUIRE_CONTINUATION"):
             sys.exit("task refused: " + msg)
         warn.append(msg)
     try:
@@ -3256,7 +3283,7 @@ def task_add_raw(raw, src_file, by="session", parent=None):
                "started, write the handoff from templates/handoff.md (`## Registrar`: what is being done and why, what each stage produces, "
                "what to check, decisions made, what NOT to do, where the code and outputs are) and set \"handoff\": \"PATH\" in the task file."
                % hwhy)
-        if os.environ.get("NRP_WATCHDOG_REQUIRE_HANDOFF") and by == "session":     # a continue agent registering the next step is only warned
+        if os.environ.get("NRP_MONITOR_REQUIRE_HANDOFF") and by == "session":     # a continue agent registering the next step is only warned
             sys.exit("task refused: " + msg)
         warn.append(msg)
     if htext is not None and not hthin and handoff_escalation_missing(htext):
@@ -3313,7 +3340,7 @@ def task_add_raw(raw, src_file, by="session", parent=None):
     for w in warn:
         print("warning: " + w, file=sys.stderr)
     digest("added", "%s: %s | %s" % (t["label"], t["goal"][:150], origin_plain(t["origin"])), n)
-    print("task %s added (%s, %s): %d stage(s). The watchdog submits pending stages, checks done_s3, retries failures with a "
+    print("task %s added (%s, %s): %d stage(s). The monitor submits pending stages, checks done_s3, retries failures with a "
           "fresh agent and pushes to the owner only when it needs them.%s" % (n, t["mode"], origin_plain(t["origin"]), len(t["stages"]),
           " Code clone: %s (branch %s)." % (t["code"]["clone"], t["code"]["branch"]) if t["code"] else ""))
     tgt = wake_target(t)
@@ -3464,9 +3491,9 @@ def do_submit(n, sid, reason, by):
         def b(t):
             t["status"] = "blocked"
             t.setdefault("pending", {"stage": sid, "reason": reason, "by": by, "since": now()})
-            tev(t, "submit of %s BLOCKED (account utilization or quota); the watchdog re-applies each pass" % s["job"])
+            tev(t, "submit of %s BLOCKED (account utilization or quota); the monitor re-applies each pass" % s["job"])
         task_txn(n, b)
-        return True, "BLOCKED: NRP refused the submit (utilization block or quota). The watchdog re-applies it every pass; do not retry yourself."
+        return True, "BLOCKED: NRP refused the submit (utilization block or quota). The monitor re-applies it every pass; do not retry yourself."
     if res != "ok":
         return False, "kubectl apply failed: %s" % res
 
@@ -3658,7 +3685,7 @@ def tier0_timeout(n, f):
     except (OSError, AttributeError, ValueError):
         return False
     Path(s["manifest"]).write_text(text[:m.start(2)] + str(old * 2) + text[m.end(2):])
-    ok, msg = do_submit(n, f["stage"], "Tier 0: deadline %ds passed while running and the stage resumes by skipping finished items; resubmitted with 2x deadline (%d s)" % (old, old * 2), "watchdog")
+    ok, msg = do_submit(n, f["stage"], "Tier 0: deadline %ds passed while running and the stage resumes by skipping finished items; resubmitted with 2x deadline (%d s)" % (old, old * 2), "monitor")
     if not ok:
         Path(s["manifest"]).write_text(text)
         log("task %s: Tier 0 resubmit refused: %s" % (n, msg[:200]))
@@ -3861,7 +3888,7 @@ def run_task_agent(n, prompt_text, a, kind="fix"):
     except Exception as e:
         log("task %s: handoff entry not written: %s: %s" % (n, type(e).__name__, str(e)[:200]))
     for x in den[:5]:
-        digest("fault", "agent permission denied (watchdog fault, not a job failure): %s %s"
+        digest("fault", "agent permission denied (monitor fault, not a job failure): %s %s"
                % (x.get("tool_name"), json.dumps(x.get("tool_input"))[:200]), n)
     return line, den
 
@@ -3876,7 +3903,7 @@ OOM_MAX_GI_DEFAULT = 128
 NODE_EXCLUDE_MAX = 3                       # nodes excluded per stage by Tier 0; a fourth fault goes to the agents
 PENDING_REPORT_S = 30 * 60
 PENDING_REREPORT_S = 6 * 3600
-THANOS_URL = os.environ.get("NRP_WATCHDOG_THANOS_URL") or "https://thanos.nrp-nautilus.io/api/v1/query"
+THANOS_URL = os.environ.get("NRP_MONITOR_THANOS_URL") or "https://thanos.nrp-nautilus.io/api/v1/query"
 NODE_FAULT_RE = re.compile(r"uncorrectable ECC|\bXid\b\W*\d+|no CUDA-capable device is detected|nvidia-container-cli|"
                            r"failed to create (?:pod )?sandbox|FailedMount|MountVolume\.\w+ failed|OCI runtime create failed|"
                            r"\bNodeLost\b|ContainerStatusUnknown", re.I)
@@ -4199,7 +4226,7 @@ def handle_failure(n, a):
         digest("retry", "%s [%s] -> %s" % (f["job"], f["cls"], (t["attempts"][-1]["fix"] if t["attempts"] else line)[:250]), n)
         return
     if den and not rep:
-        line = "the fix agent was denied %d tool call(s) (watchdog fault): %s" % (len(den), line)
+        line = "the fix agent was denied %d tool call(s) (monitor fault): %s" % (len(den), line)
     claim = t.get("util_ok_claim")
     if claim is None and rep.get("status") == "UTIL_OK":
         claim = rep.get("line") or ""
@@ -4249,7 +4276,7 @@ def advance_task(n, jobs, a):
         return
     if t["status"] == "blocked":
         p = t.get("pending") or {}
-        ok, msg = do_submit(n, p.get("stage"), p.get("reason", "re-apply after block"), "watchdog") if p else (False, "no pending submit")
+        ok, msg = do_submit(n, p.get("stage"), p.get("reason", "re-apply after block"), "monitor") if p else (False, "no pending submit")
         t = task_load(n)
         if t["status"] == "blocked":
             if now() - p.get("since", now()) > BLOCK_ESCALATE_S:
@@ -4274,7 +4301,7 @@ def advance_task(n, jobs, a):
                 note_waiting(n, s["id"], miss)
                 if miss:
                     continue                                              # stays pending; checked again next pass
-            ok, msg = do_submit(n, s["id"], "stage ready", "watchdog")
+            ok, msg = do_submit(n, s["id"], "stage ready", "monitor")
             if not ok and msg.startswith("GPU APPROVAL"):
                 escalate(n, msg.split(". Report STOPPED")[0], a)
                 return
@@ -4286,19 +4313,9 @@ def advance_task(n, jobs, a):
                 return
     t = task_load(n)
     if all(s["state"] == "done" for s in t["stages"]) and t["status"] in TASK_LIVE:
-        sib = step_mates(t)
-
         def finish(t):
             t.update(status="done", finished=now())
             tev(t, "all %d stages done" % len(t["stages"]))
-            waiting = [x["name"] for x in sib if x["status"] in TASK_LIVE + TASK_HELD]
-            if waiting:                                                  # one wake per plan step: the last task of the step sends it
-                tev(t, "step %s: done wake held until task(s) %s finish" % (t["on_done"]["from_step"], ", ".join(waiting)))
-                return
-            extra = {"summary": step_done_summary(t, sib)} if sib else {}
-            event_id = queue_task_webhook(t, "done", **extra)
-            if event_id:
-                t["done_event_id"] = event_id
         task_txn(n, finish)
         digest("task-done", "%s: all %d stage(s) done in %s; %d retr%s" % (t["label"], len(t["stages"]), ago(t["created"]),
                len(t["attempts"]), "y" if len(t["attempts"]) == 1 else "ies"), n)
@@ -4455,7 +4472,7 @@ def util_waive(n, f, claim, a):
         tev(t, "util waiver %d of %d for %s until %s: %s" % (out["k"], util_waiver_max(), f["job"], iso(w["until"]), claim[:160]))
         try:
             when = datetime.fromtimestamp(at, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-            handoff_append(t, "%s | watchdog | util waiver %d of %d | [util] stage %s" % (when, out["k"], util_waiver_max(), f["stage"]),
+            handoff_append(t, "%s | monitor | util waiver %d of %d | [util] stage %s" % (when, out["k"], util_waiver_max(), f["stage"]),
                            [("Fix log", "Util flag waived until %s (the Job runs and only the lab floor flagged it): %s" % (iso(w["until"]), claim[:UTIL_OK_REASON_MAX]))])
         except Exception as e:
             log("task %s: handoff entry for the waiver not written: %s: %s" % (t["name"], type(e).__name__, str(e)[:120]))
@@ -4869,7 +4886,7 @@ def continue_task(n, a):
     rep = task_load(n).get("report") or {}
     status = rep.get("status") if rep.get("status") in ("CONTINUED", "WAITING", "NOT-DONE", "STOPPED") else "FAILED"
     if status == "FAILED" and den:
-        line = "the continue agent was denied %d tool call(s) (watchdog fault): %s" % (len(den), line)
+        line = "the continue agent was denied %d tool call(s) (monitor fault): %s" % (len(den), line)
     close_continuation(n, status, rep.get("line") or line)
 
 
@@ -4884,21 +4901,43 @@ def step_mates(t):
         return []
 
 
+def terminal_wake(t):
+    """Under state_lock: check every terminal transition, including internal cancellations."""
+    if not t.get("on_done"):
+        if t["status"] == "done":
+            event = queue_task_webhook(t, "done")
+            if event:
+                t["done_event_id"] = event
+        return
+    sib = step_siblings(t, include_cancelled=True)
+    waiting = [x["name"] for x in sib if x["status"] not in ("done", "failed", "cancelled")]
+    if waiting:
+        tev(t, "step %s: done wake held until task(s) %s finish" % (t["on_done"]["from_step"], ", ".join(waiting)))
+        return
+    if any(x.get("done_event_id") for x in [t] + sib):
+        return
+    event = queue_task_webhook(t, "done", summary=step_done_summary(t, sib))
+    if event:
+        t["done_event_id"] = event
+
+
 def step_done_summary(t, sib):
-    """The one wake for a finished plan step: every task of the step, not one wake per task."""
-    names = sorted([x["name"] for x in sib] + [t["name"]])
-    return ("NRP plan step %s (plan %s) is done: tasks %s all finished and their success markers exist. Look: %s. The continuation (if the plan "
-            "has auto-continue on) runs once for the step." % (t["on_done"]["from_step"], t["on_done"]["plan"], ", ".join(names),
-            "; ".join("`nrp-monitor task show %s`" % x for x in names)))[:1600]
+    tasks = sorted([t] + sib, key=lambda x: x["name"])
+    names = ", ".join(x["name"] for x in tasks)
+    outcomes = "; ".join("%s: %s" % (status, ", ".join(x["name"] for x in tasks if x["status"] == status) or "none")
+                         for status in ("done", "failed", "cancelled"))
+    return ("NRP plan step %s (plan %s) finished: tasks %s. %s. Check results and the plan's done-when before continuing. Look: %s" %
+            (t["on_done"]["from_step"], t["on_done"]["plan"], names, outcomes,
+             "; ".join("`nrp-monitor task show %s`" % x["name"] for x in tasks)))[:1600]
 
 
-def step_siblings(t):
+def step_siblings(t, include_cancelled=False):
     """The other tasks bound to the same plan step as task `t` (from the plan's ledger), as loaded task dicts; cancelled ones do not count."""
     od = t["on_done"]
     out = []
     for e in plan_state(od["plan"])["ledger"].get(od["from_step"]) or []:
         o = task_load(e["task"]) if e["task"] != t["name"] else None
-        if o and o.get("status") != "cancelled" and o.get("on_done") and o["on_done"].get("from_step") == od["from_step"]:
+        if o and (include_cancelled or o.get("status") != "cancelled") and o.get("on_done") and o["on_done"].get("from_step") == od["from_step"]:
             out.append(o)
     return out
 
@@ -4934,7 +4973,7 @@ def process_continuations(a, st=None):
 
 # ---- plans: code written overnight by the continue agent (design: docs/agents/plan-run/WATCHDOG_ON_DONE.md "Night code") ----
 # For a step it MAY start (approved, not a stop, never started), the continue agent can write and test new code on a branch
-# `watchdog/<new-task>` of the plan task's code repo, in a work clone under plans/<id>/work/code-<step>/. Never main, never the real
+# `monitor/<new-task>` of the plan task's code repo, in a work clone under plans/<id>/work/code-<step>/. Never main, never the real
 # repo: the next session reviews the branch and merges it. Every gate is enforced here: only repo folders named in the plan's
 # `may_touch` may change, the commit passes py_compile, tests ran green on exactly that commit, the code tarball shipped to NRP is
 # built from that commit, and the registered task pins it (code.commit) with a manifest that names the tarball's sha256.
@@ -5036,13 +5075,13 @@ def tool_code(n, t, c, rest):
         folders = sorted({x.strip("/") for x in [pc.get("subdir") or ""] + code_scope_dirs(h) if x.strip("/")})
         if folders:
             cgit("sparse-checkout", "set", "--cone", *folders, cwd=str(d))
-        r = cgit("checkout", "-q", "-b", "watchdog/" + name, base, cwd=str(d))
+        r = cgit("checkout", "-q", "-b", "monitor/" + name, base, cwd=str(d))
         if r.returncode:
             sys.exit("code-begin: checkout failed: %s" % r.stderr.strip()[:200])
-        rec = {"step": step, "name": name, "dir": str(d), "branch": "watchdog/" + name, "base": base, "subdir": pc.get("subdir") or "",
+        rec = {"step": step, "name": name, "dir": str(d), "branch": "monitor/" + name, "base": base, "subdir": pc.get("subdir") or "",
                "tests": [], "commits": [], "shipped": None}
-        task_txn(n, lambda t: (t["continuation"].update(code=rec), tev(t, "night code begun for step %s: branch watchdog/%s in %s" % (step, name, d))))
-        plan_txn(od["plan"], lambda st: pev(st, "night code begun for step %s by the continue agent of %s: branch watchdog/%s (base %s)" % (step, n, name, base[:10])))
+        task_txn(n, lambda t: (t["continuation"].update(code=rec), tev(t, "night code begun for step %s: branch monitor/%s in %s" % (step, name, d))))
+        plan_txn(od["plan"], lambda st: pev(st, "night code begun for step %s by the continue agent of %s: branch monitor/%s (base %s)" % (step, n, name, base[:10])))
         print("work clone: %s   (branch %s at %s, a copy of the task's code, never the real repo)\nYou may change only: %s\n"
               "Write/Edit files there, then: code-test, code-commit MESSAGE, code-ship." % (d, rec["branch"], base[:10], ", ".join(code_scope_dirs(h))))
         return 0
@@ -5093,7 +5132,7 @@ def tool_code(n, t, c, rest):
             if r.returncode:
                 sys.exit("py_compile failed for %s: %s" % (f, r.stderr.strip()[-300:]))
         cgit("add", "-A", "--", *files, cwd=d)
-        r = cgit("commit", "-qm", "watchdog night code (%s, plan %s step %s): %s" % (n, od["plan"], cc["step"], " ".join(rest)[:200]), cwd=d)
+        r = cgit("commit", "-qm", "monitor night code (%s, plan %s step %s): %s" % (n, od["plan"], cc["step"], " ".join(rest)[:200]), cwd=d)
         if r.returncode:
             sys.exit("commit failed: %s" % (r.stderr.strip() or r.stdout.strip())[:300])
         sha = code_head(d)
@@ -5186,7 +5225,7 @@ def tool_next_add(n, t, rest):
     if isinstance(hp, str) and hp and not handoff_path(hp, str(p)).resolve().is_relative_to(plan_dir(od["plan"]).resolve() / "work"):
         sys.exit("next-add refused: handoff %s must be a file you wrote under %s" % (hp, plan_dir(od["plan"]) / "work"))
     raw["on_done"] = {"plan": od["plan"], "from_step": step}
-    raw["approved"] = ("auto-continued by the watchdog after task %s, plan %s approved through step %s: %s"
+    raw["approved"] = ("auto-continued by the monitor after task %s, plan %s approved through step %s: %s"
                        % (n, od["plan"], h["approved_through"], h["approval"]))[:1000]
     o = t.get("origin") or {}
     raw["origin"] = {k: o[k] for k in ORIGIN_FIELDS if o.get(k)} or None
@@ -5291,7 +5330,7 @@ def render_digest(hours):
             except Exception:
                 pass
     lines = ["# nrp-monitor digest, last %dh (%s)" % (hours, iso()),
-             "Sent by the watchdog script, not by one chat: each task/chain below names the chat that owns it (origin) when recorded."]
+             "Sent by the monitor script, not by one chat: each task/chain below names the chat that owns it (origin) when recorded."]
     nh = needs_owner()
     lines.append("\n## Needs the owner (%d)" % len(nh))
     lines += ["- %s (%s): %s  -> `nrp-monitor task show %s`" % (n, origin_plain(t.get("origin"), "goal: " + t.get("goal", "")[:60]),
@@ -5358,13 +5397,13 @@ def cmd_task_list(a):
 
 
 def cmd_task_watch(a):
-    """Set one task to watch mode only when no watchdog pass is running."""
+    """Set one task to watch mode only when no monitor pass is running."""
     STATE.mkdir(parents=True, exist_ok=True)
     with open(LOCK, "a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            print("ERROR watchdog pass in progress; try again after it finishes")
+            print("ERROR monitor pass in progress; try again after it finishes")
             return 1
         if not task_txn(a.name, lambda t: (t.update(mode="watch"), tev(t, "mode set to watch by operator"))):
             print("ERROR no task %s" % a.name)
@@ -5402,6 +5441,26 @@ def cmd_task_code(a):
                                       tev(t, "code dirs declared by operator: pkg %s, extra %s" % (code.get("pkg_dir") or "default", ", ".join(code["extra_pkg_dirs"]) or "none")))):
         sys.exit("no task %s" % a.name)
     print("task %s: reship packs %s%s" % (a.name, code.get("pkg_dir") or "predictor_v3 (default)", " + " + ", ".join(code["extra_pkg_dirs"]) if code["extra_pkg_dirs"] else ""))
+    return 0
+
+
+def cmd_task_stage(a):
+    """`task stage NAME STAGE --resumable`: mark a stage of an already registered task as resumable (re-running it skips finished items),
+    so Tier 0 may resubmit it once with 2x deadline after a timeout. Same effect as `resumable: true` in TASK.json at `task add`."""
+    t = task_load(a.name)
+    if not t:
+        sys.exit("no task %s" % a.name)
+    if not any(s["id"] == a.stage for s in t["stages"]):
+        sys.exit("task %s has no stage %s (stages: %s)" % (a.name, a.stage, ", ".join(s["id"] for s in t["stages"])))
+    if not a.resumable:
+        sys.exit("nothing to change: pass --resumable")
+
+    def mark(t):
+        tstage(t, a.stage)["resumable"] = True
+        tev(t, "stage %s marked resumable by operator (Tier 0 may resubmit it once with 2x deadline after a timeout)" % a.stage)
+    if not task_txn(a.name, mark):
+        sys.exit("no task %s" % a.name)
+    print("task %s: stage %s is resumable" % (a.name, a.stage))
     return 0
 
 
@@ -5522,7 +5581,7 @@ def cmd_task_handoff(a):
         sys.exit("handoff refused: %s" % e)
     if text is None:
         sys.exit("handoff refused: %s" % why)
-    if thin and os.environ.get("NRP_WATCHDOG_REQUIRE_HANDOFF"):
+    if thin and os.environ.get("NRP_MONITOR_REQUIRE_HANDOFF"):
         sys.exit("handoff refused: %s" % why)
     if thin:
         print("warning: %s; fix agents will have little to go on" % why, file=sys.stderr)
@@ -5762,7 +5821,7 @@ def cmd_tool(a):
         if not changed:
             sys.exit("nothing to commit")
         git("add", "-A", cwd=cl)
-        r = git("commit", "-qm", "watchdog fix (%s): %s" % (n, " ".join(rest)[:200]), cwd=cl)
+        r = git("commit", "-qm", "monitor fix (%s): %s" % (n, " ".join(rest)[:200]), cwd=cl)
         sha = git("rev-parse", "--short", "HEAD", cwd=cl).stdout.strip()
         task_txn(n, lambda t: tev(t, "fix commit %s: %s" % (sha, " ".join(rest)[:150])))
         print("committed %s on %s (%d file(s)); compiled: %s" % (sha, t["code"]["branch"], len(changed), ", ".join(py) or "none"))
@@ -5891,7 +5950,7 @@ def cmd_chain_show(a):
     for e in c.get("events", [])[-5:]:
         print("  . " + e)
     hb = heartbeat_age()
-    print("watchdog heartbeat: %s" % ("none" if hb is None else ago(hb) + " ago"))
+    print("monitor heartbeat: %s" % ("none" if hb is None else ago(hb) + " ago"))
     return 0
 
 
@@ -6003,7 +6062,7 @@ def cmd_chain_wait(a):
             return 4
         hb = max(heartbeat_age() or 0, c["created"])
         if now() - hb > HEART_STALL_S:
-            print("STALLED %s: %s; watchdog has not run for %s (start `sh -c 'while :; do nrp-monitor run; sleep 300; done'`)"
+            print("STALLED %s: %s; monitor has not run for %s (start `sh -c 'while :; do nrp-monitor run; sleep 300; done'`)"
                   % (a.name, prog, ago(hb)))
             return 5
         if a.m and now() - start >= a.m:
@@ -6107,7 +6166,7 @@ def cmd_setup(a):
     import difflib
     installed = installed_runners()
     interactive = not a.non_interactive
-    if interactive and not sys.stdin.isatty() and not os.environ.get("NRP_WATCHDOG_SETUP_ANYSTDIN"):
+    if interactive and not sys.stdin.isatty() and not os.environ.get("NRP_MONITOR_SETUP_ANYSTDIN"):
         sys.exit("setup is interactive and stdin is not a terminal. Run it in a terminal, or pass --non-interactive "
                  "[--subscriptions claude,gemini] [--triage RUNNER:MODEL[:THINKING],...] [--fixer RUNNER:MODEL,...] [--dry-run].")
     print("NRP monitor setup: which assistants run its background agents (Tier 1 triage, Tier 2 fixer).")
@@ -6448,7 +6507,7 @@ def main():
     r.add_argument("--fake-finished", metavar="JOBS", help="comma-separated registered jobs to treat as finished (test)")
     r.add_argument("--tasks-only", action="store_true", help="only advance tasks (no pod checks, chains, legacy jobs; for a test state dir)")
     r.set_defaults(f=cmd_run)
-    tk = sub.add_parser("task", help="owner-approved tasks: the watchdog submits, retries (fresh agent) and escalates once").add_subparsers(dest="tcmd", required=True)
+    tk = sub.add_parser("task", help="owner-approved tasks: the monitor submits, retries (fresh agent) and escalates once").add_subparsers(dest="tcmd", required=True)
     x = tk.add_parser("add", help="validate TASK.json (or YAML), clone its code, copy its manifests; the next pass takes over")
     x.add_argument("file")
     add_origin_args(x)
@@ -6457,7 +6516,7 @@ def main():
     x = tk.add_parser("show")
     x.add_argument("name")
     x.set_defaults(f=cmd_task_show)
-    x = tk.add_parser("watch", help="set one task to watch mode when no watchdog pass is running")
+    x = tk.add_parser("watch", help="set one task to watch mode when no monitor pass is running")
     x.add_argument("name")
     x.set_defaults(f=cmd_task_watch)
     x = tk.add_parser("code", help="declare the code dirs `nrp-task reship` packs (pkg dir + extra package dirs, e.g. finetune/ from another repo)")
@@ -6466,6 +6525,11 @@ def main():
     x.add_argument("--extra-pkg-dir", action="append", metavar="DIR", help="an extra package folder to ship beside predictor_v3 (repeatable; relative = in the clone)")
     x.add_argument("--replace", action="store_true", help="replace the declared extra dirs instead of adding")
     x.set_defaults(f=cmd_task_code)
+    x = tk.add_parser("stage", help="change a stage of a registered task: --resumable marks it as skipping finished items on re-run (Tier 0 then resubmits it once with 2x deadline after a timeout)")
+    x.add_argument("name")
+    x.add_argument("stage")
+    x.add_argument("--resumable", action="store_true")
+    x.set_defaults(f=cmd_task_stage)
     x = tk.add_parser("resume", help="after the owner (or the coordinator chat) decides: clear NEEDS_OWNER / WITH_COORDINATOR, resubmit the failed stage (edit tasks/<t>/manifests first), budgets restart")
     x.add_argument("name")
     x.add_argument("--skip", action="append", metavar="STAGE", help="treat STAGE as done instead")
@@ -6561,7 +6625,7 @@ def main():
     x.add_argument("name")
     x.set_defaults(f=cmd_chain_show)
     x = ch.add_parser("wait", help="block until finished (0), stopped/cancelled (1), no such chain (2), -m reached (3), "
-                                    "manual gate (4), watchdog not running (5); prints ONE line; never calls kubectl")
+                                    "manual gate (4), monitor not running (5); prints ONE line; never calls kubectl")
     x.add_argument("name")
     x.add_argument("-m", type=int, default=0, help="max seconds to wait")
     x.set_defaults(f=cmd_chain_wait)

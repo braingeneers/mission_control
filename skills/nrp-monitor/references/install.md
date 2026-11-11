@@ -1,7 +1,7 @@
 # Install (ask the user first)
 
 Installing creates a background job (launchd on macOS) that runs every 5 minutes, copies programs into `~/.local/bin`,
-and writes under `~/.local/state/nrp-watchdog`. The router skill's rule applies: installing instructions authorizes none
+and writes under `~/.local/state/nrp-monitor`. The router skill's rule applies: installing instructions authorizes none
 of this. Explain it and get the user's OK.
 
 ## Requirements
@@ -34,22 +34,22 @@ included unverified. The Gemini CLI runner exists for the triage tier only (agen
 ## Steps
 
 1. `sh "<SKILL>/scripts/install.sh"` installs the programs and templates and writes the scheduler definition without
-   loading it. `NRP_WATCHDOG_LABEL=...` overrides the launchd label (default `edu.ucsc.<user>.nrp-watchdog`).
-2. Create `~/.local/state/nrp-watchdog/config.json`:
+   loading it. `NRP_MONITOR_LABEL=...` overrides the launchd label (default `edu.ucsc.<user>.nrp-monitor`).
+2. Create `~/.local/state/nrp-monitor/config.json`:
    `{"nrp_user_annotation": "http://cilogon.org/serverE/users/NNNN", "slack_user_id": "U...", "owner_label": "yourname", "owner_name": "Your Name"}`.
    `nrp_user_annotation` is the `nrp.ai/username` annotation on your pods (`kubectl -n braingeneers get pod POD -o
    jsonpath='{.metadata.annotations}'`); without it pod checks are off. Without `slack_user_id` the DM is skipped. Each key
-   can instead be an environment variable: `NRP_WATCHDOG_USER_ANNOTATION`, `NRP_WATCHDOG_SLACK_USER`,
-   `NRP_WATCHDOG_OWNER_LABEL`, `NRP_WATCHDOG_OWNER_NAME`. `owner_name` is how DMs and agent prompts refer to you (default: the
+   can instead be an environment variable: `NRP_MONITOR_USER_ANNOTATION`, `NRP_MONITOR_SLACK_USER`,
+   `NRP_MONITOR_OWNER_LABEL`, `NRP_MONITOR_OWNER_NAME`. `owner_name` is how DMs and agent prompts refer to you (default: the
    label). `code_python` is optional: the interpreter that runs `nrp-task code-test` (it needs pytest) and `reship`; by default the one that runs the script, which under launchd may be a system Python without pytest.
 3. `sh "<SKILL>/scripts/install.sh" --launchd` loads the scheduler. Verify: `nrp-monitor status` (heartbeat within 10
    minutes) and `nrp-monitor agents test`.
 4. Optional: local rules. Copy `scripts/templates/utilization-policy.local.json.example` to
-   `~/.local/state/nrp-watchdog/utilization-policy.local.json` and edit it (utilization.md, "Optional: local rules"). Without it
+   `~/.local/state/nrp-monitor/utilization-policy.local.json` and edit it (utilization.md, "Optional: local rules"). Without it
    only the shared numbers apply (GPU floor 40%, 400 concurrent jobs). The 5% single-item skip limit in the fix agent's prompt is
-   the optional `skip_limit_fraction` setting in `config.json` (or `NRP_WATCHDOG_SKIP_LIMIT_FRACTION`).
+   the optional `skip_limit_fraction` setting in `config.json` (or `NRP_MONITOR_SKIP_LIMIT_FRACTION`).
 5. `agents.json` (agents.md): `install.sh` runs `nrp-monitor setup` when it is missing and a terminal is attached; it asks which subscriptions you have
-   (Claude Code, Codex, Gemini CLI, T3) and which backend and model each of Tier 1 and Tier 2 uses (`NRP_WATCHDOG_SETUP=skip` never asks).
+   (Claude Code, Codex, Gemini CLI, T3) and which backend and model each of Tier 1 and Tier 2 uses (`NRP_MONITOR_SETUP=skip` never asks).
    Without a terminal it prints the command; run it later, or write the file by hand. Until then agents use Claude only with built-in models. Optional, Claude Code only: a SessionStart hook that runs
    `nrp-monitor status --quiet` so a session starts with a warning if the scheduler has stalled.
 
@@ -59,3 +59,17 @@ agents is cloned into `~/.cache/nrp-tasks`.
 Tests (standard library, fake `kubectl`, `aws`, `claude` and `codex` programs, no cluster or network):
 `python3 -m pytest "<SKILL>/scripts/tests"` (about two minutes). Run them from a copy if you do not want bytecode written
 into the installed skill.
+
+When the user has already specified per-tier backends/models, the agent applies them directly with
+`nrp-monitor setup --non-interactive --triage ... --fixer ...`; do not ask the user to run setup.
+Current live choice: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.1-sol then Claude Sonnet for the fixer:
+```sh
+nrp-monitor setup --non-interactive --triage gemini:gemini-3.8-flash:lowest,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
+```
+
+Migration unloads the old scheduler, then waits up to 300 seconds for the pass lock (`NRP_MONITOR_MIGRATE_WAIT`).
+With the lock held it moves a real old state directory only if the new path is absent, leaves a relative compatibility symlink,
+rewrites absolute path string values in readable JSON (not embedded prose or keys), and renames the log.
+The old plist is archived in the state directory. The new label loads if the old one was loaded or `--launchd` was given.
+A timeout aborts without moving state; the old scheduler stays unloaded, so retry install after the pass finishes.
+Reinstallation does not repeat migration; fresh installs create only the new state directory. Actions are printed.

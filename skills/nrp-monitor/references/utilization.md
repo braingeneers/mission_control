@@ -12,7 +12,7 @@ override. A built-in copy of the shared file is the fallback (a test checks they
 ## Optional: local rules
 
 A person or lab may add stricter rules without touching the shared file: `<state dir>/utilization-policy.local.json`
-(default `~/.local/state/nrp-watchdog/`; set `NRP_UTIL_POLICY_LOCAL` for another path). It is read after the shared file.
+(default `~/.local/state/nrp-monitor/`; set `NRP_UTIL_POLICY_LOCAL` for another path). It is read after the shared file.
 A key that is in neither file means that check is off, so with no local file only the GPU floor and the job cap apply.
 
 | Key | Effect |
@@ -40,16 +40,16 @@ About `small_pod_exempt`: NRP's policy page says only that its CPU and memory re
 minutes; kubectl only for pod state. One line per flagged pod plus a summary (it counts the account's violating pods only when the local rules ask for that).
 
 Each flagged line ends `[tag] rule=R`: `gpu` (any GPU flag), `nrp` (a CPU or memory band that NRP counts as a violation)
-or `lab` (only the lab floor flagged it; NRP does not count it). The watchdog reads that token (an older line without it is
+or `lab` (only the lab floor flagged it; NRP does not count it). The monitor reads that token (an older line without it is
 read from its tag).
 
-## In the watchdog
+## In the monitor
 
 - First flag on a pod: record resize advice, silent.
 - A second consecutive flag: a fresh agent deletes or resizes, for the user's own task and chain pods; other pods need the
   owner.
 - A pod that holds its request unused (stuck, failed) is flagged immediately.
-- With the local `account_block_after_violating_pods` check on, the watchdog pushes once when the count is 3 or more on two
+- With the local `account_block_after_violating_pods` check on, the monitor pushes once when the count is 3 or more on two
   passes in a row (NRP's own limit is about how many pods an account may have outside its bands).
 - A flag from the lab floor alone (inside NRP's bands; the line ends `rule=lab`) is recorded and never acted on. If a util
   fix agent is started for a Job anyway and finds it healthy (outputs written, logs moving, a resubmit would lose work),
@@ -68,13 +68,13 @@ hold:
 2. the flag's rule is `lab`: never an NRP-band flag (those count toward NRP's account limit, so a waiver could cost a strike),
    never a GPU flag, and not a GPU stage; no recent flag on the task's pods came from an NRP band;
 3. the Job exists and is Running when the script checks (the agent's claim is not used);
-4. the task has used fewer than `util_waiver_max` waivers (default 3; `config.json` key or `NRP_WATCHDOG_UTIL_WAIVER_MAX`;
+4. the task has used fewer than `util_waiver_max` waivers (default 3; `config.json` key or `NRP_MONITOR_UTIL_WAIVER_MAX`;
    0 turns waivers off).
 
 If any check fails, nothing changes: the owner gets the usual stop, with the refusal reason in it and in the task's events.
 When accepted, the failure is cleared, the stage goes back to running, no retry is used, nobody is messaged, and a record
 `{job, pod, reason (at most 400 characters), at, until}` is kept on the task. `until` is now plus `util_waiver_hours` (default
-6; `config.json` key or `NRP_WATCHDOG_UTIL_WAIVER_HOURS`). For that long, or until the Job ends or is resubmitted, the lab-floor
+6; `config.json` key or `NRP_MONITOR_UTIL_WAIVER_HOURS`). For that long, or until the Job ends or is resubmitted, the lab-floor
 flag of that Job is not recorded again; NRP-band and GPU flags are never suppressed, and the account alarm is not affected. A
 `util-waived` digest line and a task event record it, `task show NAME` lists the waivers (active or ended), and when the task
 has a handoff a Fix log entry says so. After `until`, a Job that is still running and flagged again goes through the fix agent

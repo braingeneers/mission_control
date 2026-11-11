@@ -117,8 +117,8 @@ class P(Base):
         h = json.loads(hp.read_text())
         h["stop_for_hunter"] = h.pop("stops")
         hp.write_text(json.dumps(h))
-        old = os.environ.get("NRP_WATCHDOG_STATE")
-        os.environ["NRP_WATCHDOG_STATE"] = str(self.state)
+        old = os.environ.get("NRP_MONITOR_STATE")
+        os.environ["NRP_MONITOR_STATE"] = str(self.state)
         try:
             loader = importlib.machinery.SourceFileLoader("wd_plan_hdr", str(Path(__file__).resolve().parents[1] / "nrp-monitor"))
             spec = importlib.util.spec_from_loader("wd_plan_hdr", loader)
@@ -127,9 +127,9 @@ class P(Base):
             self.assertEqual(wd.plan_header("tp")["stops"], ["2b"])
         finally:
             if old is None:
-                os.environ.pop("NRP_WATCHDOG_STATE", None)
+                os.environ.pop("NRP_MONITOR_STATE", None)
             else:
-                os.environ["NRP_WATCHDOG_STATE"] = old
+                os.environ["NRP_MONITOR_STATE"] = old
 
     def test_add_refuses_unapproved_and_stop_steps(self):
         rc, _, err = self.add_step("t1", "3")
@@ -171,10 +171,10 @@ class P(Base):
                    "result": "WAITING"})
         self.finish("t1")
         prompt = self.prompts()[0].read_text()
-        self.assertIn("Steps you MAY start now (the watchdog computed this; `nrp-task next-add` enforces it): 2", prompt)
+        self.assertIn("Steps you MAY start now (the monitor computed this; `nrp-task next-add` enforces it): 2", prompt)
         t2 = self.task("t2")
         self.assertEqual(t2["on_done"], {"plan": "tp", "from_step": "2", "depth": 1, "by": "continuation", "parent": "t1"})
-        self.assertIn("auto-continued by the watchdog after task t1", t2["approved"])
+        self.assertIn("auto-continued by the monitor after task t1", t2["approved"])
         self.assertEqual(self.task("t1")["continuation"]["status"], "CONTINUED")
         self.assertEqual(self.plan_state()["status"], "running")
         self.finish("t2")                                             # step 2 done -> next is 2b, a stop: refused, WAITING
@@ -246,7 +246,7 @@ class P(Base):
 
 
 class NightCode(P):
-    """The continue agent may write and test code for the next approved step on a watchdog/<task> branch (never main)."""
+    """The continue agent may write and test code for the next approved step on a monitor/<task> branch (never main)."""
     CODE = {"subdir": "job"}
 
     def setUp(self):
@@ -293,7 +293,7 @@ class NightCode(P):
         t2 = self.task("t2")
         head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.wc, capture_output=True, text=True).stdout.strip()
         self.assertEqual(t2["code"]["base"], head)                      # pinned to the tested commit
-        self.assertEqual(t2["code"]["branch"], "watchdog/t2")
+        self.assertEqual(t2["code"]["branch"], "monitor/t2")
         self.assertTrue((Path(t2["code"]["clone"]) / "job" / "new_step.py").is_file())
         self.assertEqual(self.task("t1")["continuation"]["status"], "CONTINUED")
         up = (self.fake / "uploads.log").read_text()
@@ -301,15 +301,15 @@ class NightCode(P):
         sha = [x for x in (self.state / "tasks" / "t2" / "manifests" / "t2-a.yaml").read_text().splitlines() if x.startswith("# code sha256")][0]
         self.assertEqual(len(sha.split()[-1]), 64)
         ps = self.plan_state()
-        self.assertEqual(ps["code"][0]["branch"], "watchdog/t2")
+        self.assertEqual(ps["code"][0]["branch"], "monitor/t2")
         self.assertEqual(ps["code"][0]["commit"], head)
         res = (self.state / "plans" / "tp" / "results.md").read_text()
-        self.assertIn("code: branch watchdog/t2", res)
+        self.assertIn("code: branch monitor/t2", res)
         self.assertIn("pinned by task t2", res)
         self.assertIn("plan-code", self.wd("digest")[1])
-        self.assertIn("night code to review: watchdog/t2", self.wd("plan", "show", "tp")[1])
+        self.assertIn("night code to review: monitor/t2", self.wd("plan", "show", "tp")[1])
         # the real repo is untouched: no new branch, one commit, no new file
-        br = subprocess.run(["git", "branch", "--list", "watchdog/*"], cwd=self.repo, capture_output=True, text=True).stdout
+        br = subprocess.run(["git", "branch", "--list", "monitor/*"], cwd=self.repo, capture_output=True, text=True).stdout
         self.assertEqual(br.strip(), "")
         self.assertFalse((self.repo / "job" / "new_step.py").exists())
 

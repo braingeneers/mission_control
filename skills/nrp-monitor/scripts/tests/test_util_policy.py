@@ -17,10 +17,10 @@ EXAMPLE = HERE / 'templates' / 'utilization-policy.local.json.example'
 # the shared file wherever this test runs: the skill layout (scripts/tests), this repo's proposal, or an installed skill
 SHARED_CANDIDATES = [
     HERE.parents[1] / 'nrp-cluster' / 'references' / 'utilization-policy.json',
-    HERE.parents[1] / 'docs/agents/nrp-watchdog-review/proposal/nrp-cluster/utilization-policy.json',
+    HERE.parents[1] / 'docs/agents/nrp-monitor-review/proposal/nrp-cluster/utilization-policy.json',
     Path.home() / '.claude/skills/nrp-cluster/references/utilization-policy.json',
 ]
-SHARED = {"gpu_floor": 0.40, "limit_to_request_tolerance": 0.20, "max_concurrent_jobs": 400}
+SHARED = {"gpu_floor": 0.40, "limit_to_request_tolerance": 0.20, "max_concurrent_jobs": 400, "smoke_max_jobs": 3}
 OWNER_LOCAL = {"max_concurrent_jobs": 40, "lab_floor": 0.4, "cpu_band": [0.2, 2.0], "memory_band": [0.2, 1.5],
                "small_pod_exempt": {"cpu": 1, "memory_bytes": 2000000000}, "account_block_after_violating_pods": 4}
 
@@ -35,7 +35,7 @@ class Policy(unittest.TestCase):
         return p
 
     def env(self, shared=SHARED, local=None):
-        e = {"NRP_WATCHDOG_STATE": str(self.tmp / 'state'),
+        e = {"NRP_MONITOR_STATE": str(self.tmp / 'state'),
              "NRP_UTIL_POLICY": str(self.write('shared.json', shared)),
              "NRP_UTIL_POLICY_LOCAL": str(self.tmp / 'local.json')}
         if local is not None:
@@ -184,7 +184,7 @@ class Policy(unittest.TestCase):
         state = self.tmp / 'state'
         state.mkdir()
         (state / 'utilization-policy.local.json').write_text(json.dumps({"lab_floor": 0.5}))
-        env = dict(os.environ, NRP_WATCHDOG_STATE=str(state), NRP_UTIL_POLICY=str(self.write('shared.json', SHARED)))
+        env = dict(os.environ, NRP_MONITOR_STATE=str(state), NRP_UTIL_POLICY=str(self.write('shared.json', SHARED)))
         env.pop('NRP_UTIL_POLICY_LOCAL', None)
         r = subprocess.run([sys.executable, str(SOURCE), '--policy'], capture_output=True, text=True, env=env)
         self.assertIn(str(state / 'utilization-policy.local.json'), r.stdout)

@@ -362,7 +362,7 @@ class Setup(Base):
         self.assertFalse(self.w.AGENTS_CFG.exists())
 
     def test_cli_entry_point_and_agents_command_show_the_tiers(self):
-        env = dict(os.environ, NRP_WATCHDOG_STATE=str(self.tmp / "cli-state"), PATH=os.environ["PATH"])
+        env = dict(os.environ, NRP_MONITOR_STATE=str(self.tmp / "cli-state"), PATH=os.environ["PATH"])
         script = str(HERE / "nrp-monitor")
         r = subprocess.run([sys.executable, script, "setup", "--non-interactive", "--subscriptions", "claude", "--dry-run"], env=env,
                            capture_output=True, text=True, stdin=subprocess.DEVNULL)
@@ -382,9 +382,9 @@ class InstallSh(unittest.TestCase):
         for n in ("claude", "gemini"):
             (self.bin / n).write_text("#!/bin/sh\nexit 0\n")
             (self.bin / n).chmod(0o755)
-        self.env = dict(os.environ, HOME=str(self.home), NRP_WATCHDOG_LABEL="test.nrp-watchdog", PATH="%s:%s" % (self.bin, os.environ["PATH"]))
-        self.env.pop("NRP_WATCHDOG_STATE", None)
-        self.state = self.home / ".local/state/nrp-watchdog"
+        self.env = dict(os.environ, HOME=str(self.home), NRP_MONITOR_LABEL="test.nrp-monitor", PATH="%s:%s" % (self.bin, os.environ["PATH"]))
+        self.env.pop("NRP_MONITOR_STATE", None)
+        self.state = self.home / ".local/state/nrp-monitor"
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -434,7 +434,7 @@ class InstallSh(unittest.TestCase):
         self.assertEqual((self.state / "agents.json").read_text(), before)
 
     def test_skip_variable_never_asks(self):
-        self.env["NRP_WATCHDOG_SETUP"] = "skip"
+        self.env["NRP_MONITOR_SETUP"] = "skip"
         rc, out = self.tty("")
         self.assertEqual(rc, 0, out)
         self.assertNotIn("Tier 1 triage", out)

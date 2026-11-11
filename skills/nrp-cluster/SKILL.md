@@ -111,7 +111,7 @@ Before submission, ask for or confirm:
 ### 4) Monitor and debug
 
 - Use `/.agent/workflows/monitor-job.md`.
-- For approved work that will run unattended, register it with the `nrp-monitor` skill (when installed; formerly `nrp-watchdog`, still an installed alias) instead of polling. A model never waits or polls: a script (Tier 0) tracks states, markers and utilization against these rules and applies fixed repairs; what it cannot classify goes to Tier 1 triage (a configurable cheap backend, e.g. Gemini Flash or Haiku; "no fix needed" closes the event), then a Tier 2 Sonnet fixer, then Tier 3, a wake of the task's own coordinator chat in Claude Code, Codex or T3 (one wake per plan step, plus escalations). The owner is told only when that chat runs `task needs-owner`; a timeout never pages directly. `task add` needs an origin (the coordinator chat), and the registering agent writes this ladder into its handoff. `nrp-monitor setup` chooses the backend for each tier.
+- For approved work that will run unattended, register it with the `nrp-monitor` skill (when installed) instead of polling. A model never waits or polls: a script (Tier 0) tracks states, markers and utilization against these rules and applies fixed repairs; what it cannot classify goes to Tier 1 triage (a configurable cheap backend, e.g. Gemini Flash or Haiku; "no fix needed" closes the event), then a Tier 2 Sonnet fixer, then Tier 3, a wake of the task's own coordinator chat in Claude Code, Codex or T3 (one wake per plan step, plus escalations). The owner is told only when that chat runs `task needs-owner`; a timeout never pages directly. `task add` needs an origin (the coordinator chat), and the registering agent writes this ladder into its handoff. `nrp-monitor setup` chooses the backend for each tier.
 - Capture job/pod status and recent logs after submission.
 - Delete finished/failed jobs when requested.
 
@@ -123,3 +123,13 @@ Escalate for issues that are clearly out-of-repo:
 - NRP quota/policy enforcement questions.
 - Persistent cluster scheduling failures unrelated to job YAML.
 - Registry permission errors preventing image push.
+
+## Smoke/profile sizing
+
+The script never chooses or launches a full fan-out on its own after profiling. Register a few representative
+smoke/profile jobs, including the largest/longest item. Mark stages `purpose: "smoke"` or `purpose: "profile"`
+(boolean `smoke`/`profile` also accepted). Registration refuses Job `spec.parallelism` or `spec.completions`
+above `smoke_max_jobs` in nrp-cluster's shared utilization-policy.json (default 3). Select inputs before registration;
+the script cannot infer the largest input. After a successful profile, the Tier 2 fixer or coordinator chat decides
+the full size within the plan's approved limits and explicitly registers it. Do not register speculative full fan-outs
+behind profile stages.

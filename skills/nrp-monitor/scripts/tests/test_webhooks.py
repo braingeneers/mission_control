@@ -34,16 +34,16 @@ class Handler(BaseHTTPRequestHandler):
 class Webhooks(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        old = os.environ.get("NRP_WATCHDOG_STATE")
-        os.environ["NRP_WATCHDOG_STATE"] = self.tmp.name
+        old = os.environ.get("NRP_MONITOR_STATE")
+        os.environ["NRP_MONITOR_STATE"] = self.tmp.name
         loader = importlib.machinery.SourceFileLoader("wd_webhook_test", str(SCRIPT))
         spec = importlib.util.spec_from_loader(loader.name, loader)
         self.wd = importlib.util.module_from_spec(spec)
         loader.exec_module(self.wd)
         if old is None:
-            del os.environ["NRP_WATCHDOG_STATE"]
+            del os.environ["NRP_MONITOR_STATE"]
         else:
-            os.environ["NRP_WATCHDOG_STATE"] = old
+            os.environ["NRP_MONITOR_STATE"] = old
         Handler.status, Handler.received = 200, []
         self.server = HTTPServer(("127.0.0.1", 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)

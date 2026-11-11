@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for nrp-monitor chains. No cluster, no S3, no notification, no model: a fake kubectl / aws / osascript / claude
-sit first on PATH and a scratch state dir is used (NRP_WATCHDOG_STATE). Run: python3 test_chains.py
-Versioned in braindance_proj/tools/nrp-watchdog; install.sh copies the script to ~/.local/bin."""
+sit first on PATH and a scratch state dir is used (NRP_MONITOR_STATE). Run: python3 test_chains.py
+Versioned in braindance_proj/tools/nrp-monitor; install.sh copies the script to ~/.local/bin."""
 import fcntl
 import json
 import os
@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
-SCRIPT = os.environ.get("WATCHDOG", str(HERE / "nrp-monitor"))    # the versioned copy; WATCHDOG=~/.local/bin/nrp-monitor tests the installed one
+SCRIPT = os.environ.get("MONITOR", str(HERE / "nrp-monitor"))    # the versioned copy; MONITOR=~/.local/bin/nrp-monitor tests the installed one
 REAL_TPL = HERE / "templates"
 USER = "http://cilogon.org/serverE/users/100000"
 
@@ -61,7 +61,7 @@ FAKE_AWS = r'''#!/usr/bin/env python3
 import json, os, sys
 d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fake"); a = sys.argv[1:]
 if os.path.exists(d + "/aws_fail"): sys.stderr.write("could not connect\n"); sys.exit(255)
-if "head-object" in sys.argv:                                          # exact object check (what the watchdog uses)
+if "head-object" in sys.argv:                                          # exact object check (what the monitor uses)
     u = "s3://%s/%s" % (a[a.index("--bucket") + 1], a[a.index("--key") + 1])
     open(d + "/aws.log", "a").write(" ".join(a) + "\n")
     if os.path.exists(d + "/aws_fail"): sys.stderr.write("Could not connect to the endpoint URL\n"); sys.exit(255)
@@ -108,9 +108,9 @@ class Base(unittest.TestCase):
         self.cluster({})
         (self.fake / "s3.json").write_text("[]")
         self.env = {"PATH": "%s:/usr/bin:/bin" % (self.tmp / "bin"), "HOME": str(Path.home()), "FAKE_DIR": str(self.fake),
-                    "FAKE_USER": USER, "NRP_WATCHDOG_USER_ANNOTATION": USER, "NRP_WATCHDOG_STATE": str(self.state), "NRP_WATCHDOG_POLL_S": "1",
-                    "AWS_SECRET_ACCESS_KEY": "must-not-leak", "NRP_WATCHDOG_NO_PUSH": "1",
-                    "NRP_WATCHDOG_SLACK_URL": "http://127.0.0.1:9/never"}
+                    "FAKE_USER": USER, "NRP_MONITOR_USER_ANNOTATION": USER, "NRP_MONITOR_STATE": str(self.state), "NRP_MONITOR_POLL_S": "1",
+                    "AWS_SECRET_ACCESS_KEY": "must-not-leak", "NRP_MONITOR_NO_PUSH": "1",
+                    "NRP_MONITOR_SLACK_URL": "http://127.0.0.1:9/never"}
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -320,13 +320,13 @@ class TestChains(Base):
         self.set_job("other-mine", "running", ann=True)
         self.set_job("someone-else", "running", ann=False)
         self.add("cap", [self.step(str(i), "j-%d" % i) for i in range(4)])
-        self.run_pass(env={"NRP_WATCHDOG_MAX_JOBS": "3"})
+        self.run_pass(env={"NRP_MONITOR_MAX_JOBS": "3"})
         sub = [l.split()[0] for l in self.lines("submits.log")]
         self.assertEqual(len(sub), 2, sub)                # 1 existing + 2 new == 3
-        self.run_pass(env={"NRP_WATCHDOG_MAX_JOBS": "3"})
+        self.run_pass(env={"NRP_MONITOR_MAX_JOBS": "3"})
         self.assertEqual(len(self.lines("submits.log")), 2)
         self.set_job("j-%s" % sub[0][-1], "ok")           # frees one slot (and is then deleted)
-        self.run_pass(env={"NRP_WATCHDOG_MAX_JOBS": "3"})
+        self.run_pass(env={"NRP_MONITOR_MAX_JOBS": "3"})
         self.assertEqual(len(self.lines("submits.log")), 3)
 
     def shared_policy(self, **kw):
@@ -376,15 +376,15 @@ class TestChains(Base):
         self.add("cap5", [self.step("a", "j-a")])
         self.run_pass(env=env)
         self.assertEqual(self.lines("submits.log"), [], "a local value above the shared cap is ignored")
-        self.assertIn("would loosen the shared 5", (self.state / "watchdog.log").read_text())
+        self.assertIn("would loosen the shared 5", (self.state / "monitor.log").read_text())
 
     def test_env_can_lower_the_cap_further(self):
-        env = dict(self.shared_policy(), NRP_WATCHDOG_MAX_JOBS="2")
+        env = dict(self.shared_policy(), NRP_MONITOR_MAX_JOBS="2")
         self.fill(2)
         self.add("cap2", [self.step("a", "j-a")])
         self.run_pass(env=env)
         self.assertEqual(self.lines("submits.log"), [])
-        env["NRP_WATCHDOG_MAX_JOBS"] = "9999"                            # env cannot loosen either
+        env["NRP_MONITOR_MAX_JOBS"] = "9999"                            # env cannot loosen either
         self.run_pass(env=dict(env, NRP_UTIL_POLICY=self.shared_policy(max_concurrent_jobs=2)["NRP_UTIL_POLICY"]))
         self.assertEqual(self.lines("submits.log"), [])
 
@@ -694,7 +694,7 @@ class TestValidationAndResume(Base):
                 "m.record_resize(json.loads(sys.argv[2]), 'pod-x', 'job-x', 'LOW flag', 'OVERSIZED: mem -> 2Gi')")
         r = subprocess.run([sys.executable, "-c", code, SCRIPT, json.dumps(st)], env=self.env, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("WATCHDOG RESIZE NOTE", (self.state / "resume" / "job-x.md").read_text())
+        self.assertIn("MONITOR RESIZE NOTE", (self.state / "resume" / "job-x.md").read_text())
 
     def test_followup_gets_read_only_s3(self):
         notes = self.tmp / "n.md"

@@ -1,6 +1,6 @@
 # Registering a task
 
-`nrp-monitor task add TASK.json` validates the file, copies it into the watchdog's state, and the next pass starts
+`nrp-monitor task add TASK.json` validates the file, copies it into the monitor's state, and the next pass starts
 it. A task is refused (nothing is registered) with a list of every problem found.
 
 ## Fields
@@ -9,7 +9,7 @@ Required: `name` (lowercase letters, digits and `-`, at most 40), `goal`, `appro
 
 - `approved`: the user's approval in their own words with the date. Not a summary of your own judgment.
 - `notes` (at most 4 KB): what a fresh agent needs: how the Job works, what a good result looks like, where outputs go.
-- `code`: `{repo, subdir?, commit?, pkg_dir?, extra_pkg_dirs?}`. Registers a clone the fix agents may edit on a branch `watchdog/<task>`.
+- `code`: `{repo, subdir?, commit?, pkg_dir?, extra_pkg_dirs?}`. Registers a clone the fix agents may edit on a branch `monitor/<task>`.
   For pv3 Jobs that run shipped code, `nrp-task reship` packs **every code dir the task declares**: the `predictor_v3` package
   (`pkg_dir`, else `subdir` when it is `predictor_v3`, else `<clone>/predictor_v3`) plus each `extra_pkg_dirs` entry, packed beside it
   exactly as `--ship-code` with `PV3_CODE_EXTRA_PACKAGES` did at submission (`finetune/...`, `bwb/...` next to `predictor_v3/...`).
@@ -24,7 +24,7 @@ Required: `name` (lowercase letters, digits and `-`, at most 40), `goal`, `appro
   the task is refused (v3; an alert would name no chat and wake nobody). Pass it in the file or with `--origin-title/--origin-link`.
   A continuation registered by a continue agent inherits its parent's origin (only a warning if the parent had none).
 - Continuation, at least one of (a task with none is a warning, or a refusal with
-  `NRP_WATCHDOG_REQUIRE_CONTINUATION=1`):
+  `NRP_MONITOR_REQUIRE_CONTINUATION=1`):
   - `on_done`: `{"plan": "path/PLAN.md#plan-id", "from_step": "N"}`. The plan section needs a run header with the
     approved range and stops. A continue agent checks the step's "done when" and may register the next approved step.
     **Several tasks may share one step** (per-cell fan-outs): register each with the same `from_step`. The step is done when all of
@@ -35,7 +35,7 @@ Required: `name` (lowercase letters, digits and `-`, at most 40), `goal`, `appro
 - `handoff`: path to the markdown handoff the registering agent writes from `scripts/templates/handoff.md` (absolute,
   `~`, or relative to the task file's folder); `task add` validates it and copies it into the task's folder, where the
   fix and continue agents read it. Missing, empty or thin (a `## Registrar` of under 200 characters) is a warning, or a
-  refusal with `NRP_WATCHDOG_REQUIRE_HANDOFF=1`. It is usually written after the task is registered, so
+  refusal with `NRP_MONITOR_REQUIRE_HANDOFF=1`. It is usually written after the task is registered, so
   `nrp-monitor task handoff NAME FILE` attaches it later. Format and ownership: [handoff](handoff.md).
 
 Util flags: a util fix agent may answer `UTIL_OK: evidence` for a healthy Job flagged only by the lab floor; the script accepts it
@@ -74,8 +74,20 @@ Derive the deadline from measured runtime with margin; the queue counts toward i
 
 ## Commands
 
-`nrp-monitor task list`, `task show NAME`, `task code NAME` (declare reship's code dirs), `task handoff NAME FILE`, `task watch NAME`, `task resume NAME` (continue after a person or the coordinator chat decided, from
+`nrp-monitor task list`, `task show NAME`, `task code NAME` (declare reship's code dirs), `task stage NAME STAGE --resumable` (mark a stage of a registered task resumable, as `resumable: true` in TASK.json would), `task handoff NAME FILE`, `task watch NAME`, `task resume NAME` (continue after a person or the coordinator chat decided, from
 `NEEDS_OWNER` or `WITH_COORDINATOR`; `--gpu-ok-until DATE` after extending a GPU approval), `task needs-owner NAME --reason TEXT` (run by the
 coordinator chat only when the owner is truly needed: sets `NEEDS_OWNER`, sends the one DM), `task cancel NAME`, `status`, `digest --hours N`,
 `origin task NAME --title .. --link .. [--harness claude|codex --session ID --cwd DIR]` (add or fix attribution and the wake target later). Agents use `nrp-task`, a wrapper that validates
 every argument; it is their only shell tool for task work.
+
+## Smoke/profile sizing
+
+The script never chooses or launches a full fan-out on its own after profiling. Register a few representative
+smoke/profile jobs, including the largest/longest item. Mark stages `purpose: "smoke"` or `purpose: "profile"`
+(boolean `smoke`/`profile` also accepted). Registration refuses Job `spec.parallelism` or `spec.completions`
+above `smoke_max_jobs` in nrp-cluster's shared utilization-policy.json (default 3). Select inputs before registration;
+the script cannot infer the largest input. After a successful profile, the Tier 2 fixer or coordinator chat decides
+the full size within the plan's approved limits and explicitly registers it. Do not register speculative full fan-outs
+behind profile stages.
+
+`nrp-monitor task stage NAME STAGE --resumable` marks an existing stage via task_txn and logs an event. Use only when rerunning skips finished items.

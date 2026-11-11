@@ -1,6 +1,6 @@
 # Agents and fallback
 
-Optional file `<state>/agents.json` (`~/.local/state/nrp-watchdog/agents.json`). Without it: Claude only, with the
+Optional file `<state>/agents.json` (`~/.local/state/nrp-monitor/agents.json`). Without it: Claude only, with the
 built-in models and limits. An invalid file is ignored with a digest fault; it never stops the scheduler.
 
 ## Choosing the backend per tier: `nrp-monitor setup`
@@ -66,3 +66,10 @@ approvals off in a workspace-write sandbox (no network, writes only to the agent
 rules generated from the allowlist: a listed command may use the network, any other command stays in the sandbox. A Codex
 agent can still read any file the user can, including tokens, and has no dollar or turn cap. Decide whether that is
 acceptable before listing `codex`.
+
+When the user has already specified per-tier backends/models, the agent applies them directly with
+`nrp-monitor setup --non-interactive --triage ... --fixer ...`; do not ask the user to run setup.
+Current live choice: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.1-sol then Claude Sonnet for the fixer:
+```sh
+nrp-monitor setup --non-interactive --triage gemini:gemini-3.8-flash:lowest,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
+```

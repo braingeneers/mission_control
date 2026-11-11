@@ -296,6 +296,48 @@ class OneWake(Base):
         self.assertEqual(self.calls("claude"), 1)
         self.assertIn("plan step 3", (self.fake / "claude.stdin").read_text())
 
+    def test_jobs_with_old_and_new_labels_are_both_discovered_by_name(self):
+        items = [{"metadata": {"name": "job-"+name, "labels": {"nrp-"+name+"/kind": "s3check"}},
+                  "status": {"active": 1}} for name in ("watchdog", "monitor")]
+        with patch.object(self.w, "kubectl", return_value=SimpleNamespace(returncode=0, stdout=json.dumps({"items": items}))) as k:
+            jobs = self.w.fetch_jobs("test")
+        self.assertEqual(set(jobs), {"job-watchdog", "job-monitor"})
+        self.assertNotIn("-l", k.call_args.args)
+        labels = self.w.s3_check_job_manifest("new", [])["metadata"]["labels"]
+        self.assertIn("nrp-monitor/kind", labels)
+        self.assertNotIn("nrp-watchdog/kind", labels)
+
+    def test_last_cancel_sends_one_summary_for_terminal_siblings(self):
+        od = self.plan_step("c1", "c2", "c3")
+        for n in ("c1", "c2", "c3"):
+            self.task(name=n, harness="claude", on_done={"plan": "plan-x", "from_step": "3"})
+        self.finish("c1")
+        self.w.task_txn("c2", lambda t: t.update(status="failed"))
+        self.w.cmd_task_cancel(SimpleNamespace(name="c3"))
+        ev = self.outbox("c3")
+        self.assertEqual(len(ev), 1)
+        for outcome in ("done: c1", "failed: c2", "cancelled: c3"):
+            self.assertIn(outcome, ev[0]["summary"])
+        self.w.cmd_task_cancel(SimpleNamespace(name="c3"))
+        self.assertEqual(len(self.outbox("c3")), 1)
+
+    def test_all_cancelled_internal_paths_also_wake_once(self):
+        self.plan_step("c1", "c2")
+        for n in ("c1", "c2"):
+            self.task(name=n, harness="claude", on_done={"plan": "plan-x", "from_step": "3"})
+        for n in ("c1", "c2"):
+            self.w.task_txn(n, lambda t: t.update(status="cancelled"))
+        ev = self.outbox("c2")
+        self.assertEqual(len(ev), 1)
+        self.assertIn("done: none; failed: none; cancelled: c1, c2", ev[0]["summary"])
+
+    def test_mark_registered_stage_resumable_logs_event(self):
+        self.task()
+        self.w.cmd_task_stage(SimpleNamespace(name="t1", stage="a", resumable=True))
+        t = self.w.task_load("t1")
+        self.assertTrue(t["stages"][0]["resumable"])
+        self.assertIn("marked resumable", t["events"][-1])
+
     def test_a_lone_task_still_wakes_once_when_it_finishes(self):
         self.task(harness="codex")
         self.finish("t1")

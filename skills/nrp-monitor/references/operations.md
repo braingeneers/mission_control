@@ -102,7 +102,7 @@ mentions it.
 2. **Cheap triage.** For a registered Job with a resume file, one read-only agent looks first and returns a result or
    `ESCALATE` with evidence.
 3. **Repair.** Up to two repair attempts for a legacy job follow-up (the ladder is configurable: agents.md). A task's Tier 2 agent has a
-   retry budget of 4 total and 3 per failure class. Code fixes are committed on `watchdog/<task>`. The agent's prompt
+   retry budget of 4 total and 3 per failure class. Code fixes are committed on `monitor/<task>`. The agent's prompt
    carries the task's handoff, and its `HANDOFF_ENTRY:` block is appended to the handoff's Fix log (handoff.md).
    A single bad item is skipped and logged; a pattern (more than 5% of items, by default; the `skip_limit_fraction`
    setting, install.md) goes to a person.

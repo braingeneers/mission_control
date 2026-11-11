@@ -1,20 +1,20 @@
 # The handoff
 
 A handoff is one markdown file per task. The agent that registers the task writes it, once, after the monitor is
-started and before it returns. Later, when the watchdog starts a fix agent or a continue agent, that agent gets the
+started and before it returns. Later, when the monitor starts a fix agent or a continue agent, that agent gets the
 handoff in its prompt, so it knows what the work is for, what was decided and what not to touch, without the original
 chat. Nothing here depends on a particular assistant: any agent that can write a markdown file can register a task.
 
-Start from `scripts/templates/handoff.md` (installed as `~/.local/state/nrp-watchdog/templates/handoff.md`).
+Start from `scripts/templates/handoff.md` (installed as `~/.local/state/nrp-monitor/templates/handoff.md`).
 
 ## Sections and owners
 
 | Heading | Written by | Rule |
 | --- | --- | --- |
 | `## Registrar` | the registering agent, once | Read-only for everyone afterwards. |
-| `## Fix log` | the watchdog script, from fix agents' answers | Append-only. One entry per attempt. |
-| `## Continuation` | the watchdog script, from continue agents' answers | Append-only. What was checked, which step was registered, open items. |
-| `## For the owner` | the watchdog script, from either kind of agent | Append-only. Questions and decisions that need a person. |
+| `## Fix log` | the monitor script, from fix agents' answers | Append-only. One entry per attempt. |
+| `## Continuation` | the monitor script, from continue agents' answers | Append-only. What was checked, which step was registered, open items. |
+| `## For the owner` | the monitor script, from either kind of agent | Append-only. Questions and decisions that need a person. |
 
 Use `###` for sub-headings inside a section, never `##` (a `##` line starts a new section). Text inside `<!-- -->` is
 ignored by every check and is not shown to agents; the template's guidance lines are comments.
@@ -35,7 +35,7 @@ section; `handoff: none` means nothing was accepted.
 
 Checks: the file must exist, must not be empty, must have a `## Registrar` heading and at least 200 characters of text in
 it, at most 16,000 characters there and 100 KB in all, and no repeated `##` heading. A missing, empty or thin handoff is a warning
-at `task add` (the same style as the missing-continuation warning); with `NRP_WATCHDOG_REQUIRE_HANDOFF=1` the add is
+at `task add` (the same style as the missing-continuation warning); with `NRP_MONITOR_REQUIRE_HANDOFF=1` the add is
 refused instead (a continue agent registering the next plan step is only warned). Too long or a repeated heading is
 always refused. A finished task with no (or a thin) handoff is listed in the digest as `no-handoff`.
 

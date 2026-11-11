@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for nrp-monitor v2 tasks (task add, pass, classification, fix agent via nrp-task, escalation, one push).
 No cluster, S3, Slack or model: a fake kubectl / aws / osascript / claude sit first on PATH, a scratch state dir is used,
-and NRP_WATCHDOG_NO_PUSH routes pushes to the fake banner log. The fake agent runs the real `nrp-task` commands listed
+and NRP_MONITOR_NO_PUSH routes pushes to the fake banner log. The fake agent runs the real `nrp-task` commands listed
 in fake/agent_plan.json. Run: python3 tests/test_tasks.py"""
 import json
 import os
@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
-SCRIPT = os.environ.get("WATCHDOG", str(HERE / "nrp-monitor"))
+SCRIPT = os.environ.get("MONITOR", str(HERE / "nrp-monitor"))
 USER = "http://cilogon.org/serverE/users/100000"
 
 TEST_ORIGIN = {"title": "test chat", "link": "t3-thread://v2/test-env/test-thread"}
@@ -80,7 +80,7 @@ else:
 FAKE_AWS = r'''#!/usr/bin/env python3
 import hashlib, json, os, sys
 d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fake"); uri = sys.argv[-1]; a = sys.argv[1:]
-if "head-object" in sys.argv:                                          # exact object check (what the watchdog uses)
+if "head-object" in sys.argv:                                          # exact object check (what the monitor uses)
     u = "s3://%s/%s" % (a[a.index("--bucket") + 1], a[a.index("--key") + 1])
     open(d + "/aws.log", "a").write(" ".join(a) + "\n")
     if os.path.exists(d + "/aws_fail"): sys.stderr.write("Could not connect to the endpoint URL\n"); sys.exit(255)
@@ -167,9 +167,9 @@ class T(unittest.TestCase):
         shutil.copytree(HERE / "templates", self.state / "templates")
         (self.fake / "cluster.json").write_text('{"jobs": {}}')
         (self.fake / "s3.json").write_text("[]")
-        self.env = {"PATH": "%s:/usr/bin:/bin" % self.bin, "HOME": str(Path.home()), "NRP_WATCHDOG_OWNER_NAME": "Sam", "FAKE_DIR": str(self.fake),
-                    "NRP_WATCHDOG_STATE": str(self.state), "NRP_TASK_CACHE": str(self.tmp / "cache"),
-                    "NRP_WATCHDOG_NO_PUSH": "1", "NRP_WATCHDOG_SLACK_URL": "http://127.0.0.1:9/never"}
+        self.env = {"PATH": "%s:/usr/bin:/bin" % self.bin, "HOME": str(Path.home()), "NRP_MONITOR_OWNER_NAME": "Sam", "FAKE_DIR": str(self.fake),
+                    "NRP_MONITOR_STATE": str(self.state), "NRP_TASK_CACHE": str(self.tmp / "cache"),
+                    "NRP_MONITOR_NO_PUSH": "1", "NRP_MONITOR_SLACK_URL": "http://127.0.0.1:9/never"}
         # a code repo with a bug
         self.repo = self.tmp / "repo"
         (self.repo / "job").mkdir(parents=True)
@@ -261,6 +261,50 @@ class T(unittest.TestCase):
         rc, _, err = self.add(stages=[{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": []}])
         self.assertIn("done_s3", err)
 
+    def test_existing_legacy_clone_branch_remains_usable(self):
+        self.assertEqual(self.add(code={"repo": str(self.repo), "subdir": "job"})[0], 0)
+        t = self.task()
+        clone = t["code"]["clone"]
+        subprocess.run(["git", "branch", "-m", "watchdog/t1"], cwd=clone, check=True)
+        t["code"]["branch"] = "watchdog/t1"
+        (self.state / "tasks/t1/task.json").write_text(json.dumps(t))
+        (Path(clone) / "job/new.py").write_text("value = 1\n")
+        rc, out = self.tool("t1", "commit", "legacy branch fix")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("on watchdog/t1", out)
+
+    def test_smoke_cap_reads_custom_shared_policy(self):
+        shutil.copy(HERE / "nrp-util-check", self.bin / "nrp-util-check")
+        policy = self.tmp / "policy.json"
+        policy.write_text(json.dumps({"gpu_floor": .4, "max_concurrent_jobs": 400, "smoke_max_jobs": 1}))
+        self.env["NRP_UTIL_POLICY"] = str(policy)
+        m = self.manifest("t1-a")
+        p = Path(m)
+        p.write_text(p.read_text().replace("backoffLimit: 0", "backoffLimit: 0\n  completions: 2"))
+        rc, _, err = self.add(stages=[dict(id="a", job="t1-a", manifest=m, done_s3=["s3://braingeneersdev/t/a"], purpose="smoke")])
+        self.assertNotEqual(rc, 0)
+        self.assertIn("1..1 (smoke_max_jobs)", err)
+
+    def test_smoke_profile_caps_total_completions_and_parallelism(self):
+        for mark in ({"purpose": "smoke"}, {"purpose": "profile"}, {"smoke": True}, {"profile": True}):
+            for key in ("parallelism", "completions"):
+                m = self.manifest("t1-a")
+                p = Path(m)
+                p.write_text(p.read_text().replace("backoffLimit: 0", "backoffLimit: 0\n  %s: 4" % key))
+                stage = dict(id="a", job="t1-a", manifest=m, done_s3=["s3://braingeneersdev/t/a"], **mark)
+                rc, _, err = self.add(stages=[stage])
+                self.assertNotEqual(rc, 0, err)
+                self.assertIn("smoke_max_jobs", err)
+
+    def test_profile_accepts_three_and_preserves_intent(self):
+        m = self.manifest("t1-a")
+        p = Path(m)
+        p.write_text(p.read_text().replace("backoffLimit: 0", "backoffLimit: 0\n  completions: 3\n  parallelism: 2"))
+        stage = dict(id="a", job="t1-a", manifest=m, done_s3=["s3://braingeneersdev/t/a"], purpose="profile")
+        rc, _, err = self.add(stages=[stage])
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(self.task()["stages"][0]["purpose"], "profile")
+
     def test_add_refuses_manifest_breaking_house_rules(self):
         m = self.manifest("t1-a", **{"backoffLimit: 0": "backoffLimit: 3", 'print(1)': 'import time; time.sleep(1)", "sleep 99999'})
         rc, _, err = self.add(stages=[{"id": "a", "job": "t1-a", "manifest": m, "done_s3": ["s3://braingeneersdev/x/a"]}])
@@ -338,8 +382,8 @@ class T(unittest.TestCase):
         t = self.task()
         self.assertEqual([x["cls"] for x in t["attempts"]], ["resources", "code"])
         self.assertTrue(t["attempts"][1]["sig"].startswith("code:keyerror"))
-        log = subprocess.run(["git", "log", "--oneline", "watchdog/t1"], cwd=clone, capture_output=True, text=True).stdout
-        self.assertIn("watchdog fix (t1)", log)
+        log = subprocess.run(["git", "log", "--oneline", "monitor/t1"], cwd=clone, capture_output=True, text=True).stdout
+        self.assertIn("monitor fix (t1)", log)
         self.assertIn("t1-code-fix1", (self.fake / "configmaps.log").read_text())
         self.assertEqual(self.pushes(), [], "retries are silent")
         # 3) transient error -> agent resubmits unchanged; the same error again -> escalate, no agent, ONE push
@@ -405,11 +449,11 @@ class T(unittest.TestCase):
 
     def test_skip_limit_env_overrides_config_and_bad_values_fall_back(self):
         (self.state / "config.json").write_text(json.dumps({"skip_limit_fraction": 0.02}))
-        self.env["NRP_WATCHDOG_SKIP_LIMIT_FRACTION"] = "0.1"
+        self.env["NRP_MONITOR_SKIP_LIMIT_FRACTION"] = "0.1"
         self.assertIn("more than 10% of items", self.fix_prompt())
 
     def test_skip_limit_bad_value_falls_back_to_the_default(self):
-        self.env["NRP_WATCHDOG_SKIP_LIMIT_FRACTION"] = "1.5"
+        self.env["NRP_MONITOR_SKIP_LIMIT_FRACTION"] = "1.5"
         self.assertIn("more than 5% of items", self.fix_prompt())
 
     def test_agent_stop_pushes_its_diagnosis_once(self):
@@ -432,14 +476,14 @@ class T(unittest.TestCase):
         self.assertEqual(self.prompts(), [])
         self.assertEqual(len(self.pushes()), 1)
 
-    def test_denials_are_watchdog_faults(self):
+    def test_denials_are_monitor_faults(self):
         self.add()
         self.run_pass()
         self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="KeyError: x")
         self.plan({"cmds": [], "result": "could not run kubectl", "denials": [{"tool_name": "Bash", "tool_input": {"command": "kubectl get job"}}]})
         self.run_pass()
         dig = (self.state / "digest.log").read_text()
-        self.assertIn("watchdog fault", dig)
+        self.assertIn("monitor fault", dig)
         self.assertIn("denied 1 tool call", self.task()["reason"])
 
     # ---------------------------------------------------------------- nrp-task guards
@@ -555,12 +599,12 @@ class T(unittest.TestCase):
     def test_gpu_retry_after_approval_day_escalates_once_without_agent(self):
         st = {"id": "a", "job": "t1-a", "manifest": self.gpu_manifest("t1-a"), "done_s3": ["s3://braingeneersdev/t/a"],
               "gpu_ok_until": "2026-11-06"}
-        self.env["NRP_WATCHDOG_TODAY"] = "2026-11-06"
+        self.env["NRP_MONITOR_TODAY"] = "2026-11-06"
         self.assertEqual(self.add(stages=[st])[0], 0)
         self.run_pass()
         self.assertIn("t1-a", self.cl())                            # approved day: submitted
         self.set_job("t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
-        self.env["NRP_WATCHDOG_TODAY"] = "2026-11-07"                # the day after Sam's OK
+        self.env["NRP_MONITOR_TODAY"] = "2026-11-07"                # the day after Sam's OK
         n = len(self.prompts())
         self.run_pass()
         self.run_pass()

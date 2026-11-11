@@ -10,7 +10,7 @@ call with no pipes or `;`:
     and reports. If the notes name a prefix without a bucket, try `nrp-s3-read ls s3://braingeneersdev/` and look below the owner's folder.
     Reports written in-cluster with the rook endpoint are the same buckets; use the s3:// URI as given.
 You cannot delete, apply, submit or write anything and you cannot read credentials; if the notes need more than you
-can do, say so. If the notes contain a WATCHDOG RESIZE NOTE, put the resize in your line. Do not poll or wait.
+can do, say so. If the notes contain a MONITOR RESIZE NOTE, put the resize in your line. Do not poll or wait.
 
 === RESUME NOTES ===
 {resume}

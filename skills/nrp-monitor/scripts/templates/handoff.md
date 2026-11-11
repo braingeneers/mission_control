@@ -1,4 +1,4 @@
-<!-- Handoff for one watchdog task. Write it once the monitor is started, before you return; then put its path in the task's "handoff" field.
+<!-- Handoff for one monitor task. Write it once the monitor is started, before you return; then put its path in the task's "handoff" field.
      Comments like this one are ignored. Use ### for sub-headings inside a section, never ## (a ## line starts a new section). -->
 
 ## Registrar
@@ -14,12 +14,12 @@
 
 ## Fix log
 
-<!-- Owned by fix agents. The watchdog script appends one entry per attempt (UTC time, failure class, what was tried, result) from the
+<!-- Owned by fix agents. The monitor script appends one entry per attempt (UTC time, failure class, what was tried, result) from the
      agent's HANDOFF_ENTRY block. Nobody edits this by hand. -->
 
 ## Continuation
 
-<!-- Owned by continue agents. The watchdog script appends what was checked, which next step was registered and the open items.
+<!-- Owned by continue agents. The monitor script appends what was checked, which next step was registered and the open items.
      Nobody edits this by hand. -->
 
 ## For the owner

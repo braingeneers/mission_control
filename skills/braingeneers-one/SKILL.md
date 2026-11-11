@@ -119,7 +119,7 @@ contracts, after deciding whether documentation alone answers the question.
 | Load, analyze, visualize, or export neuronal spike trains with SpikeLab | `spikelab-analysis-implementer` |
 | Build, understand, debug, or make Recipes from lab Nextflow workflows; investigate a workflow run | `workflow-authoring` |
 | Build images for, submit, monitor, or troubleshoot NRP Nautilus batch jobs, including hosted LLMs or Brave Search | `nrp-cluster` |
-| Follow approved NRP work unattended (staged Jobs, exact success markers, utilization checks, tiered repair and escalation to the plan's own coordinator chat, continuing the approved plan; formerly `nrp-watchdog`) | `nrp-monitor` |
+| Follow approved NRP work unattended (staged Jobs, exact success markers, utilization checks, tiered repair and escalation to the plan's own coordinator chat, continuing the approved plan) | `nrp-monitor` |
 | Find, search, verify, or download datasets; author Uploader metadata; prepare DANDI/GEO publication or shared collections | `data-explorer-cli-access` |
 | Find/read Slack conversations or send requested replies/email; diagnose, develop, or package Mission Control services and protected APIs | `mission-control-services-management` |
 | Map or refresh a code repository's `.code-summaries/` navigation index before reading its source | `summarize-codebase` |

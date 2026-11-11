@@ -20,8 +20,8 @@ import test_tasks as tt                                    # harness only; its T
 
 SCRIPT = tt.SCRIPT
 _TMP = tempfile.mkdtemp(prefix="wdorigin_mod_")
-os.environ["NRP_WATCHDOG_STATE"] = _TMP                    # the module-level STATE of the imported script
-os.environ["NRP_WATCHDOG_OWNER_NAME"] = "Sam"                 # how messages name the person (setting owner_name)
+os.environ["NRP_MONITOR_STATE"] = _TMP                    # the module-level STATE of the imported script
+os.environ["NRP_MONITOR_OWNER_NAME"] = "Sam"                 # how messages name the person (setting owner_name)
 WD = importlib.machinery.SourceFileLoader("wd_under_test", SCRIPT).load_module()
 
 RT = {"title": "rt-sort-3d", "link": "t3-thread://v2/9287f026-7701-4dd7-9c6f-f015440d149e/5488c222-111b-479b-899d-141dbb803bfd",
@@ -68,7 +68,7 @@ class Pure(unittest.TestCase):
         text = WD.slack_text("kubectl has failed 6 passes <x>", [])
         self.assertTrue(text.startswith("*Not tied to one chat*"))
         self.assertIn("kubectl has failed 6 passes &lt;x&gt;", text)
-        self.assertIn("*NRP watchdog* (automated script, working with Sam; not a chat)", text)
+        self.assertIn("*NRP monitor* (automated script, working with Sam; not a chat)", text)
         self.assertEqual(WD.short_tag([]), "[shared] ")
 
 
@@ -235,8 +235,8 @@ class O(unittest.TestCase):
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         jwt = self.tmp / "jwt.json"
         jwt.write_text('{"access_token": "fake.jwt.token"}')
-        env = {k: v for k, v in self.env.items() if k != "NRP_WATCHDOG_NO_PUSH"}
-        env.update(NRP_WATCHDOG_JWT=str(jwt), NRP_WATCHDOG_SLACK_URL="http://127.0.0.1:%d/v1/slack" % srv.server_port, NRP_WATCHDOG_SLACK_USER="UTEST")
+        env = {k: v for k, v in self.env.items() if k != "NRP_MONITOR_NO_PUSH"}
+        env.update(NRP_MONITOR_JWT=str(jwt), NRP_MONITOR_SLACK_URL="http://127.0.0.1:%d/v1/slack" % srv.server_port, NRP_MONITOR_SLACK_USER="UTEST")
         self.env = env
         Stub.got.clear()
         rc, out, err = self.add(mode="watch", origin=dict(RT, title="rt-sort-3d <&>"))
@@ -245,14 +245,14 @@ class O(unittest.TestCase):
         self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="shard check <FAILED> & <!channel>: 2 of 16")
         self.run_pass()
         srv.shutdown()
-        self.assertEqual(len(Stub.got), 1, (self.state / "watchdog.log").read_text()[-1500:])
+        self.assertEqual(len(Stub.got), 1, (self.state / "monitor.log").read_text()[-1500:])
         auth, payload = Stub.got[0]
         self.assertEqual(auth, "Bearer fake.jwt.token")
         self.assertEqual(payload["user_id"], "UTEST")
         lines = payload["text"].split("\n")
         self.assertEqual(lines[0], "*Return to chat: rt-sort-3d &lt;&amp;&gt;* (Codex gpt-6-astra, working with Sam)")
         self.assertEqual(lines[1], "`%s`" % RT["link"])
-        self.assertTrue(lines[2].startswith("*NRP watchdog* (automated script, working with Sam; not a chat): NRP task t1 needs you:"))
+        self.assertTrue(lines[2].startswith("*NRP monitor* (automated script, working with Sam; not a chat): NRP task t1 needs you:"))
         self.assertNotIn("<!channel>", payload["text"])
         self.assertIn("&lt;!channel&gt;", payload["text"])
         pushed = json.loads((self.state / "pushed.json").read_text())["task:t1:1"]
@@ -265,7 +265,7 @@ class O(unittest.TestCase):
 
     def _text_for_unrecorded_task(self):
         self.add_unattributed(mode="watch")
-        env = dict(self.env, NRP_WATCHDOG_STATE=str(self.state))
+        env = dict(self.env, NRP_MONITOR_STATE=str(self.state))
         code = ("import importlib.machinery as m,sys;w=m.SourceFileLoader('w',sys.argv[1]).load_module();print(w.slack_text('boom', ['task:t1']))")
         r = subprocess.run([sys.executable, "-c", code, SCRIPT], capture_output=True, text=True, env=env)
         self.assertEqual(r.returncode, 0, r.stderr)

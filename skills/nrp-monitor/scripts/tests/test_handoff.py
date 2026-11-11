@@ -123,7 +123,7 @@ class AddCheck(Base):
 
     def test_refused_when_the_lab_requires_a_handoff(self):
         h = self.h
-        h.env['NRP_WATCHDOG_REQUIRE_HANDOFF'] = '1'
+        h.env['NRP_MONITOR_REQUIRE_HANDOFF'] = '1'
         for name, hp in (('r1', None), ('r2', str(h.tmp / 'absent.md'))):
             rc, _, err = self.add(name=name, handoff=hp)
             self.assertNotEqual(rc, 0)
@@ -191,7 +191,7 @@ class AddCheck(Base):
         rc, _, err = h.wd('task', 'handoff', 'nope', str(self.file))
         self.assertIn('no task nope', err)
         (h.tmp / 'thin.md').write_text(handoff_text('short'))
-        h.env['NRP_WATCHDOG_REQUIRE_HANDOFF'] = '1'
+        h.env['NRP_MONITOR_REQUIRE_HANDOFF'] = '1'
         rc, _, err = h.wd('task', 'handoff', 't2', str(h.tmp / 'thin.md'))
         self.assertNotEqual(rc, 0)
         self.assertIn('thin', err)

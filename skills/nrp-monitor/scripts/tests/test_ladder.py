@@ -448,7 +448,7 @@ class LadderTests(Ladder):
         self.assertEqual(self.prompts(), [], "Tier 0 only: no model")
         self.assertEqual(self.pushes(), [])
         self.assertEqual(t["attempts"][0]["cls"], "slow")
-        self.assertEqual(t["attempts"][0]["by"], "watchdog")
+        self.assertEqual(t["attempts"][0]["by"], "monitor")
         self.assertIn("activeDeadlineSeconds: 7200", Path(t["stages"][0]["manifest"]).read_text())
         self.assertIn("activeDeadlineSeconds: 7200", (self.fake / "applied.log").read_text().splitlines()[-1].replace("  ", " "))
         self.assertEqual(t["stages"][0]["dl"]["resubmits"], 1)

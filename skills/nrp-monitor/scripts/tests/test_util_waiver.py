@@ -131,7 +131,7 @@ class Accept(Base):
         fl = TH.sections((h.state / 'tasks/t1/handoff.md').read_text())['Fix log']
         self.assertIn('Checked outputs; leave the Job alone.', fl)
         self.assertIn('Util flag waived until', fl)
-        self.assertIn('| watchdog | util waiver 1 of 3', fl)
+        self.assertIn('| monitor | util waiver 1 of 3', fl)
         self.assertNotIn('HANDOFF_ENTRY', self.waivers()[0]['reason'], 'the evidence stops at the handoff block')
 
 
@@ -244,8 +244,8 @@ class ExpiryAndCap(Base):
 
     def test_agent_prompt_says_the_cap_and_the_hours(self):
         h = self.h
-        h.env['NRP_WATCHDOG_UTIL_WAIVER_MAX'] = '2'
-        h.env['NRP_WATCHDOG_UTIL_WAIVER_HOURS'] = '1.5'
+        h.env['NRP_MONITOR_UTIL_WAIVER_MAX'] = '2'
+        h.env['NRP_MONITOR_UTIL_WAIVER_HOURS'] = '1.5'
         self.started()
         self.inject()
         self.agent(report='STOPPED')
@@ -371,7 +371,7 @@ class Refused(Base):
 class Settings(Base):
     def test_hours_and_cap_come_from_the_environment(self):
         h = self.h
-        h.env['NRP_WATCHDOG_UTIL_WAIVER_HOURS'] = '2'
+        h.env['NRP_MONITOR_UTIL_WAIVER_HOURS'] = '2'
         self.started()
         self.inject()
         self.agent()
@@ -381,7 +381,7 @@ class Settings(Base):
 
     def test_cap_zero_turns_waivers_off(self):
         h = self.h
-        h.env['NRP_WATCHDOG_UTIL_WAIVER_MAX'] = '0'
+        h.env['NRP_MONITOR_UTIL_WAIVER_MAX'] = '0'
         self.started()
         self.inject()
         self.agent()
@@ -397,9 +397,9 @@ class Settings(Base):
         (tmp / 'config.json').write_text(json.dumps({'util_waiver_max': 5, 'util_waiver_hours': 12}))
         m = TA.load_module(tmp)
         self.assertEqual((m.util_waiver_max(), m.util_waiver_hours()), (5, 12.0))
-        with patch.dict('os.environ', {'NRP_WATCHDOG_UTIL_WAIVER_MAX': '1', 'NRP_WATCHDOG_UTIL_WAIVER_HOURS': '0.5'}):
+        with patch.dict('os.environ', {'NRP_MONITOR_UTIL_WAIVER_MAX': '1', 'NRP_MONITOR_UTIL_WAIVER_HOURS': '0.5'}):
             self.assertEqual((m.util_waiver_max(), m.util_waiver_hours()), (1, 0.5), 'the environment beats the file')
-        with patch.dict('os.environ', {'NRP_WATCHDOG_UTIL_WAIVER_MAX': 'many', 'NRP_WATCHDOG_UTIL_WAIVER_HOURS': '-4'}):
+        with patch.dict('os.environ', {'NRP_MONITOR_UTIL_WAIVER_MAX': 'many', 'NRP_MONITOR_UTIL_WAIVER_HOURS': '-4'}):
             self.assertEqual((m.util_waiver_max(), m.util_waiver_hours()), (3, 6.0), 'bad values fall back to the defaults')
 
 

@@ -1,20 +1,20 @@
-# NRP watchdog: known issues (2026-11-09)
+# NRP monitor: known issues (2026-11-09)
 
 Each item says how well it is established. "Checked" means I confirmed it directly on
-2026-11-09. "From logs" means taken from the watchdog's own logs and docs, not reproduced.
+2026-11-09. "From logs" means taken from the monitor's own logs and docs, not reproduced.
 "Tested" means covered by the test suite (199 tests, none failing on 2026-11-09 in the repository layout, 1 skipped because the
 nrp-cluster skill is not installed there; from the skill layout 197 pass and 2 skip: one needs the author's code-shipping helper, one needs the nrp-cluster
 policy file installed). "Unverified"
 means suspected or not confirmed.
 
-**Deployment.** The fixes below are in the repository (`tools/nrp-watchdog/`). The copy that
+**Deployment.** The fixes below are in the repository (`tools/nrp-monitor/`). The copy that
 launchd actually runs (`~/.local/bin/nrp-monitor`) is still the old script until
-`tools/nrp-watchdog/install.sh` is run. Items marked "in the repo" do nothing live until then.
+`tools/nrp-monitor/install.sh` is run. Items marked "in the repo" do nothing live until then.
 
 ## Changed since the first version of this list
 
 - **Agent type, fallback and escalation are now configurable (was item 7).** *(In the repo; Tested.)*
-  `~/.local/state/nrp-watchdog/agents.json` sets the runners in order (for example Claude, then
+  `~/.local/state/nrp-monitor/agents.json` sets the runners in order (for example Claude, then
   Codex), a model per tier, and the job follow-up ladder (default triage, repair, repair). With no
   file the behaviour is what it was. `nrp-monitor agents` shows it, `agents test` sends one tiny
   prompt through each runner. Checked live: both Claude (haiku) and Codex (`gpt-6.1-sol`) answered.
@@ -24,7 +24,7 @@ launchd actually runs (`~/.local/bin/nrp-monitor`) is still the old script until
   without using a retry, and one Slack DM says so. Before this, on 11-06 and 11-07, two fix agents
   and a continue agent were recorded as failures and sent "needs you" DMs.
 - **Completion without a continuation is now visible (part of item 5).** *(In the repo; Tested.)*
-  `task add` warns (and refuses when `NRP_WATCHDOG_REQUIRE_CONTINUATION=1`) if a task has none of
+  `task add` warns (and refuses when `NRP_MONITOR_REQUIRE_CONTINUATION=1`) if a task has none of
   `on_done`, `followup` or `digest_only`. A finished task with none of them is listed in the digest
   as `no-continuation`. In the live state today, of 62 finished tasks 5 had a plan continuation, 17
   a one-shot read-only report, and 40 were digest-only; all 12 running tasks are digest-only.
@@ -32,7 +32,7 @@ launchd actually runs (`~/.local/bin/nrp-monitor`) is still the old script until
   with fake binaries.)* The registering agent writes a markdown handoff after the monitor is started
   (`## Registrar`, template `templates/handoff.md`) and attaches it with the task's `handoff` field or
   `nrp-monitor task handoff NAME FILE`; the copy in the task folder is the one agents see. `task add` warns without
-  one (`NRP_WATCHDOG_REQUIRE_HANDOFF=1` refuses) and a finished task with none is listed in the digest as `no-handoff`.
+  one (`NRP_MONITOR_REQUIRE_HANDOFF=1` refuses) and a finished task with none is listed in the digest as `no-handoff`.
   Fix and continue agents get it in their prompt and end their answer with a `HANDOFF_ENTRY:` block that the script
   appends to the Fix log or Continuation section (a `FOR_OWNER:` line goes to the owner's section; no block gives an
   automatic line). The Registrar's hash is checked around every append and restored from the original if it changed.
@@ -43,7 +43,7 @@ launchd actually runs (`~/.local/bin/nrp-monitor`) is still the old script until
   `references/utilization-policy.json` (proposed in `proposal/out/mission_control.patch`, not in the shared repo) holds
   only numbers that skill states (GPU floor 40%, limits within 20% of requests, 400 concurrent jobs). Stricter rules are an
   optional local override, `<state dir>/utilization-policy.local.json`, that can only be stricter; a key in neither file
-  means that check is off. `nrp-util-check` and the watchdog's Job cap read this one effective policy; `nrp-util-check
+  means that check is off. `nrp-util-check` and the monitor's Job cap read this one effective policy; `nrp-util-check
   --policy` prints it and where each key came from. A built-in copy is the fallback and a test checks it equals the shared
   file. The 20% limit tolerance is documented only (no check uses it). The 5% skip limit is the `skip_limit_fraction`
   setting (default 0.05). Not done on the live machine yet: the local override file is not created.
@@ -61,7 +61,7 @@ launchd actually runs (`~/.local/bin/nrp-monitor`) is still the old script until
 - **Documentation that disagreed with the code is fixed.** The 10-minute claim (script docstring,
   strike-gap comment, house rules) is now 5 minutes; the docstring's `--min-age 600` is now 300;
   `WATCHDOG_ON_DONE.md` no longer says the `on_done.enabled` file is absent.
-- **`nrp-util-check` was not in the repository.** It is now (`tools/nrp-watchdog/nrp-util-check`)
+- **`nrp-util-check` was not in the repository.** It is now (`tools/nrp-monitor/nrp-util-check`)
   and `install.sh` installs it.
 - **An empty `--allowedTools` list made `claude -p` fail** (it needs a value). The flag is now
   left out when the list is empty. The lists are non-empty in practice, so I do not think it ever
@@ -105,7 +105,7 @@ launchd actually runs (`~/.local/bin/nrp-monitor`) is still the old script until
   started from there cannot read or edit the repo directly. The code is cloned into a cache.
 - Plan steps marked as local session work never run automatically.
 - The deadline rule ("derive from measured runtime") is enforced by the docs and the
-  agents. The watchdog only checks that a deadline exists.
+  agents. The monitor only checks that a deadline exists.
 - The one-shot completion report (`followup`) is not retried: if every runner is out of usage at
   the moment a task finishes, the digest says the report was not written.
 - A Codex allow rule matches a command prefix, so `kubectl delete job X` also allows extra flags
@@ -160,7 +160,6 @@ launchd actually runs (`~/.local/bin/nrp-monitor`) is still the old script until
   subcommand has no sandbox flags); that `CODEX_THREAD_ID` equals the id `codex exec resume` takes (it is in the Codex binary's environment
   list; not run). A wake that does not land is retried for `WAKE_MAX_TRIES` passes, then falls back to the owner.
 - A wake blocks the pass while it runs (timeout 600 s). Several failing wakes in one pass can make a pass long; the pass lock keeps the next one from overlapping.
-- If the last waiting task of a plan step is cancelled, the finished tasks of that step never send the step wake (nothing re-checks the step).
 - Gemini runner: the allowlist rests on Gemini CLI's policy engine (admin policy, `commandPrefix`, `argsPattern`) as documented in the CLI's own docs;
   it was not run against the live model. `gemini -m ALIAS` with a custom alias and `thinkingLevel MINIMAL` for "lowest" are per those docs; a model
   that rejects MINIMAL needs `thinking: low` or a budget. Hence it is limited to the triage tier.

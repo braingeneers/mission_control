@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Regression tests for the EXACT success-marker check (2026-11-06 incident: `aws s3 ls s3://b/DONE` is a PREFIX match, so
-`DONE.1` of an Indexed Job satisfied `DONE`, the watchdog deleted running pods and 16 of 50 featurecontrols were lost).
+`DONE.1` of an Indexed Job satisfied `DONE`, the monitor deleted running pods and 16 of 50 featurecontrols were lost).
 Fake aws (tests/test_chains.py, tests/test_tasks.py) answers `ls` by prefix like the real one and `s3api head-object` exactly.
 Run: python3 tests/test_s3_exact.py  (or pytest)"""
 import importlib.machinery
@@ -20,7 +20,7 @@ import test_chains as tc                                   # harness only
 import test_tasks as tt
 
 _TMP = tempfile.mkdtemp(prefix="wds3_mod_")
-os.environ["NRP_WATCHDOG_STATE"] = _TMP
+os.environ["NRP_MONITOR_STATE"] = _TMP
 WD = importlib.machinery.SourceFileLoader("wd_s3_under_test", tt.SCRIPT).load_module()
 B = "s3://braingeneersdev/alice/finch/pv3/jobs/pv3-gate-x"
 

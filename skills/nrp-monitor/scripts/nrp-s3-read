@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""nrp-s3-read: read-only S3 access for the watchdog's headless follow-up agent (it cannot be given `aws` itself,
+"""nrp-s3-read: read-only S3 access for the monitor's headless follow-up agent (it cannot be given `aws` itself,
 because `aws s3 cp/rm/sync` write and delete).
 
   nrp-s3-read ls  s3://bucket/prefix/     list (first 200 lines)
   nrp-s3-read cat s3://bucket/key         print an object to stdout (first 256 KB, text only)
 
-Nothing else is accepted. Endpoint: NRP_WATCHDOG_S3_ENDPOINT or https://s3-west.nrp-nautilus.io; credentials and
+Nothing else is accepted. Endpoint: NRP_MONITOR_S3_ENDPOINT or https://s3-west.nrp-nautilus.io; credentials and
 profile come from ~/.aws as for any aws call. When that endpoint is unreachable or answers 5xx (not 403/404), the same read-only
-ls/cat runs in ONE short in-cluster Job (amazon/aws-cli, internal Ceph endpoint) unless NRP_WATCHDOG_S3_INCLUSTER=off.
-Versioned in braindance_proj/tools/nrp-watchdog; install.sh copies it.
+ls/cat runs in ONE short in-cluster Job (amazon/aws-cli, internal Ceph endpoint) unless NRP_MONITOR_S3_INCLUSTER=off.
+Part of the nrp-monitor skill; install.sh copies it.
 """
 import importlib.machinery
 import importlib.util
@@ -17,8 +17,8 @@ import re
 import subprocess
 import sys
 
-for _k in [k for k in os.environ if k.startswith("NRP_MONITOR_")]: os.environ.setdefault("NRP_WATCHDOG_" + _k[12:], os.environ[_k])   # NRP_MONITOR_* aliases the original NRP_WATCHDOG_* names
-EP = os.environ.get("NRP_WATCHDOG_S3_ENDPOINT") or "https://s3-west.nrp-nautilus.io"
+for _k in [k for k in os.environ if k.startswith("NRP_WATCHDOG_")]: os.environ.setdefault("NRP_MONITOR_" + _k[13:], os.environ[_k])   # former variable names, honored silently when the new one is unset
+EP = os.environ.get("NRP_MONITOR_S3_ENDPOINT") or "https://s3-west.nrp-nautilus.io"
 MAX_LINES, MAX_BYTES = 200, 256 * 1024
 UNREACHABLE = re.compile(r"Could not connect|EndpointConnectionError|timed? ?out|\((5\d\d)\)|\b5\d\d\b.*(Service|Gateway|Server)|Service Unavailable|Connection (reset|refused)|Name or service not known", re.I)
 LS_SCRIPT = 'aws s3 ls "$1" | head -n %d' % MAX_LINES
@@ -27,7 +27,7 @@ CAT_SCRIPT = 'aws s3 cp "$1" - | head -c %d' % (MAX_BYTES + 1)
 
 def incluster(verb, uri, why):
     """Read-only fallback: run the same ls/cat in one in-cluster Job via nrp-monitor's helper. Returns the output text or None."""
-    if os.environ.get("NRP_WATCHDOG_S3_INCLUSTER", "auto").strip().lower() in ("off", "0", "no", "false", "never"):
+    if os.environ.get("NRP_MONITOR_S3_INCLUSTER", "auto").strip().lower() in ("off", "0", "no", "false", "never"):
         return None
     for d in (os.path.dirname(os.path.abspath(__file__)), os.path.expanduser("~/.local/bin")):
         src = os.path.join(d, "nrp-monitor")

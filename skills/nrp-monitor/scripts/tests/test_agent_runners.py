@@ -20,19 +20,19 @@ LIMIT_JSON = json.dumps({"type": "result", "is_error": True, "result": "You've h
 
 
 def load_module(state):
-    old = os.environ.get('NRP_WATCHDOG_STATE')
-    os.environ['NRP_WATCHDOG_STATE'] = str(state)       # STATE is read once at import; restore so other test modules are not affected
+    old = os.environ.get('NRP_MONITOR_STATE')
+    os.environ['NRP_MONITOR_STATE'] = str(state)       # STATE is read once at import; restore so other test modules are not affected
     try:
-        loader = importlib.machinery.SourceFileLoader('watchdog_agents_%d' % time.time_ns(), str(SOURCE))
+        loader = importlib.machinery.SourceFileLoader('monitor_agents_%d' % time.time_ns(), str(SOURCE))
         spec = importlib.util.spec_from_loader(loader.name, loader)
         m = importlib.util.module_from_spec(spec)
         loader.exec_module(m)
         return m
     finally:
         if old is None:
-            os.environ.pop('NRP_WATCHDOG_STATE', None)
+            os.environ.pop('NRP_MONITOR_STATE', None)
         else:
-            os.environ['NRP_WATCHDOG_STATE'] = old
+            os.environ['NRP_MONITOR_STATE'] = old
 
 
 class Unit(unittest.TestCase):
@@ -235,7 +235,7 @@ FAKE_CODEX = r'''#!/usr/bin/env python3
 import json, os, subprocess, sys
 d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fake"); prompt = sys.stdin.read()
 args = sys.argv[1:]
-open(d + "/codex_calls.log", "a").write(json.dumps({"args": args, "home_rules": open(os.environ["CODEX_HOME"] + "/rules/watchdog.rules").read()}) + "\n")
+open(d + "/codex_calls.log", "a").write(json.dumps({"args": args, "home_rules": open(os.environ["CODEX_HOME"] + "/rules/monitor.rules").read()}) + "\n")
 plan = json.load(open(d + "/agent_plan.json")) if os.path.exists(d + "/agent_plan.json") else []
 step = plan.pop(0) if plan else {"cmds": [], "result": "STOPPED: no plan"}
 json.dump(plan, open(d + "/agent_plan.json", "w"))
@@ -253,7 +253,7 @@ class EndToEnd(unittest.TestCase):
         h = self.h
         self.addCleanup(h.tearDown)
         (h.tmp / 'codex-auth.json').write_text('{}')
-        h.env['NRP_WATCHDOG_CODEX_AUTH'] = str(h.tmp / 'codex-auth.json')
+        h.env['NRP_MONITOR_CODEX_AUTH'] = str(h.tmp / 'codex-auth.json')
         (h.bin / 'codex').write_text(FAKE_CODEX)
         os.chmod(h.bin / 'codex', 0o755)
         (h.state / 'agents.json').write_text(json.dumps({'runners': ['claude', 'codex'], 'models': {'task': {'codex': 'gpt-6.1-sol'}}}))
@@ -348,7 +348,7 @@ class Owner(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp, True)
         if cfg is not None:
             (tmp / 'config.json').write_text(json.dumps(cfg))
-        saved = {k: os.environ.pop(k, None) for k in ('NRP_WATCHDOG_USER_ANNOTATION', 'NRP_WATCHDOG_SLACK_USER', 'NRP_WATCHDOG_OWNER_LABEL', 'NRP_WATCHDOG_OWNER_NAME')}
+        saved = {k: os.environ.pop(k, None) for k in ('NRP_MONITOR_USER_ANNOTATION', 'NRP_MONITOR_SLACK_USER', 'NRP_MONITOR_OWNER_LABEL', 'NRP_MONITOR_OWNER_NAME')}
         os.environ.update(env)
         try:
             return load_module(tmp)
@@ -365,7 +365,7 @@ class Owner(unittest.TestCase):
     def test_owner_name_defaults_to_the_label_and_can_be_set(self):
         self.assertEqual(self.load({'owner_label': 'jdoe'}).OWNER_NAME, 'jdoe')
         self.assertEqual(self.load({'owner_label': 'jdoe', 'owner_name': 'Jane'}).OWNER_NAME, 'Jane')
-        self.assertEqual(self.load({'owner_name': 'Jane'}, NRP_WATCHDOG_OWNER_NAME='Alex').OWNER_NAME, 'Alex')
+        self.assertEqual(self.load({'owner_name': 'Jane'}, NRP_MONITOR_OWNER_NAME='Alex').OWNER_NAME, 'Alex')
 
     def test_old_status_name_is_read_as_needs_owner(self):
         m = self.load({})
@@ -375,7 +375,7 @@ class Owner(unittest.TestCase):
         self.assertEqual(m.task_load('old')['status'], 'NEEDS_OWNER')
 
     def test_environment_overrides_the_file(self):
-        m = self.load({'nrp_user_annotation': 'a', 'slack_user_id': 'U1'}, NRP_WATCHDOG_USER_ANNOTATION='b', NRP_WATCHDOG_SLACK_USER='U2')
+        m = self.load({'nrp_user_annotation': 'a', 'slack_user_id': 'U1'}, NRP_MONITOR_USER_ANNOTATION='b', NRP_MONITOR_SLACK_USER='U2')
         self.assertEqual((m.USER_ANN, m.SLACK_USER), ('b', 'U2'))
 
     def test_without_config_nothing_is_assumed(self):
@@ -412,7 +412,7 @@ class Continuation(unittest.TestCase):
 
     def test_refused_when_the_lab_requires_a_continuation(self):
         h = self.h
-        h.env['NRP_WATCHDOG_REQUIRE_CONTINUATION'] = '1'
+        h.env['NRP_MONITOR_REQUIRE_CONTINUATION'] = '1'
         rc, _, err = h.add()
         self.assertNotEqual(rc, 0)
         self.assertIn('no continuation', err)

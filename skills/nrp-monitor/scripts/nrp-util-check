@@ -33,14 +33,15 @@ from pathlib import Path
 THANOS = "https://thanos.nrp-nautilus.io/api/v1/query"
 
 
-for _k in [k for k in os.environ if k.startswith("NRP_MONITOR_")]: os.environ.setdefault("NRP_WATCHDOG_" + _k[12:], os.environ[_k])   # NRP_MONITOR_* aliases the original NRP_WATCHDOG_* names
-STATE = Path(os.environ.get("NRP_WATCHDOG_STATE") or Path.home() / ".local/state/nrp-watchdog")
+for _k in [k for k in os.environ if k.startswith("NRP_WATCHDOG_")]: os.environ.setdefault("NRP_MONITOR_" + _k[13:], os.environ[_k])   # former variable names, honored silently when the new one is unset
+_NEW, _OLD = Path.home() / ".local/state/nrp-monitor", Path.home() / ".local/state/nrp-watchdog"
+STATE = Path(os.environ.get("NRP_MONITOR_STATE") or (_OLD if not _NEW.exists() and _OLD.is_dir() and not _OLD.is_symlink() else _NEW))   # old dir only until install.sh migrates it
 
 
 def _user_annotation():
     """The nrp.ai/username annotation value of your pods (every session of one person shares it): NRP_USER_ANNOTATION or
-    NRP_WATCHDOG_USER_ANNOTATION, else nrp_user_annotation in the watchdog's config.json. Empty = the account check is skipped."""
-    v = os.environ.get("NRP_USER_ANNOTATION") or os.environ.get("NRP_WATCHDOG_USER_ANNOTATION")
+    NRP_MONITOR_USER_ANNOTATION, else nrp_user_annotation in the monitor's config.json. Empty = the account check is skipped."""
+    v = os.environ.get("NRP_USER_ANNOTATION") or os.environ.get("NRP_MONITOR_USER_ANNOTATION")
     if v:
         return v
     try:
@@ -58,11 +59,11 @@ USER = _user_annotation()
 # (env NRP_UTIL_POLICY_LOCAL): lab_floor, cpu_band, memory_band, small_pod_exempt, account_block_after_violating_pods, and
 # lower values of the shared numbers. A key that is in neither file means that check is OFF. A local value that would loosen
 # a shared number is ignored with a warning. `nrp-util-check --policy` prints what is in force and where each key came from.
-POLICY_BUILTIN = {"gpu_floor": 0.40, "limit_to_request_tolerance": 0.20, "max_concurrent_jobs": 400}
+POLICY_BUILTIN = {"gpu_floor": 0.40, "limit_to_request_tolerance": 0.20, "max_concurrent_jobs": 400, "smoke_max_jobs": 3}
 POLICY_FILES = [os.environ.get("NRP_UTIL_POLICY")] + [f"~/{d}/skills/nrp-cluster/references/utilization-policy.json"
                                                        for d in (".claude", ".agents", ".codex")]
 POLICY_LOCAL_FILE = os.environ.get("NRP_UTIL_POLICY_LOCAL") or str(STATE / "utilization-policy.local.json")
-SHARED_KEYS = ("gpu_floor", "limit_to_request_tolerance", "max_concurrent_jobs")
+SHARED_KEYS = ("gpu_floor", "limit_to_request_tolerance", "max_concurrent_jobs", "smoke_max_jobs")
 LOCAL_ONLY_KEYS = ("lab_floor", "cpu_band", "memory_band", "small_pod_exempt", "account_block_after_violating_pods")
 META_KEYS = ("version", "description")
 
@@ -87,17 +88,18 @@ def _small(x):
     return isinstance(x, dict) and all(_num(x.get(k)) and x[k] > 0 for k in ("cpu", "memory_bytes"))
 
 
-VALID = {"gpu_floor": _frac, "limit_to_request_tolerance": _frac, "max_concurrent_jobs": _count, "lab_floor": _frac,
+VALID = {"smoke_max_jobs": _count, "gpu_floor": _frac, "limit_to_request_tolerance": _frac, "max_concurrent_jobs": _count, "lab_floor": _frac,
          "cpu_band": _band, "memory_band": _band, "small_pod_exempt": _small, "account_block_after_violating_pods": _count}
 # a local value may only be stricter than the shared one: (key, True) = must be >= shared, (key, False) = must be <= shared
-STRICTER = {"gpu_floor": lambda loc, sh: loc >= sh, "limit_to_request_tolerance": lambda loc, sh: loc <= sh,
+STRICTER = {"smoke_max_jobs": lambda loc, sh: loc <= sh, "gpu_floor": lambda loc, sh: loc >= sh, "limit_to_request_tolerance": lambda loc, sh: loc <= sh,
             "max_concurrent_jobs": lambda loc, sh: loc <= sh}
 
 
 def valid_policy(p):
     """A usable SHARED file: a JSON object whose gpu_floor and max_concurrent_jobs are valid (tolerance too, if present)."""
     return (isinstance(p, dict) and VALID["gpu_floor"](p.get("gpu_floor")) and VALID["max_concurrent_jobs"](p.get("max_concurrent_jobs"))
-            and ("limit_to_request_tolerance" not in p or VALID["limit_to_request_tolerance"](p["limit_to_request_tolerance"])))
+            and ("limit_to_request_tolerance" not in p or VALID["limit_to_request_tolerance"](p["limit_to_request_tolerance"]))
+            and ("smoke_max_jobs" not in p or _count(p["smoke_max_jobs"])))
 
 
 def load_policy():

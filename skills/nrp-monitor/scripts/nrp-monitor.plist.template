@@ -11,12 +11,12 @@
   <key>StartInterval</key><integer>300</integer>
   <key>RunAtLoad</key><false/>
   <key>ProcessType</key><string>Background</string>
-  <key>WorkingDirectory</key><string>@HOME@/.local/state/nrp-watchdog</string>
+  <key>WorkingDirectory</key><string>@HOME@/.local/state/nrp-monitor</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>@HOME@/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
-  <key>StandardOutPath</key><string>@HOME@/.local/state/nrp-watchdog/launchd.out</string>
-  <key>StandardErrorPath</key><string>@HOME@/.local/state/nrp-watchdog/launchd.err</string>
+  <key>StandardOutPath</key><string>@HOME@/.local/state/nrp-monitor/launchd.out</string>
+  <key>StandardErrorPath</key><string>@HOME@/.local/state/nrp-monitor/launchd.err</string>
 </dict>
 </plist>

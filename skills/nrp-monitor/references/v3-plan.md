@@ -1,6 +1,6 @@
 # v3: rename to nrp-monitor, tiered escalation, one coordinator thread  <!-- plan:nrp-monitor-v3 -->
 
-Status: design agreed with Hunter 2026-11-10. Built so far (2026-11-11): the task ladder (Tier 1 Haiku, Tier 2 Sonnet, Tier 3 coordinator chat via `WITH_COORDINATOR`, `task needs-owner`) and the Tier 0 deadline rules; see operations.md. Built 2026-11-11 (step 2 and 5): one coordinator chat woken whatever harness it runs in (T3 webhook, Claude Code session, Codex session), one wake per plan step, per-tier backends chosen by `nrp-monitor setup` (Claude / Codex / Gemini CLI). Built 2026-11-11 (step 1): the rename. The skill is `skills/nrp-monitor/`, the script `scripts/nrp-monitor`; `install.sh` installs `nrp-monitor` plus a copied `nrp-watchdog` wrapper that execs it, `nrp-task` execs `nrp-monitor tool`, and the state dir `~/.local/state/nrp-watchdog`, the launchd label and the `NRP_WATCHDOG_*` variables keep their names (`NRP_MONITOR_*` alias them). Not built: the rest. Source of truth for the monitor is this skill (mission_control skills/nrp-monitor); the copy in braindance_proj/tools/nrp-watchdog is stale. Review answers still open: the fan-out-from-profile question in "Open questions" below, plus the PR #7 questions (repo location, delete-after-two-flags).
+Status: design agreed with Hunter 2026-11-10. Built so far (2026-11-11): the task ladder (Tier 1 Haiku, Tier 2 Sonnet, Tier 3 coordinator chat via `WITH_COORDINATOR`, `task needs-owner`) and the Tier 0 deadline rules; see operations.md. Built 2026-11-11 (step 2 and 5): one coordinator chat woken whatever harness it runs in (T3 webhook, Claude Code session, Codex session), one wake per plan step, per-tier backends chosen by `nrp-monitor setup` (Claude / Codex / Gemini CLI). Built 2026-11-11 (step 1): rename, state/launchd migration, compatibility shim and capped smoke/profile registration. Source of truth for the monitor is this skill (mission_control skills/nrp-monitor); the copy in braindance_proj/tools/nrp-monitor is stale. Review answers still open: the PR #7 questions (repo location, delete-after-two-flags).
 **Central question:** can the script do almost all monitoring, with models woken only for judgement, all in the plan's own thread?
 **What changes with the answer:** models stop polling and doing clerk work (12 manager wakes for one T71 fan-out, 2026-11-10);
 Hunter hears only when he is truly needed.
@@ -11,7 +11,7 @@ approval: none yet (design agreed in chat 2026-11-10, see Hunter's decisions; im
 steps: 1, 2, 3, 4, 5
 approved_through: none
 stop_for_hunter: 1
-may_touch: tools/nrp-watchdog/, docs/agents/
+may_touch: tools/nrp-monitor/, docs/agents/
 ```
 
 **Hunter's decisions** (chat rt-sort-3d_A2, 2026-11-10, verbatim):
@@ -52,7 +52,7 @@ may_touch: tools/nrp-watchdog/, docs/agents/
 **Agreed design:**
 - Tier 0, script (no model): submit, track states, success markers, DCGM/thanos utilization against the nrp-cluster skill and house
   rules; fixed rules applied without a model (OOM -> peak x1.3; known node fault -> exclude node, resubmit; Pending near deadline ->
-  extend; finished Jobs deleted after markers verified; profile inside the plan's sizing rules -> render and submit the fan-out).
+  extend; finished Jobs deleted after markers verified; profile -> model decides full sizing inside approved limits).
   Long Pending reports the scheduler's reason (e.g. our own GPU allow-list).
 - Tier 1, Haiku triage on events Tier 0 cannot classify: small event packet (state, log tail, metrics), answers benign / menu action /
   escalate. (2026-11-10 false STUCK on a pod that had just started should have ended here as benign.)
@@ -65,8 +65,10 @@ may_touch: tools/nrp-watchdog/, docs/agents/
 - Harness-agnostic: agents runnable through Claude Code, Codex or T3 delegation, across several subscriptions (configurable backend per tier).
 - Fix in passing: allow several tasks per plan step; queue time must not eat the run deadline.
 
-**Open questions:** whether the monitor may launch a fan-out on its own when the profile is inside the plan's rules (my recommendation:
-yes, those rules are already approved). ANSWERED 2026-11-11 (above, built): how a non-T3 harness binds to "the coordinator thread" (the
+**Fan-out question answered (Hunter):** "we shouldnt send out a hundred jobs to see what the memory is best but maybe a few? i think we just need to cap the smoke tests"; "the subagent handling this should make the decision, probably sonnet or the coordinator chat".
+Use shared `smoke_max_jobs` (default 3), include the largest/longest item, and leave full sizing to Tier 2 or the coordinator within approved limits. The script never launches the full fan-out on its own.
+
+ANSWERED 2026-11-11 (above, built): how a non-T3 harness binds to "the coordinator thread" (the
 origin records harness + session id; the monitor resumes that session), and one subscription per tier vs failover (each tier has an ordered
 backend list chosen at install time; the next entry only on unavailable/auth/limit errors).
 
@@ -74,13 +76,13 @@ backend list chosen at install time; the next entry only on unavailable/auth/lim
 - Approved by Hunter 2026-11-10: "I think that this all sounds good as a plan!" and push straight to main (no PR needed). Build v3 in
   this repo, `skills/nrp-monitor/` renamed to `skills/nrp-monitor/`, commit and push to main.
 - State: v2 merged to main (60a779b) and installed live on Hunter's laptop (`~/.local/bin/nrp-*`, launchd every 5 min, state in
-  `~/.local/state/nrp-watchdog/`). Live tasks are running on it (t72 validation build, finch, lit-map): keep it working through the
+  `~/.local/state/nrp-monitor/`). Live tasks are running on it (t72 validation build, finch, lit-map): keep it working through the
   rename (compat alias `nrp-monitor` -> `nrp-monitor`, same state dir or a migration) and install only after tests pass.
 - Tests: `cd skills/nrp-monitor/scripts && python -m pytest -q tests` (249 passed, 1 skipped at 1aea3fa, ~3 min).
   Repo tests: `python -m pytest -q tests` (1 pre-existing failure on main, test_skill_authenticate paste test).
 - Suggested order: (1) rename + compat; (2) per-step aggregate wake from the script (monitor sends the T3 webhook, bound to the plan's
   coordinator thread), drop per-Job callback Secrets; (3) Tier-0 rules: auto deadline extension for Pending, node-fault exclusion,
-  OOM resize, cleanup, fan-out from a profile inside the plan's sizing rules; (4) Haiku triage tier with a fixed action menu
+  OOM resize, cleanup, capped profile then model sizing decision; (4) Haiku triage tier with a fixed action menu
   ("no fix needed" closes the event, never NEEDS_OWNER); (5) per-tier backend config (Claude Code / Codex / T3, several subscriptions);
   (6) several tasks per plan step.
 - Open questions for (2) and (5) answered 2026-11-11 (see Hunter's answers); built in the same session.
