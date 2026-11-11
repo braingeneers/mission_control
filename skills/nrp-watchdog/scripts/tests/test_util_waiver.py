@@ -351,7 +351,7 @@ class Refused(Base):
         h.run_pass()
         t = h.task()
         self.assertEqual(t['status'], 'NEEDS_OWNER')
-        self.assertEqual(t['reason'], 'fix agent did not resubmit: util only, job healthy')
+        self.assertTrue(t['reason'].startswith('fix agent did not resubmit: util only, job healthy'), t['reason'])   # then the no-webhook fallback note
         self.assertNotIn('waiver', t['reason'])
         self.assertEqual(self.waivers(), [])
         self.assertEqual(len(h.pushes()), 1)

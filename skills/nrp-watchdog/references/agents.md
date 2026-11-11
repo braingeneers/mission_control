@@ -15,8 +15,9 @@ built-in models and limits. An invalid file is ignored with a digest fault; it n
 - `runners`: in order of preference. When one answers with a usage limit (for example "You've hit your weekly limit,
   resets 2pm"), it is set aside until its reset time and the next one takes over. With no runner left, agent work waits
   and one DM says so.
-- Tiers: `pod` (utilization strike 2), `triage` (read-only), `repair`, `repair_auth` (an authorized resubmit), `task`
-  (fix and continue agents). `models` sets a model per runner; `limits` sets turns and dollars (Claude only) and a time
+- Tiers: `pod` (utilization strike 2), `triage` (read-only: legacy job follow-ups and Tier 1 of the task ladder), `repair`, `repair_auth`
+  (an authorized resubmit), `task` (Tier 2 fix and continue agents). Tier 3 of the task ladder is the task's coordinator chat and has no
+  model entry (operations.md). `models` sets a model per runner; `limits` sets turns and dollars (Claude only) and a time
   limit in seconds.
 - `followup_ladder`: what a finished job's follow-up tries, in order, each `triage` or `repair`, before a person.
 - Commands: `nrp-watchdog agents` (state), `agents test [RUNNER]` (one tiny prompt through each runner),

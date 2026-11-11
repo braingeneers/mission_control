@@ -60,7 +60,8 @@ submitter.
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).
-- Handles a failure at the cheapest level that can fix it, then escalates to one person: see
+- Handles a failure at the cheapest level that can fix it (script rules, Haiku triage, a Sonnet fixer, then the task's own coordinator
+  chat; the person hears only if that chat says so): see
   [operations](references/operations.md). Which agent runs, in what order, and what happens when one is out of usage is
   configured in `agents.json`: see [agents](references/agents.md). A healthy Job that only the lab floor flags can be waived
   (`UTIL_OK`, limited per task, decided by the script): see [utilization](references/utilization.md).

@@ -34,7 +34,9 @@ Per stage: `job` (the Job's DNS name, must equal `metadata.name` in the manifest
 `done_s3` (full `s3://bucket/key` URIs of single objects that exist only when the stage succeeded; checked exactly,
 never as a prefix), and optionally `id`, `after` (stage ids), `after_s3` (URIs that must all exist before submitting, a
 gate on another task's success marker), `state` (`pending`, `running` to adopt a Job already submitted, `done`),
-`gpu_ok_until` (`YYYY-MM-DD`, required when the manifest requests a GPU and no approved plan covers it).
+`gpu_ok_until` (`YYYY-MM-DD`, required when the manifest requests a GPU and no approved plan covers it), and `resumable` (`true` only when
+re-running the stage skips items whose outputs already exist; then a deadline timeout is resubmitted once with 2x the deadline without
+any agent. Never set it for a stage that restarts from scratch).
 
 ## Manifest rules checked at registration
 
@@ -60,7 +62,8 @@ Derive the deadline from measured runtime with margin; the queue counts toward i
 
 ## Commands
 
-`nrp-watchdog task list`, `task show NAME`, `task handoff NAME FILE`, `task watch NAME`, `task resume NAME` (continue after a person decided,
-`--gpu-ok-until DATE` after extending a GPU approval), `task cancel NAME`, `status`, `digest --hours N`,
+`nrp-watchdog task list`, `task show NAME`, `task handoff NAME FILE`, `task watch NAME`, `task resume NAME` (continue after a person or the coordinator chat decided, from
+`NEEDS_OWNER` or `WITH_COORDINATOR`; `--gpu-ok-until DATE` after extending a GPU approval), `task needs-owner NAME --reason TEXT` (run by the
+coordinator chat only when the owner is truly needed: sets `NEEDS_OWNER`, sends the one DM), `task cancel NAME`, `status`, `digest --hours N`,
 `origin task NAME --title .. --link ..` (add or fix attribution later). Agents use `nrp-task`, a wrapper that validates
 every argument; it is their only shell tool for task work.

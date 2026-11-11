@@ -347,7 +347,9 @@ class T(unittest.TestCase):
         rc, out, _ = self.wd("status", "--quiet")
         self.assertIn("1 task(s) need the owner", out)
 
-    def test_slow_deadline_escalates_without_agent(self):
+    def test_slow_deadline_enters_the_ladder_not_the_owner(self):
+        """v3: a timeout is never a direct page. It goes Tier 1 (Haiku) -> Tier 2 (Sonnet); with no coordinator webhook the end of the
+        ladder falls back to NEEDS_OWNER (see test_ladder.py for the coordinator path)."""
         self.add()
         self.run_pass()
         import time
@@ -357,8 +359,9 @@ class T(unittest.TestCase):
         self.run_pass()
         t = self.task()
         self.assertEqual(t["status"], "NEEDS_OWNER")
-        self.assertIn("deadline", t["reason"])
-        self.assertEqual(self.prompts(), [])
+        self.assertIn("no coordinator webhook", t["reason"])
+        self.assertEqual(len(self.prompts()), 2, "a triage prompt, then the fix agent")
+        self.assertIn("class slow", self.prompts()[1].read_text())
         self.assertEqual(len(self.pushes()), 1)
 
     def test_queue_deadline_is_retryable(self):

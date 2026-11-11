@@ -133,6 +133,16 @@ launchd actually runs (`~/.local/bin/nrp-watchdog`) is still the old script unti
 - How much policy is baked into the script beyond the skip limit (now a setting) and the Job cap (now from the policy).
 - Several tasks have no `origin` recorded, so their completions have nowhere to point.
 
+## Built 2026-11-11 (tiered task ladder, Tier 0 deadlines; tested with fakes, not yet seen live)
+- Tasks now run Haiku triage, then the Sonnet fixer, then wake the task's coordinator chat (`WITH_COORDINATOR`), and the owner is told only
+  when the chat runs `task needs-owner`; a timeout never pages the owner directly (operations.md). Fixes the false-STUCK page below.
+- Not verified: a real Haiku answering with a verdict line, and what the relay does with the `summary` field of an `escalation` event.
+  The existing per-failure `failure` wake still fires for tasks with a webhook, so the chat can be woken at the failure and again at
+  the escalation until the aggregate per-step wake replaces it.
+- Deadline progress is judged by the log tail changing between passes. Per-item S3 output counts are not used (a stage's `done_s3` is a
+  single marker). A resume-capable stage must say so (`resumable`); the script never infers it beyond `--skip-existing` / `--resume`.
+- Several coordinator wakes for one task are not merged; one escalation is queued per Tier 3 entry.
+
 ## Seen live 2026-11-10 (T71 step 6 fan-out, braindance_proj)
 - False STUCK: a pod flagged "stuck creating 142 min" at the moment it started; the fix agent correctly left it running, but the
   task then went NEEDS_OWNER (owner had to `task resume --skip`). A "no fix needed" verdict should close the event, not page the owner.
