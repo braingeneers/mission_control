@@ -47,8 +47,9 @@ Wakes block a pass for up to 600 seconds each. Separate task escalations are not
 - Live pv3 import behavior after multi-directory reship remains unverified; packaging layout is tested.
 - `UTIL_OK` is intentionally narrow: lab-floor-only, running non-GPU tasks, bounded count/time;
   ordinary NRP-band/GPU failures cannot be waived.
-- Job-side writers must invalidate stale root DONE markers themselves; monitor success checks use
-  exact head-object keys and require all Indexed Job completions.
+- Never-submitted pending stages reuse existing success markers after their gates pass, without rerunning.
+  Use fresh output keys when a new computation is intended: marker existence does not validate provenance.
+  Running Job success still requires all Indexed Job completions and exact head-object keys.
 
 ### Same-name Jobs on resume or manual submission
 

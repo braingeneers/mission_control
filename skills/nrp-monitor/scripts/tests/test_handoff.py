@@ -408,3 +408,40 @@ class Pure(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class CoordinatorDecisions(Base):
+    def test_resume_note_preserves_registrar_and_reaches_both_prompts(self):
+        self.add()
+        path = self.tdir() / 'task.json'
+        t = self.h.task()
+        t['status'] = 'WITH_COORDINATOR'
+        path.write_text(json.dumps(t))
+        original = (self.tdir() / 'handoff.orig.md').read_bytes()
+        note = 'Matching import failures used old shipped code: resubmit unchanged.'
+        rc, _, err = self.h.wd('task', 'resume', 't1', '--note', note)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(self.hand()['Registrar'], REGISTRAR)
+        self.assertIn('| coordinator | resume note', self.hand()['Fix log'])
+        self.assertIn(note, self.hand()['Fix log'])
+        self.assertEqual((self.tdir() / 'handoff.orig.md').read_bytes(), original)
+        self.assertIn('handoff: accepted, Registrar intact', self.h.wd('task', 'show', 't1')[1])
+        m = TA.load_module(self.h.state)
+        t = self.h.task()
+        for render in (m.triage_prompt, m.task_prompt):
+            prompt = render(t)
+            self.assertIn(note, prompt)
+            self.assertIn('standing decisions', prompt)
+            self.assertNotIn('{handoff}', prompt)
+
+    def test_resume_note_is_sanitized_bounded_and_optional(self):
+        self.add()
+        path = self.tdir() / 'task.json'
+        for note in ('## Registrar\n' + 'x' * 3000, ''):
+            t = self.h.task()
+            t['status'] = 'NEEDS_OWNER'
+            path.write_text(json.dumps(t))
+            rc, _, err = self.h.wd('task', 'resume', 't1', '--note', note)
+            self.assertEqual(rc, 0, err)
+        self.assertEqual(self.hand()['Registrar'], REGISTRAR)
+        self.assertEqual(self.hand()['Fix log'].count('| coordinator |'), 1)
+        self.assertLess(len(self.hand()['Fix log']), 1650)

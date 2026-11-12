@@ -2711,7 +2711,7 @@ def handoff_prompt(t):
         keep.reverse()
         note = "[%d older entr%s omitted; the full file is %s]\n" % (len(ents) - len(keep), "y" if len(ents) - len(keep) == 1 else "ies",
                                                                      d / "handoff.md") if len(ents) > len(keep) else ""
-        out.append("== %s (appended by the monitor from agents' answers) ==\n%s%s" % (head, note, "\n\n".join(keep) or "(no entries yet)"))
+        out.append("== %s (appended by the monitor from agents' answers and coordinator decisions) ==\n%s%s" % (head, note, "\n\n".join(keep) or "(no entries yet)"))
     return "\n\n".join(out)
 
 
@@ -3997,7 +3997,7 @@ def triage_prompt(t):
            "attempts": "\n".join("  - %s [%s] %s -> %s" % (x["job"], x["cls"], x["detail"][:120], x["fix"][:120]) for x in t["attempts"][-5:]) or "  (none)"}
     for k, v in rep.items():
         tpl = tpl.replace("{%s}" % k, v)
-    return tpl
+    return tpl.replace("{handoff}", handoff_prompt(t))
 
 
 def close_failure(n, f, why):
@@ -4680,6 +4680,17 @@ def advance_task(n, jobs, a):
                 note_waiting(n, s["id"], miss)
                 if miss:
                     continue                                              # stays pending; checked again next pass
+            if (not s.get("submitted") and s.get("attempt", 1) == 1
+                    and not any(x.get("stage") == s["id"] for x in t["attempts"])
+                    and s.get("done_s3") and all(s3_exists(u, {}) is True for u in s["done_s3"])):
+                message = "stage %s done: success marker already present before submission (reused, not rerun)" % s["id"]
+                def reuse(cur):
+                    tstage(cur, s["id"]).update(state="done", done_ts=now())
+                    tev(cur, message)
+                task_txn(n, reuse)
+                s.update(state="done")                                # dependents in this pass see completion too
+                digest("done", message, n)
+                continue
             ok, msg = do_submit(n, s["id"], "stage ready", "monitor")
             if not ok and msg.startswith("GPU APPROVAL"):
                 escalate(n, msg.split(". Report STOPPED")[0], a)
@@ -6069,6 +6080,9 @@ def cmd_task_resume(a):
             for s in t["stages"]:
                 if s["state"] != "done" and s.get("manifest") and manifest_gpu(s["manifest"]):
                     s["gpu_ok_until"] = a.gpu_ok_until
+        if a.note and a.note.strip():
+            handoff_append(t, "%s | coordinator | resume note" % iso(now()),
+                           [("Fix log", handoff_clean(a.note, HANDOFF_ENTRY_MAX))])
         tev(t, "resumed by %s%s" % (who[0], ": " + a.note if a.note else ""))
     if not task_txn(a.name, f):
         sys.exit(msgs[0] if msgs else "no task %s" % a.name)

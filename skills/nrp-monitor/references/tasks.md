@@ -142,3 +142,13 @@ no propagation occurs. When a stage succeeds after a Tier 0 or fixer resource re
 memory requests/limits recorded at retry submission raise (never lower) unfinished siblings' manifest values. Every changed
 sibling gets an event. Running Jobs are left alone; the files apply on later submission/retry.
 Resource-class retry budgets are per stage; `max_retries` remains the task-wide cap.
+
+Before the first submission of a pending stage, after its dependency and `after_s3` gates pass, the monitor checks
+all exact `done_s3` objects. If all exist, it marks the stage done, records reuse in the event log and digest,
+and proceeds with dependents and completion actions. Missing or unknown checks submit as usual. Retries keep their
+existing handling. There is no force-rerun field: use fresh output keys for a new computation.
+
+`task resume --note TEXT` also saves a dated coordinator decision in the handoff's Fix log (when attached),
+without changing the Registrar. Entries use the existing 1500-character sanitization/truncation limit; prompts retain
+newest entries and point to the full file for omitted history. Triage and fix agents apply matching standing decisions
+within the task approval. Resume without a note adds no handoff entry.

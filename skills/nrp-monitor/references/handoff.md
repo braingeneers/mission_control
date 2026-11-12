@@ -1,7 +1,7 @@
 # The handoff
 
 A handoff is one markdown file per task. The agent that registers the task writes it, once, after the monitor is
-started and before it returns. Later, when the monitor starts a fix agent or a continue agent, that agent gets the
+started and before it returns. Later, when the monitor starts a triage, fix or continue agent, that agent gets the
 handoff in its prompt, so it knows what the work is for, what was decided and what not to touch, without the original
 chat. Nothing here depends on a particular assistant: any agent that can write a markdown file can register a task.
 
@@ -12,7 +12,7 @@ Start from `scripts/templates/handoff.md` (installed as `~/.local/state/nrp-moni
 | Heading | Written by | Rule |
 | --- | --- | --- |
 | `## Registrar` | the registering agent, once | Read-only for everyone afterwards. |
-| `## Fix log` | the monitor script, from fix agents' answers | Append-only. One entry per attempt. |
+| `## Fix log` | the monitor script, from fix agents' answers and coordinator resume notes | Append-only. Attempts and standing decisions. |
 | `## Continuation` | the monitor script, from continue agents' answers | Append-only. What was checked, which step was registered, open items. |
 | `## For the owner` | the monitor script, from either kind of agent | Append-only. Questions and decisions that need a person. |
 
@@ -112,3 +112,7 @@ Missing binaries, nonzero exits, timeouts and an unavailable server count as una
 Claude and Codex origins still resume their recorded sessions. Plan-step completion keeps one aggregate wake per step.
 
 Record measured stage runtime, per-pod peaks and earlier OOM limits in the handoff. The triage judge only returns CLOSE or ESCALATE; every Job, manifest and resource change belongs to the fixer. A utilization flag alone leaves running work running.
+
+`task resume --note TEXT` appends a dated coordinator decision to the Fix log when a handoff is attached.
+Matching later failures follow that decision within the task approval. Notes use the same sanitization and
+1500-character entry limit as fix entries; omitted prompt history remains in the full handoff file.

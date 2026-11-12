@@ -206,7 +206,7 @@ class Held(Base):
         t['stages'][0].update(state='failed', done_s3=['s3://bucket/done'])
         t['stages'].append({'id': 'b', 'job': 't1-b', 'state': 'pending', 'after': ['a'], 'done_s3': ['s3://bucket/next']})
         self.w.task_write(t)
-        with patch.object(self.w, 'fetch_jobs', return_value={'t1-a': {'state': 'ok'}}), patch.object(self.w, 's3_exists', return_value=True), patch.object(self.w, 'do_submit', return_value=(True, 'submitted')) as submit:
+        with patch.object(self.w, 'fetch_jobs', return_value={'t1-a': {'state': 'ok'}}), patch.object(self.w, 's3_exists', side_effect=lambda uri, c: uri == 's3://bucket/done'), patch.object(self.w, 'do_submit', return_value=(True, 'submitted')) as submit:
             self.w.process_tasks(SimpleNamespace(dry_run=False), {})
         submit.assert_called_once_with('t1', 'b', 'stage ready', 'monitor')
 

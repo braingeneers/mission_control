@@ -121,3 +121,10 @@ file: the monitor appends your block to its Fix log (the file is read-only for y
 HANDOFF_ENTRY:
 <plain text, at most about 1500 characters: what you tried, the result, what the next agent should know or do>
 A line starting `FOR_OWNER:` inside the block is copied to the owner's section; use it for a question or decision only a person can make.
+
+Read the task handoff below. Coordinator entries in its Fix log are standing decisions: apply them to matching later
+failures within this task's approval instead of escalating the same decision again. If older entries are omitted, read the
+full handoff file before deciding whether a matching decision exists.
+Routine environment repairs that leave the computation unchanged (a compatible dependency pin for an import failure,
+or a package mirror retry) are allowed; record what changed. Keep the image digest, core library/model versions, data,
+thresholds and checks unchanged. Escalate changes beyond those limits.

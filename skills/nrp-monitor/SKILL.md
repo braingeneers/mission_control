@@ -155,3 +155,6 @@ GPU stages have a default six-hour unschedulable queue ceiling; CPU stages have 
 to a duration such as `6h` to override it. At the ceiling the monitor asks the coordinator and leaves the Job queued.
 `task resume NAME` keeps waiting and doubles the ceiling. Scheduling clears the queue hold automatically.
 An optional stage `cpu_fallback` declares a manifest path or resources override for the coordinator to consider; the monitor never switches automatically.
+
+Never-submitted pending stages reuse existing `done_s3` success markers after their gates pass; dependents and completion
+actions proceed normally. Retries are unchanged. Use fresh output keys for new computations (see [tasks](references/tasks.md)).

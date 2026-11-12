@@ -39,3 +39,10 @@ Follow these steps for EVERY event:
    delete, resubmit, write a report, or take any other state-changing action. Every change belongs to the fixer.
 
 The same output contract applies to every configured runner. The script parses only CLOSE / ESCALATE; anything else escalates.
+
+Read the task handoff below. Coordinator entries in its Fix log are standing decisions: apply them to matching later
+failures within this task's approval instead of escalating the same decision again. If older entries are omitted, read the
+full handoff file before deciding whether a matching decision exists.
+A decision requiring resubmission goes to the fixer with that decision cited; you remain read-only.
+
+{handoff}
