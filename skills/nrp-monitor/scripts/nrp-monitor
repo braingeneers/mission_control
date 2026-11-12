@@ -2421,6 +2421,7 @@ def jwt_days_left():
 TASKS = STATE / "tasks"
 TASK_CACHE = Path(os.environ.get("NRP_TASK_CACHE") or Path.home() / ".cache/nrp-tasks")
 TASK_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+PER_STAGE_CLASSES = ("resources", "infra", "queue")
 CLASS_BUDGET = {"resources": 3, "util": 3, "code": 3, "queue": 2, "infra": 2, "outputs": 1, "unknown": 1}
 TASK_LIVE = ("running", "retrying", "blocked")
 TASK_HELD = ("NEEDS_OWNER", "WITH_COORDINATOR")      # completion is still observed while waiting for a decision
@@ -3892,10 +3893,11 @@ def resource_template(doc):
 
 
 def class_retries(t, f):
-    """Resource budgets belong to each stage; max_retries still caps the task."""
+    """Resource, infra and queue budgets belong to each stage (a lost pod on one shard
+    says nothing about the others); max_retries still caps the task."""
     return sum(1 for x in t.get("attempts", [])[t.get("budget_from", 0):]
                if x.get("cls") == f.get("cls") and
-               (f.get("cls") != "resources" or x.get("stage") == f.get("stage")))
+               (f.get("cls") not in PER_STAGE_CLASSES or x.get("stage") == f.get("stage")))
 
 
 def true_memory_peak(text, container=None):
@@ -5713,6 +5715,9 @@ def step_mates(t):
 def terminal_wake(t):
     """Under state_lock: check every terminal transition, including internal cancellations."""
     if not t.get("on_done"):
+        if t["status"] == "done" and t.get("digest_only"):
+            digest("done", "%s finished; digest only, no coordinator wake (%s)" % (t["name"], t["digest_only"]), task=t["name"])
+            return
         if t["status"] == "done":
             event = queue_task_webhook(t, "done")
             if event:

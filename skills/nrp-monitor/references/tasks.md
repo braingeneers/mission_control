@@ -141,7 +141,7 @@ container names and images; it does not guess equivalence from command text. Wit
 no propagation occurs. When a stage succeeds after a Tier 0 or fixer resource retry, the CPU and
 memory requests/limits recorded at retry submission raise (never lower) unfinished siblings' manifest values. Every changed
 sibling gets an event. Running Jobs are left alone; the files apply on later submission/retry.
-Resource-class retry budgets are per stage; `max_retries` remains the task-wide cap.
+Resource, infra and queue retry budgets are per stage (a lost pod or a stuck queue on one shard says nothing about the others); code, util, outputs and unknown budgets are task-wide; `max_retries` remains the task-wide cap.
 
 Before the first submission of a pending stage, after its dependency and `after_s3` gates pass, the monitor checks
 all exact `done_s3` objects. If all exist, it marks the stage done, records reuse in the event log and digest,

@@ -455,3 +455,18 @@ class WakeTextJudgment(Base):
             self.assertNotIn("normal turn", txt)
             self.assertNotIn("one short line saying what you will do", txt)
             self.assertLessEqual(len(txt), 3000)
+
+
+class DigestOnlyDone(Base):
+    """A finished digest_only task records a digest line and queues no coordinator wake."""
+    def test_digest_only_success_does_not_wake(self):
+        calls = []
+        with patch.object(self.w, "queue_task_webhook", lambda *a, **k: calls.append(a) or "ev"):
+            t = {"name": "tk", "status": "done", "digest_only": "small job; registrant continues itself"}
+            self.w.terminal_wake(t)
+            self.assertEqual(calls, [])
+            self.assertNotIn("done_event_id", t)
+            t2 = {"name": "tk2", "status": "done"}
+            self.w.terminal_wake(t2)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(t2["done_event_id"], "ev")

@@ -22,11 +22,15 @@ def manifest(path, memory='1Gi', cpu='500m', image='worker:v1'):
     return str(path)
 
 
-def test_resource_budget_is_per_stage_and_other_classes_unchanged(monitor):
-    t = {'attempts': [{'cls': 'resources', 'stage': 'a'}] * 3 + [{'cls': 'infra', 'stage': 'a'}], 'max_retries': 4}
+def test_resource_infra_queue_budgets_are_per_stage_others_task_wide(monitor):
+    t = {'attempts': [{'cls': 'resources', 'stage': 'a'}] * 3 + [{'cls': 'infra', 'stage': 'a'},
+         {'cls': 'queue', 'stage': 'a'}, {'cls': 'code', 'stage': 'a'}], 'max_retries': 4}
     assert monitor.class_retries(t, {'cls': 'resources', 'stage': 'b'}) == 0
     assert monitor.class_retries(t, {'cls': 'resources', 'stage': 'a'}) == 3
-    assert monitor.class_retries(t, {'cls': 'infra', 'stage': 'b'}) == 1
+    assert monitor.class_retries(t, {'cls': 'infra', 'stage': 'b'}) == 0
+    assert monitor.class_retries(t, {'cls': 'infra', 'stage': 'a'}) == 1
+    assert monitor.class_retries(t, {'cls': 'queue', 'stage': 'b'}) == 0
+    assert monitor.class_retries(t, {'cls': 'code', 'stage': 'b'}) == 1
     t['budget_from'] = 3
     assert monitor.class_retries(t, {'cls': 'resources', 'stage': 'a'}) == 0
 
