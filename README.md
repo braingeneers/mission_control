@@ -258,11 +258,25 @@ chooses data key `dandi-sandbox-api-key` or `dandi-api-key` together with fixed
 origins and manifest namespace. Secret creation and changes
 remain operator-owned.
 
-Worker 0.6.7 / catalog 0.7.7 updates Data Explorer's exact guarded-worker
-environment pin while retaining its UI image. Activate and verify the matching
-catalog first, then recreate only `data-explorer` to apply the environment.
-No migration or Uploader update is required. See the
-[worker qualification and activation procedure](https://github.com/braingeneers/workflows/blob/main/workflow-sources/dandi-publication/docs/legacy-reference-alias-qualification.md).
+Worker 0.6.8 / catalog 0.7.8 uses the qualified bulk S3 watchdog while preserving
+the scientific materializer. Keep its immutable worker digest synchronized with
+`DATA_EXPLORER_DANDI_GUARDED_WORKER_IMAGE`; changing an app default alone does not
+replace this environment override. The paired Workflows images retain launcher
+evidence and advertise `dandi_failure_evidence: 1`. Data Explorer adds forward-only
+migration `0010_dandi_infra_recovery` and an optional, default-off researcher
+consent for bounded recovery of proven infrastructure interruptions. Existing
+approvals do not inherit it; unknown, resource and scientific failures still need
+review.
+
+For this coordinated cutover, first have the researcher pause future campaign
+batches while allowing an admitted batch to finish. Then activate and verify the
+matching Workflows catalog/backend capability before recreating Data Explorer.
+The normal entrypoint applies its migration; preserve schema and approval history
+rather than downgrading. No Uploader, proxy, notification-service or Secret update
+is required. Complete representative Sandbox acceptance and obtain fresh exact
+remaining-work consent before resuming with the new option. See the
+[worker qualification](https://github.com/braingeneers/workflows/blob/main/workflow-sources/dandi-publication/docs/worker-0.6.8-release.md)
+and [owning campaign procedure](https://github.com/braingeneers/data-explorer/blob/main/docs/dandi-campaign-rollout.md).
 
 Uploader metadata is frozen through a revision-scoped exact NWB projection
 index. The workflow uploads a source NWB directly when it already matches that

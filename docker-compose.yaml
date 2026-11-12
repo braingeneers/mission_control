@@ -904,7 +904,7 @@ services:
 
   # Data Explorer dataset browser
   data-explorer:
-    image: braingeneers/data-explorer:20261106-d0ea27e4f905
+    image: braingeneers/data-explorer:20261111-a0c36de2b479
     container_name: data-explorer
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -937,7 +937,7 @@ services:
       DATA_EXPLORER_WORKFLOWS_API_URL: "http://workflows-backend:8000"
       DATA_EXPLORER_WORKFLOWS_QUIESCENCE_TIMEOUT_SECONDS: "30"
       DATA_EXPLORER_DANDI_BATCH_SAFETY_ENABLED: "true"
-      DATA_EXPLORER_DANDI_GUARDED_WORKER_IMAGE: "braingeneers/dandi-publication:0.6.7@sha256:19bc048b3fb4aa2c3942828c4947bb5f1cdb65c0765ee13b54a36cc3a3c0ba72"
+      DATA_EXPLORER_DANDI_GUARDED_WORKER_IMAGE: "braingeneers/dandi-publication:0.6.8@sha256:8083b15798b4ac1267ddfa177203460fcf7f04ceb0f01e46eb8c9297b3796fda"
       DATA_EXPLORER_MQTT_BROKER_HOST: "mqtt"
       DATA_EXPLORER_MQTT_BROKER_PORT: "1883"
       DATA_EXPLORER_MQTT_TOPIC: "workflows/launch"
@@ -1042,7 +1042,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20261110-3d0ae47c1aa8
+    image: braingeneers/workflows-backend:20261111-a7cca23af0a6
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1090,7 +1090,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20261110-3d0ae47c1aa8
+    image: braingeneers/workflows-frontend:20261111-a7cca23af0a6
     container_name: workflows
     restart: unless-stopped
     expose:
