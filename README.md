@@ -268,9 +268,11 @@ consent for bounded recovery of proven infrastructure interruptions. Existing
 approvals do not inherit it; unknown, resource and scientific failures still need
 review.
 
-For this coordinated cutover, first have the researcher pause future campaign
-batches while allowing an admitted batch to finish. Then activate and verify the
-matching Workflows catalog/backend capability before recreating Data Explorer.
+For this coordinated cutover, verify that future campaign dispatch is paused.
+If it is still active, have the researcher pause future batches while allowing an
+admitted batch to finish; do not repeat that action for an already-paused failure.
+Then activate and verify the matching Workflows catalog/backend capability before
+recreating Data Explorer.
 The normal entrypoint applies its migration; preserve schema and approval history
 rather than downgrading. No Uploader, proxy, notification-service or Secret update
 is required. Complete representative Sandbox acceptance and obtain fresh exact
