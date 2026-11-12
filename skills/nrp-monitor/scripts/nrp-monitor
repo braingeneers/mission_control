@@ -2826,8 +2826,11 @@ def wake_text(t, event):
     else:
         body = "NRP task %s: %s event. Look: `nrp-monitor task show %s`." % (n, kind, n)
     return ("[NRP monitor wake: an automated message from the monitor script, not from the owner. The monitor's own subagents already handled "
-            "what they could; you are woken as a last resort, and the owner only after you.]\n%s\nReply with one short line saying what you "
-            "will do. Run only the commands named here now; anything longer belongs in your normal turn." % body)[:3000]
+            "what they could; you are woken as a last resort, and the owner only after you.]\n%s\nUse your judgment on what to do next. "
+            "Usually you can and should keep going now, in this turn: no later turn follows this message, so work you defer will not happen "
+            "until someone asks. Continue the plan's next steps inside its approved range and the task's approval (review outputs, fix, "
+            "resume, register the next step). Stop only at a stop_for_hunter step, a decision that is Hunter's, or a fix that needs "
+            "tools you do not have here; then say in one line what is needed, and use `nrp-monitor task needs-owner` only if he must act." % body)[:3000]
 
 
 def wake_argv(target):

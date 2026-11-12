@@ -441,3 +441,17 @@ class AddFlags(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WakeTextJudgment(Base):
+    """Hunter 2026-11-11: the woken chat judges, and by default keeps going in the same turn (no later turn follows)."""
+    def test_done_wake_invites_continuing(self):
+        t = {"name": "tk", "stages": [{}, {}]}
+        for ev in ({"event_type": "done"}, {"event_type": "failure"}, {"event_type": "x", "summary": "s"}):
+            txt = self.w.wake_text(t, ev)
+            self.assertIn("Use your judgment", txt)
+            self.assertIn("keep going now", txt)
+            self.assertIn("no later turn follows", txt)
+            self.assertNotIn("normal turn", txt)
+            self.assertNotIn("one short line saying what you will do", txt)
+            self.assertLessEqual(len(txt), 3000)
