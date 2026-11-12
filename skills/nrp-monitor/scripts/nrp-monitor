@@ -540,7 +540,7 @@ AGENTS_CFG, RUNNER_STATE = STATE / "agents.json", STATE / "runners.json"
 KNOWN_RUNNERS = ("claude", "codex", "gemini", "agy")
 GEMINI_TIERS = ("triage",)             # the gemini runner only runs the read-only verdict tier (see exec_gemini); config naming it elsewhere is refused
 THINKING_LEVELS = ("lowest", "low", "medium", "high")
-TIERS = ("pod", "triage", "repair", "repair_auth", "task")
+TIERS = ("pod", "triage", "repair", "repair_auth", "task", "deputy")
 LADDER_STEPS = ("triage", "repair")
 UNAVAILABLE = "AGENT UNAVAILABLE"
 LIMIT_ANY = re.compile(r"(hit your (?:weekly |usage |\w+ )?limit|usage limit|weekly limit|rate.?limit|quota (?:exceeded|exhausted)|out of (?:credits|usage)|"
@@ -555,12 +555,13 @@ LIMIT_START = re.compile(r"^(you['’]ve hit your|you have hit your|claude (?:ai
 def default_agent_cfg():
     return {"runners": ["claude"],
             "models": {"pod": {"claude": POD_MODEL}, "triage": {"claude": TRIAGE_MODEL}, "repair": {"claude": JOB_MODEL},
-                       "repair_auth": {"claude": JOB_MODEL}, "task": {"claude": TASK_MODEL}},
+                       "repair_auth": {"claude": JOB_MODEL}, "task": {"claude": TASK_MODEL}, "deputy": {"claude": "sonnet", "codex": "gpt-6.1-sol"}},
             "limits": {"pod": {"turns": POD_TURNS, "budget": POD_BUDGET, "timeout": 900},
                        "triage": {"turns": TRIAGE_TURNS, "budget": TRIAGE_BUDGET, "timeout": TRIAGE_TIMEOUT},
                        "repair": {"turns": JOB_TURNS, "budget": JOB_BUDGET, "timeout": 1500},
                        "repair_auth": {"turns": AUTH_TURNS, "budget": AUTH_BUDGET, "timeout": AUTH_TIMEOUT},
-                       "task": {"turns": TASK_TURNS, "budget": TASK_BUDGET, "timeout": TASK_TIMEOUT}},
+                       "task": {"turns": TASK_TURNS, "budget": TASK_BUDGET, "timeout": TASK_TIMEOUT},
+                       "deputy": {"turns": TASK_TURNS, "budget": TASK_BUDGET, "timeout": TASK_TIMEOUT}},
             "followup_ladder": ["triage"] + ["repair"] * FOLLOWUP_REPAIR_ATTEMPTS,
             "tiers": {}}
 
@@ -668,6 +669,8 @@ def tier_backends(tier):
     """The ordered backends a tier may use: `tiers.<tier>` when configured, else the old `runners` x `models` form (the gemini runner only for
     the tiers it is limited to)."""
     cfg = agent_cfg()
+    if tier == "deputy" and not cfg["tiers"].get(tier):
+        return [{"runner": "claude", "model": cfg["models"]["deputy"]["claude"]}]
     if cfg["tiers"].get(tier):
         return [dict(b) for b in cfg["tiers"][tier]]
     return [dict({"runner": r}, **({"model": cfg["models"][tier][r]} if cfg["models"].get(tier, {}).get(r) else {}))
@@ -884,7 +887,8 @@ def exec_codex(spec, prompt, cwd, timeout, env):
             return "auth", text or r.stdout, r.stderr, r.returncode
         if spec["json"]:
             text = json.dumps({"result": text or (r.stderr.strip() or r.stdout.strip())[-300:], "is_error": bool(r.returncode),
-                               "total_cost_usd": None, "num_turns": None, "permission_denials": [], "runner": "codex"})
+                               "total_cost_usd": None, "num_turns": None, "permission_denials": [], "runner": "codex",
+                               "usage": {"total_tokens": int(re.search(r"tokens used\s+([\d,]+)", r.stderr).group(1).replace(",", ""))} if re.search(r"tokens used\s+([\d,]+)", r.stderr) else None})
         return "ok", text or (r.stdout if r.returncode else ""), r.stderr, r.returncode
     finally:
         shutil.rmtree(str(home), ignore_errors=True)
@@ -966,6 +970,7 @@ def exec_gemini(spec, prompt, cwd, timeout, env):
         if auth_hit(r.returncode, r.stdout, r.stderr):
             return "auth", r.stdout, r.stderr, r.returncode
         text, err = (r.stdout or "").strip(), False
+        j = {}
         try:
             j = json.loads(text)
             text, err = str(j.get("response") or "").strip(), bool(j.get("error"))
@@ -973,7 +978,7 @@ def exec_gemini(spec, prompt, cwd, timeout, env):
             pass
         if spec["json"]:
             text = json.dumps({"result": text or (r.stderr.strip() or r.stdout.strip())[-300:], "is_error": bool(r.returncode or err),
-                               "total_cost_usd": None, "num_turns": None, "permission_denials": [], "runner": "gemini"})
+                               "total_cost_usd": None, "num_turns": None, "permission_denials": [], "runner": "gemini", "usage": j.get("usage") or j.get("stats")})
         return "ok", text, r.stderr, r.returncode
     finally:
         shutil.rmtree(str(home), ignore_errors=True)
@@ -1088,6 +1093,13 @@ def dispatch_agent(spec, prompt, cwd, timeout=None, env=None, on_failover=None):
             block_runner(runner, out, err, status)
             note_failover(spec, backends, i, "usage limit" if status == "limit" else "not signed in", on_failover)
             continue
+        if spec.get("json"):
+            try:
+                payload = json.loads(out)
+                payload.setdefault("model", b.get("model") or tier_settings(spec["tier"], runner)["model"])
+                out = json.dumps(payload)
+            except (ValueError, AttributeError):
+                pass
         if status == "ok":
             push_clear("agents:unavailable")
         return runner, status, out, err, rc
@@ -1095,7 +1107,19 @@ def dispatch_agent(spec, prompt, cwd, timeout=None, env=None, on_failover=None):
 
 
 def run_agent(cmd, prompt, cwd, timeout=None):
-    runner, status, stdout, stderr, rc = dispatch_agent(cmd.spec, prompt, cwd, timeout)
+    spec = dict(cmd.spec, json=True)
+    runner, status, stdout, stderr, rc = dispatch_agent(spec, prompt, cwd, timeout)
+    try:
+        result = json.loads(stdout)
+        text = str(result.get("result") or "")
+    except (ValueError, AttributeError):
+        result, text = {}, stdout
+    tier = spec["tier"]
+    kind = "pod_agent" if tier == "pod" else "followup"
+    cost_event(spec.get("ledger_task", cwd.name), kind, "1" if tier == "triage" else "2",
+               "resolved" if followup_solved(text) or (tier == "pod" and re.match(r"^(DELETED|OVERSIZED|KEPT|NOTFOUND)\b", text)) else "stopped" if status != "ok" else "escalated",
+               runner=runner, model=result.get("model"), result=result)
+    stdout = text
     if status == "unavailable":
         return stdout
     if status == "timeout":
@@ -1297,6 +1321,7 @@ def check_pods(a, st):
         st["pods"][pod] = now()
         save(st)
         log("pod-check start %s (strike %d): %s" % (pod, strike, line[:160]))
+        cmd.spec["ledger_task"] = "pod:" + pod
         res = run_agent(cmd, pod_prompt(pod, line, owner, strike), WORK / "pod_check")
         log("pod-check %s: %s" % (pod, res[:300]))
         verdict = res.split(":")[0].split()[0] if res.strip() else ""
@@ -1422,8 +1447,9 @@ def tiered_job_followup(job, rec, prompt, allowed, triage_allowed=None):
     for step in ladder:
         if step == "triage":
             log("followup start %s: triage" % job)
-            res = run_agent(agent_cmd("triage", triage_allowed if triage_allowed is not None else []),
-                            prompt + policy + triage, WORK / "followup")
+            cmd = agent_cmd("triage", triage_allowed if triage_allowed is not None else [])
+            cmd.spec["ledger_task"] = job
+            res = run_agent(cmd, prompt + policy + triage, WORK / "followup")
             digest("followup-triage", res, job)
             history.append("Triage: " + res)
         else:
@@ -1435,6 +1461,7 @@ def tiered_job_followup(job, rec, prompt, allowed, triage_allowed=None):
                       "Previous attempts (including partial actions):\n%s\n" %
                       (repair_no, n_repairs, "\n".join(history)))
             log("followup repair %s: %d/%d" % (job, repair_no, n_repairs))
+            cmd.spec["ledger_task"] = job
             res = run_agent(cmd, prompt + policy + repair, WORK / "followup")
             digest("followup-repair", "attempt %d: %s" % (repair_no, res), job)
             history.append("Repair %d: %s" % (repair_no, res))
@@ -2255,6 +2282,7 @@ def run_chain_followups(a, st):
         cmd = agent_cmd("repair", allowed)
         log("chain %s followup start" % n)
         rec = {"ns": c["namespace"], "label": c["owner"] or n, "origin": c.get("origin")}
+        cmd.spec["ledger_task"] = "chain:" + n
         res = run_agent(cmd, job_prompt("chain " + n, rec, "chain finished", text), WORK / "followup")
         log("chain %s followup: %s" % (n, res[:300]))
         if is_unavailable(res):                                           # ran out of usage mid-call: run it again next pass
@@ -2351,6 +2379,10 @@ def push(msg, key, dry=False, refs=None):
             return False
         sent[key] = {"t": iso(), "msg": tag + msg, "origin": [origin_plain(*lookup_origin(r)) for r in refs] or ["shared"]}
         write_json(PUSHED, sent)
+    ledger_task = refs[0].split(":", 1)[-1] if len(refs) == 1 else "shared"
+    task_failure = ((task_load(ledger_task) or {}).get("failure") or {}) if len(refs) == 1 and refs[0].startswith("task:") else {}
+    cost_event(ledger_task, "owner_dm", "owner", "escalated", notification_key=key,
+               stage=task_failure.get("stage"), fingerprint=task_failure.get("fingerprint"))
     log("PUSH [%s] %s%s" % (key, tag, msg))
     digest("push", tag + msg, refs[0] if len(refs) == 1 else "-")
     if os.environ.get("NRP_MONITOR_NO_PUSH"):                 # tests: no Slack, no Claude; the (fake) banner records it
@@ -2454,7 +2486,7 @@ def task_names():
 # the append sections (`## Fix log`, `## Continuation`, `## For the owner`), from the HANDOFF_ENTRY block of an agent's final answer.
 # Agents never edit the file: the copy in the task dir (handoff.md) is the source of truth, handoff.orig.md the unmodified original.
 HANDOFF_HEADS = ("Registrar", "Fix log", "Continuation", "For the owner")
-HANDOFF_APPEND = {"fix": "Fix log", "continue": "Continuation"}          # agent kind -> the section it may add to
+HANDOFF_APPEND = {"deputy": "Fix log", "fix": "Fix log", "continue": "Continuation"}          # agent kind -> the section it may add to
 HANDOFF_MIN_REG = 200                  # characters of text (comments and white space excluded) a Registrar section needs
 HANDOFF_MAX_FILE, HANDOFF_MAX_REG = 100 * 1024, 16000
 HANDOFF_ENTRY_MAX, HANDOFF_OWNER_MAX = 1500, 500
@@ -2736,6 +2768,9 @@ def queue_task_webhook(t, kind, **extra):
         generation = uuid.uuid4().hex
         event = dict({"task": t["name"], "event_type": kind, "event_id": generation, "generation": generation}, **extra)
         t.setdefault("webhook_outbox", []).append(event)
+        f = t.get("failure") or {}
+        cost_event(t["name"], "coordinator_wake", "coordinator", "escalated" if kind != "done" else "done",
+                   stage=f.get("stage"), event_id=generation, wake_kind=kind, fingerprint=f.get("fingerprint"))
         return event["event_id"]
 
 
@@ -2809,6 +2844,7 @@ WAKE_TIMEOUT_S = 600
 WAKE_TOOLS = ["Bash(nrp-monitor task show:*)", "Bash(nrp-monitor task resume:*)", "Bash(nrp-monitor task cancel:*)",
               "Bash(nrp-monitor task needs-owner:*)", "Bash(nrp-monitor digest:*)", "Bash(nrp-monitor status:*)"]
 # a resumed chat may still run the old command name from its handoff; `nrp-watchdog` is an installed shim of nrp-monitor
+WAKE_TOOLS += ["Bash(nrp-monitor decide:*)", "Bash(nrp-monitor wake-review:*)"]
 WAKE_TOOLS += [t.replace("nrp-monitor", "nrp-watchdog") for t in WAKE_TOOLS]
 
 
@@ -2828,9 +2864,9 @@ def wake_text(t, event):
     return ("[NRP monitor wake: an automated message from the monitor script, not from the owner. The monitor's own subagents already handled "
             "what they could; you are woken as a last resort, and the owner only after you.]\n%s\nUse your judgment on what to do next. "
             "Usually you can and should keep going now, in this turn: no later turn follows this message, so work you defer will not happen "
-            "until someone asks. Continue the plan's next steps inside its approved range and the task's approval (review outputs, fix, "
+            "until someone asks. After handling this wake, record `nrp-monitor wake-review %s --by rule|agent|coordinator --why TEXT`. Continue the plan's next steps inside its approved range and the task's approval (review outputs, fix, "
             "resume, register the next step). Stop only at a stop_for_hunter step, a decision that is Hunter's, or a fix that needs "
-            "tools you do not have here; then say in one line what is needed, and use `nrp-monitor task needs-owner` only if he must act." % body)[:3000]
+            "tools you do not have here; then say in one line what is needed, and use `nrp-monitor task needs-owner` only if he must act." % (body, n))[:3000]
 
 
 def wake_argv(target):
@@ -2882,6 +2918,7 @@ def wake_session(target, text, timeout=None):
             return
         if res.get("is_error"):
             raise WakeError("claude resume reported an error: %s" % " ".join(str(res.get("result") or "").split())[:160])
+        return res
 
 
 def wake_test_mode():
@@ -2931,8 +2968,9 @@ def process_task_webhooks(a, st):
         target = wake_target(t) or {"harness": "t3"}                   # no target: the webhook path fails and is counted like any failed wake
         for event in (t.get("webhook_outbox") or [])[:10]:
             try:
+                usage = None
                 if target["harness"] in WAKE_EXEC:                       # claude / codex: resume that session with the wake text
-                    WAKE_EXEC[target["harness"]](target, wake_text(t, event))
+                    usage = WAKE_EXEC[target["harness"]](target, wake_text(t, event))
                 else:
                     url, workstream = webhook_config(n)
                     payload = dict(event, workstream=workstream)
@@ -2951,6 +2989,9 @@ def process_task_webhooks(a, st):
                 log("task %s %s wake delivery failed: %s; will retry" % (n, target["harness"], why))
                 wake_failed(n, event, why)
                 break
+            usage = usage if isinstance(usage, dict) else {}
+            cost_event(n, "coordinator_result", "coordinator", "done", runner=target["harness"],
+                       model=usage.get("model"), result=usage, event_id=event["event_id"], wake_kind=event.get("event_type"))
             def ack(t):
                 t["webhook_outbox"] = [e for e in t.get("webhook_outbox", []) if e.get("event_id") != event["event_id"]]
                 (t.get("wake_tries") or {}).pop(event["event_id"], None)
@@ -3254,9 +3295,9 @@ def validate_task(raw, warn, plan_gpu=None):
     if not isinstance(notes, str) or len(notes.encode()) > 4096:
         bad.append("notes: text, at most 4 KB (what a fresh agent needs: how the job works, what a good result looks like)")
     ns = raw.get("namespace", NS)
-    mr = raw.get("max_retries", 4)
-    if not isinstance(mr, int) or isinstance(mr, bool) or not 0 <= mr <= 10:
-        bad.append("max_retries: 0-10")
+    mr = raw.get("max_retries", scaled_retry_cap(raw.get("stages") or []))
+    if not isinstance(mr, int) or isinstance(mr, bool) or mr < 0:
+        bad.append("max_retries: nonnegative integer")
     code = raw.get("code")
     if code is not None and (not isinstance(code, dict) or not isinstance(code.get("repo"), str)):
         bad.append("code: {repo: path, commit?: sha, subdir?: path, pkg_dir?: path, extra_pkg_dirs?: [path]}")
@@ -3588,6 +3629,218 @@ def classify(t, s, logtxt):
         code, last[:200], "; Job condition %s" % freason if freason else "")
 
 
+# ---- failure decisions and cost evidence ---------------------------------------------------------------
+def scaled_retry_cap(stages):
+    return max(4, (len(stages) + 3) // 4)
+
+
+def fingerprint(t, failure):
+    stage = tstage(t, failure["stage"])
+    def normalize(value):
+        value = str(value).lower().replace(stage["job"].lower(), "STAGE")
+        value = re.sub(r"[0-9a-f]{8,}", "H", value)
+        value = re.sub(r"\d+", "N", value)
+        return " ".join(value.split())
+    group = stage.get("resource_group")
+    if not group:
+        def command(tokens):
+            if not isinstance(tokens, list):
+                return tokens
+            result, selector = [], False
+            flag = r"(?i)(?:--)?(?:(?:shard|partition|array|worker)[-_]?(?:index|id)|index|rank)"
+            for token in tokens:
+                value = str(token)
+                if selector and re.fullmatch(r"[0-9]+", value):
+                    value = "N"
+                value = re.sub(r"^(" + flag.replace("(?i)", "") + r")=([0-9]+)$", r"\1=N", value, flags=re.I)
+                selector = bool(re.fullmatch(flag, value))
+                result.append(value.replace(stage["job"], "STAGE"))
+            return result
+        try:
+            containers = manifest_doc(stage["manifest"])["spec"]["template"]["spec"]["containers"]
+            group = [(c.get("image"), command(c.get("command")), command(c.get("args"))) for c in containers]
+        except (OSError, ValueError, KeyError, TypeError):
+            # Missing identity must not allow a decision to cross unknown stages.
+            group = ["unknown manifest", stage["id"]]
+    return hashlib.sha256(json.dumps([normalize(failure.get("detail", "")), failure["cls"], group],
+                                     sort_keys=True).encode()).hexdigest()[:16]
+
+
+def failure_context(t):
+    f = t.get("failure") or {}
+    fp = f.get("fingerprint") or (fingerprint(t, f) if f else None)
+    return "\nFailure fingerprint: %s\nTask decisions: %s\n" % (fp, json.dumps(decisions(t["name"])))
+
+
+def cost_event(task, kind, tier, outcome, stage=None, runner=None, model=None, result=None, **extra):
+    result = result or {}
+    row = dict(ts=now(), task=task, stage=stage, kind=kind, tier=tier, runner=runner, model=model,
+               cost_usd=result.get("total_cost_usd"), usage=result.get("usage"),
+               input_tokens=(result.get("usage") or {}).get("input_tokens"),
+               output_tokens=(result.get("usage") or {}).get("output_tokens"), outcome=outcome, **extra)
+    STATE.mkdir(parents=True, exist_ok=True)
+    with (STATE / "costs.jsonl").open("a") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        stream.write(json.dumps(row, sort_keys=True) + "\n")
+    return row
+
+
+def cost_rows():
+    rows = []
+    try:
+        for line in (STATE / "costs.jsonl").read_text().splitlines():
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                continue
+    except FileNotFoundError:
+        pass
+    return rows
+
+
+def decisions(n):
+    return read_json(task_dir(n) / "decisions.json", [])
+
+
+DECISION_ACTIONS = ("resubmit", "resubmit_with_manifest", "escalate", "skip_reuse")
+
+
+def record_decision(t, fp, action, why, scope="task", max_uses=None, who="coordinator"):
+    f = t.get("failure") or {}
+    if action not in DECISION_ACTIONS or scope not in ("stage", "task"):
+        raise ValueError("invalid decision action or scope")
+    if not re.fullmatch(r"[0-9a-f]{16}", fp):
+        raise ValueError("fingerprint must be 16 lowercase hex characters")
+    if max_uses is not None and max_uses < 1:
+        raise ValueError("max_uses must be positive")
+    if scope == "stage" and not f.get("stage"):
+        raise ValueError("stage scope needs a current failed stage")
+    entries = decisions(t["name"])
+    entry = dict(fingerprint=fp, action=action, scope=scope, stage=f.get("stage"), max_uses=max_uses,
+                 uses=0, who=who, why=why, ts=now())
+    # Newest decision supersedes the same scope and fingerprint.
+    entries = [d for d in entries if (d["fingerprint"], d["scope"], d.get("stage") if scope == "stage" else None) !=
+               (fp, scope, entry["stage"] if scope == "stage" else None)]
+    entries.append(entry)
+    write_json(task_dir(t["name"]) / "decisions.json", entries)
+    tev(t, "recorded decision %s: %s (%s)" % (fp, action, why))
+
+
+def apply_decision(n, a):
+    t = task_load(n)
+    f = t.get("failure")
+    if not f or t["mode"] != "auto" or a.dry_run:
+        return False
+    fp = f.get("fingerprint") or fingerprint(t, f)
+    entries = decisions(n)
+    for d in reversed(entries):
+        if d["fingerprint"] != fp or (d["scope"] == "stage" and d.get("stage") != f["stage"]):
+            continue
+        if d.get("max_uses") is not None and d.get("uses", 0) >= d["max_uses"]:
+            continue
+        action = d["action"]
+        if action == "escalate":
+            to_coordinator(n, "coordinator decision %s: %s" % (fp, d["why"]), a, deputy=False)
+            ok = True
+        elif action == "skip_reuse":
+            stage = tstage(t, f["stage"])
+            if not stage.get("done_s3") or not all(s3_exists(uri, t) for uri in stage["done_s3"]):
+                return False
+            def done(task):
+                tstage(task, f["stage"])["state"] = "done"
+                task["failure"] = None
+            task_txn(n, done)
+            ok = True
+        else:
+            ok, msg = do_submit(n, f["stage"], "coordinator decision %s: %s" % (fp, d["why"]), "decision")
+            if not ok:
+                return False
+        if ok:
+            def consumed(task):
+                # A coordinator can replace a decision while submit waits on kubectl. Never overwrite that newer log.
+                current = decisions(n)
+                for entry in current:
+                    if (entry["fingerprint"], entry["scope"], entry.get("stage"), entry["ts"]) == (d["fingerprint"], d["scope"], d.get("stage"), d["ts"]):
+                        entry["uses"] = entry.get("uses", 0) + 1
+                        write_json(task_dir(n) / "decisions.json", current)
+                        break
+                tev(task, "applied coordinator decision %s" % fp)
+            task_txn(n, consumed)
+            cost_event(n, "decision", "0", "escalated" if action == "escalate" else "resolved",
+                       stage=f["stage"], fingerprint=fp)
+            return True
+    return False
+
+
+def cmd_decide(a):
+    if not task_load(a.name):
+        sys.exit("no task %s" % a.name)
+    task_txn(a.name, lambda t: record_decision(t, a.fingerprint, a.action, a.why, a.scope, a.max_uses))
+
+
+def cmd_wake_review(a):
+    wakes = [r for r in cost_rows() if r.get("task") == a.name and r.get("kind") == "coordinator_wake"]
+    if not wakes:
+        sys.exit("no coordinator wake recorded for " + a.name)
+    cost_event(a.name, "wake_review", "coordinator", "done", by=a.by, why=a.why, wake_id=wakes[-1]["event_id"])
+
+
+def cmd_costs(a):
+    rows = [r for r in cost_rows() if (not a.task or r.get("task") == a.task) and r["ts"] >= now() - a.days * 86400]
+    counts, costs, resolved, reviews = {}, {}, {}, {}
+    by_kind, by_task = {}, {}
+    latest_reviews = {r.get("wake_id"): r for r in rows if r["kind"] == "wake_review"}
+    for r in rows:
+        if r["kind"] == "coordinator_wake":
+            key = (r["task"], r.get("wake_kind", "unknown"))
+            counts[key] = counts.get(key, 0) + 1
+            by_kind[key[1]] = by_kind.get(key[1], 0) + 1
+            by_task[key[0]] = by_task.get(key[0], 0) + 1
+        if r["kind"] == "wake_review" and latest_reviews.get(r.get("wake_id")) == r:
+            key = (r["by"], r["why"])
+            reviews[key] = reviews.get(key, 0) + 1
+        if r.get("cost_usd") is not None:
+            key = (str(r["tier"]), str(r.get("model")))
+            costs[key] = costs.get(key, 0) + r["cost_usd"]
+        if r.get("fingerprint") and r["outcome"] == "resolved":
+            key = str(r["tier"])
+            resolved[key] = resolved.get(key, 0) + 1
+    print("Coordinator wakes by task / kind:")
+    for (task, kind), count in sorted(counts.items()):
+        print("  %s / %s: %d" % (task, kind, count))
+    print("Wake totals by task: " + json.dumps(by_task, sort_keys=True))
+    print("Wake totals by kind: " + json.dumps(by_kind, sort_keys=True))
+    print("Resolved failures by tier (recorded resolution events):")
+    total = sum(resolved.values())
+    for tier in ("0", "1", "2", "deputy", "coordinator"):
+        count = resolved.get(tier, 0)
+        print("  %s: %d (%.1f%%)" % (tier, count, 100 * count / total if total else 0))
+    print("Agent costs by tier / model (unreported costs excluded):")
+    for (tier, model), cost in sorted(costs.items()):
+        print("  %s / %s: $%.6f" % (tier, model, cost))
+    print("Wake reviews by intended handler / reason:")
+    for (by, why), count in sorted(reviews.items()):
+        print("  %s / %s: %d" % (by, why, count))
+
+
+def deputy_prompt(t, reason):
+    plan = "(none)"
+    if (t.get("on_done") or {}).get("plan"):
+        path = plan_dir(t["on_done"]["plan"]) / "plan.md"
+        if path.exists():
+            plan = path.read_text()
+    return (task_prompt(t) + "\nYou are the fresh deputy before the coordinator. "
+            "Work only inside this task's goal and approval. You may edit unfinished manifests using measured resources, "
+            "make routine environment fixes allowed to the fixer, resubmit within budgets, and record task-scoped decisions "
+            "with nrp-task decide FINGERPRINT --action ACTION --why TEXT; apply with nrp-task apply-decision. "
+            "nrp-task retry-cap N may raise the cap up to %d. "
+            "Never change thresholds, checks, data selection or method, touch other tasks, cancel the task or contact the owner. "
+            "Mark done only via verified existing success markers (nrp-task decide ... --action skip_reuse). "
+            "End with RESOLVED: what you did, or ESCALATE: a brief of at most 120 words stating what failed, "
+            "what was tried and the exact decision needed.\nEscalation reason: %s\nPlan copy:\n%s" %
+            (scaled_retry_cap(t["stages"]), reason, plan))
+
+
 def task_fail(n, sid, cls, sig, detail, logs=None, extra=None):
     def f(t):
         if t.get("failure"):
@@ -3602,6 +3855,7 @@ def task_fail(n, sid, cls, sig, detail, logs=None, extra=None):
         else:
             extra_resources = None
         t["failure"] = dict({"stage": sid, "job": s["job"], "cls": cls, "sig": sig, "detail": detail[:400], "logs": logs, "ts": now(), "resource_values": extra_resources}, **(extra or {}))
+        t["failure"]["fingerprint"] = fingerprint(t, t["failure"])
         tev(t, "stage %s FAILED [%s] %s" % (sid, cls, detail[:200]))     # no wake here: a failure goes up the ladder first (Tier 0/1/2 handle it)
     return task_txn(n, f)
 
@@ -3766,7 +4020,7 @@ def do_submit(n, sid, reason, by):
         s2, f2 = tstage(t, sid), t.get("failure")
         if retry and f2:
             t["attempts"].append({"stage": sid, "job": s2["job"], "cls": f2["cls"], "sig": f2["sig"], "detail": f2["detail"][:200],
-                                  "fix": " ".join(reason.split())[:300], "by": by, "ts": now(),
+                                  "fix": " ".join(reason.split())[:300], "by": by, "ts": now(), "fingerprint": f2.get("fingerprint") or fingerprint(t, f2),
                                   "resources_changed": f2.get("resource_values") is not None and f2["resource_values"] != resource_values(doc),
                                   "resource_template": resource_template(doc) if f2["cls"] == "resources" else None})
             s2["attempt"] = s2.get("attempt", 1) + 1
@@ -3807,17 +4061,41 @@ def coordinator_summary(t, reason):
     bits = ["NRP task %s needs its coordinator chat (the owner is NOT notified unless you say so): %s" % (n, reason)]
     if f:
         bits.append("Event: stage %s [%s] %s." % (f.get("stage"), f.get("cls"), (f.get("detail") or "")[:200]))
+    if f:
+        bits.append("Fingerprint: " + (f.get("fingerprint") or fingerprint(t, f)))
+    bits.append("After handling: `nrp-monitor wake-review %s --by rule|agent|coordinator --why TEXT`." % n)
     bits.append("Look: `nrp-monitor task show %s`; saved logs %s; fix log (handoff) %s." % (n, f.get("logs") or "(none)", task_dir(n) / "handoff.md"))
     bits.append("Then: fix it and `nrp-monitor task resume %s --note TEXT` (resubmits the failed stage, budgets restart), or `nrp-monitor task cancel %s`, "
                 "or only if the owner is truly needed `nrp-monitor task needs-owner %s --reason TEXT` (sends the one DM)." % (n, n, n))
-    return " ".join(bits)[:1600]
+    if reason.startswith("Deputy:"):
+        bits.insert(0, reason.split(" | ", 1)[0])
+    return " ".join(bits)[:2400]
 
 
-def to_coordinator(n, reason, a=None):
+def to_coordinator(n, reason, a=None, deputy=True):
     """Tier 3: wake the task's coordinator chat (its webhook; same machinery as the done/failure wakes) with a short summary and pointers.
     The task goes to WITH_COORDINATOR, not NEEDS_OWNER: the owner is told only if the chat runs `task needs-owner`. With no webhook
     configured for the task there is nobody to wake, so the owner is told instead (NEEDS_OWNER) and nothing is lost. A wake that cannot
     be delivered (wake_failed) or an answer that never comes (check_coordinator_waits) falls back the same way."""
+    t = task_load(n)
+    if t["status"] in TASK_HELD:
+        return
+    failure = t.get("failure")
+    if deputy and failure and not (a and a.dry_run) and OWNER.get("deputy_enabled", True):
+        fp = failure.get("fingerprint") or fingerprint(t, failure)
+        key = "%s:%d" % (fp, len(t["attempts"]))
+        if key not in t.get("deputy_runs", []):
+            task_txn(n, lambda task: task.setdefault("deputy_runs", []).append(key))
+            try:
+                line, den = run_task_agent(n, deputy_prompt(t, reason), a, kind="deputy")
+            except Exception as error:
+                line = "ESCALATE: deputy failed (%s)" % type(error).__name__
+            if line.startswith("RESOLVED"):
+                apply_decision(n, a or argparse.Namespace(dry_run=False))
+            current = task_load(n)
+            if not current.get("failure") or current["status"] == "blocked":
+                return
+            reason = "Deputy: " + " ".join(line.split()[:120]) + " | " + reason
     reason = " ".join(reason.split())
     if not wake_target(task_load(n) or {"name": n}):
         escalate(n, "%s [no coordinator webhook or harness session is configured for this task, so the owner is told]" % reason[:290], a)
@@ -3960,6 +4238,7 @@ def tier0_timeout(n, f):
         log("task %s: Tier 0 resubmit refused: %s" % (n, msg[:200]))
         return False
     task_txn(n, lambda t: tstage(t, f["stage"]).update(dl={"resubmits": done + 1}))
+    cost_event(n, "rule", "0", "resolved", stage=f["stage"], fingerprint=f.get("fingerprint") or fingerprint(t, f))
     digest("deadline-resubmit", "%s ran into its %d s deadline; resumable stage resubmitted once with %d s" % (f["job"], old, old * 2), n)
     PASS["retries"] = PASS.get("retries", 0) + 1
     return True
@@ -3997,7 +4276,7 @@ def triage_prompt(t):
            "attempts": "\n".join("  - %s [%s] %s -> %s" % (x["job"], x["cls"], x["detail"][:120], x["fix"][:120]) for x in t["attempts"][-5:]) or "  (none)"}
     for k, v in rep.items():
         tpl = tpl.replace("{%s}" % k, v)
-    return tpl.replace("{handoff}", handoff_prompt(t))
+    return tpl.replace("{handoff}", handoff_prompt(t)) + failure_context(t)
 
 
 def close_failure(n, f, why):
@@ -4024,6 +4303,8 @@ def close_failure(n, f, why):
         tev(t, "event closed by Tier 1 triage, no fix needed: %s" % why[:200])
     if not task_txn(n, c):
         return False, "the failure changed while it was closed"
+    cost_event(n, "triage_resolution", "1", "resolved", stage=f["stage"],
+               fingerprint=f.get("fingerprint") or fingerprint(t, f))
     digest("triage-closed", "stage %s [%s]: no fix needed (%s)" % (f["stage"], f["cls"], why[:240]), n)
     return True, ""
 
@@ -4100,12 +4381,12 @@ def task_prompt(t):
            "triage": f.get("triage_text") or "(Tier 1 did not run for this failure)"}
     for k, v in rep.items():
         tpl = tpl.replace("{%s}" % k, v)
-    return tpl.replace("{handoff}", handoff_prompt(t))                 # last: the handoff text is not itself a template
+    return tpl.replace("{handoff}", handoff_prompt(t)) + failure_context(t)                 # last: the handoff text is not itself a template
 
 
 def run_task_agent(n, prompt_text, a, kind="fix"):
     t = task_load(n)
-    ctx = dict(t.get("failure") or t.get("util_event") or {}) if kind == "fix" else {}            # what the fix agent was started for (a resubmit clears the failure)
+    ctx = dict(t.get("failure") or t.get("util_event") or {}) if kind in ("fix", "deputy") else {}            # what the fix agent was started for (a resubmit clears the failure)
     d = str(task_dir(n)).rstrip("/")
     allowed = ["Bash(nrp-task:*)", "Read(/%s/**)" % d, "Edit(/%s/**)" % d]
     if t.get("code"):
@@ -4114,15 +4395,17 @@ def run_task_agent(n, prompt_text, a, kind="fix"):
     if kind == "continue":                                         # reads outputs and the plan, writes the next TASK file
         pd = str(plan_dir(t["on_done"]["plan"])).rstrip("/")
         allowed = ["Bash(nrp-task:*)", "Read(/%s/**)" % d, "Read(/%s/**)" % pd, "Write(/%s/work/**)" % pd, "Edit(/%s/work/**)" % pd]
+    elif kind == "deputy" and (t.get("on_done") or {}).get("plan"):
+        allowed += ["Read(/%s/**)" % str(plan_dir(t["on_done"]["plan"])).rstrip("/")]
     elif kind == "triage":                                         # Tier 1: judge, read-only; its verdict is the last line of its answer
         allowed = ["Bash(nrp-task %s:*)" % c for c in ("show", "logs", "describe", "util", "s3")] + ["Read(/%s/**)" % d]
-    elif kind != "fix":
+    elif kind not in ("fix", "deputy"):
         allowed = ["Bash(nrp-task:*)", "Read(/%s/**)" % d]
     deny = []
     if kind == "continue":                                         # night code lives in work/code-<step>/: its .git is not the agent's to edit
         deny = ["Write(/%s/work/**/.git/**)" % pd, "Edit(/%s/work/**/.git/**)" % pd]
-    cmd = agent_cmd("triage" if kind == "triage" else "task", allowed, json_out=True, deny=deny)
-    if not agents_available():                                     # every runner is out of usage: nothing started, nothing spent
+    cmd = agent_cmd("triage" if kind == "triage" else "deputy" if kind == "deputy" else "task", allowed, json_out=True, deny=deny)
+    if kind != "deputy" and not agents_available():                 # deputy has its own configured backends
         return unavailable_text(), []
     env = clean_env()
     env["NRP_TASK"] = n
@@ -4148,7 +4431,14 @@ def run_task_agent(n, prompt_text, a, kind="fix"):
     claim = util_ok_extract(full) if kind == "fix" else None
     if claim is not None:
         task_txn(n, lambda t: t.update(util_ok_claim=claim))                  # the script decides on it in handle_failure
-    rec = {"ts": now(), "kind": kind, "runner": runner, "cost": res.get("total_cost_usd"), "turns": res.get("num_turns"), "result": line, "denials": len(den)}
+    rec = {"ts": now(), "kind": kind, "runner": runner, "model": res.get("model"), "usage": res.get("usage"), "cost": res.get("total_cost_usd"), "turns": res.get("num_turns"), "result": line, "denials": len(den)}
+    failure = t.get("failure") or t.get("util_event") or {}
+    current = task_load(n)
+    tier = "1" if kind == "triage" else "deputy" if kind == "deputy" else "2"
+    cost_event(n, {"fix": "fixer", "continue": "continue_agent"}.get(kind, kind), tier,
+               "resolved" if failure and kind != "triage" and not current.get("failure") and not current.get("util_event") else "stopped" if status != "ok" else "escalated" if failure else "done",
+               stage=failure.get("stage"), runner=runner, model=(res.get("model") or tier_settings(cmd.spec["tier"], runner)["model"]) if runner else None,
+               result=res, fingerprint=failure.get("fingerprint") or (fingerprint(t, failure) if failure else None))
     if kind == "triage":
         rec["verdict"], rec["verdict_text"] = triage_verdict(full)
     task_txn(n, lambda t: (t.setdefault("agent_runs", []).append(rec), t.pop("agent_started", None)))
@@ -4398,6 +4688,8 @@ def tier0_fix(n, a):
         f = (t or {}).get("failure")
         if not f or t["mode"] != "auto" or a.dry_run or f.get("cls") not in ("resources", "infra", "code", "unknown"):
             return False
+        if apply_decision(n, a):
+            return True
         s = tstage(t, f["stage"])
         if not s.get("manifest"):
             return False
@@ -4418,6 +4710,7 @@ def tier0_fix(n, a):
                 return False
             task_txn(n, lambda t: t.setdefault("tier0", []).append(dict(rec, stage=s["id"], ts=now())))
             digest("retry", "%s [%s] -> %s" % (s["job"], f["cls"], reason[:250]), n)
+            cost_event(n, "rule", "0", "resolved", stage=f["stage"], fingerprint=f.get("fingerprint") or fingerprint(t, f))
             PASS["tier0"] = PASS.get("tier0", 0) + 1
             return True
     except Exception as e:
@@ -4532,6 +4825,11 @@ def handle_failure(n, a):
     decision is the only way on (watch-only task, GPU approval), or when the chat cannot be woken."""
     t = task_load(n)
     f = t["failure"]
+    if not f.get("fingerprint"):
+        f["fingerprint"] = fingerprint(t, f)
+        task_txn(n, lambda task: task["failure"].update(fingerprint=f["fingerprint"]))
+    if apply_decision(n, a):
+        return
     since = t.get("budget_from", 0)
     prior = [x["sig"] for x in t["attempts"] if x["stage"] == f["stage"]]
     used = len(t["attempts"][since:])
@@ -4900,6 +5198,7 @@ def util_waive(n, f, claim, a):
             log("task %s: handoff entry for the waiver not written: %s: %s" % (t["name"], type(e).__name__, str(e)[:120]))
     if not task_txn(n, acc):
         return False, out.get("why", "the task changed")
+    cost_event(n, "waiver_resolution", "2", "resolved", stage=f["stage"], fingerprint=f.get("fingerprint") or fingerprint(t, f))
     digest("util-waived", "Job %s is running and only the lab utilization floor flags it (waiver %d of %d, until %s): %s"
            % (f["job"], out["k"], util_waiver_max(), iso(out["w"]["until"]), claim[:240]), n)
     return True, ""
@@ -5322,7 +5621,7 @@ def continue_prompt(t, h, go, held):
            "notes": t.get("notes") or "(none)", "clone": (t.get("code") or {}).get("clone", "(no code clone)")}
     for k, v in rep.items():
         tpl = tpl.replace("{%s}" % k, v)
-    return tpl.replace("{handoff}", handoff_prompt(t))
+    return tpl.replace("{handoff}", handoff_prompt(t)) + failure_context(t)
 
 
 def close_continuation(n, status, line):
@@ -6011,8 +6310,10 @@ def cmd_task_show(a):
         print("reason: " + t["reason"])
     if (t.get("code") or {}).get("extra_pkg_dirs") or (t.get("code") or {}).get("pkg_dir"):
         print("code dirs reship packs: pkg %s; extra %s" % (t["code"].get("pkg_dir") or "default", ", ".join(t["code"].get("extra_pkg_dirs") or []) or "none"))
+    print("decisions: " + json.dumps(decisions(a.name)))
     if t.get("failure"):
         f = t["failure"]
+        print("fingerprint: " + (f.get("fingerprint") or fingerprint(t, f)))
         print("failure: stage %s [%s] %s\n  logs: %s" % (f["stage"], f["cls"], f["detail"], f.get("logs")))
     uw = t.get("util_waivers") or []
     if uw:
@@ -6026,7 +6327,7 @@ def cmd_task_show(a):
             for u in (s["waiting_on"] if "waiting_on" in s else s["after_s3"]):
                 print("      waiting-on %s" % u)
     for x in t["attempts"]:
-        print("  retry: %s [%s] %s -> %s" % (x["job"], x["cls"], x["detail"][:100], x["fix"][:120]))
+        print("  retry: %s [%s] %s -> %s" % (x["job"], x["cls"], x["detail"][:100], x["fix"][:120] + " fp=" + str(x.get("fingerprint"))))
     for r in t.get("agent_runs", [])[-3:]:
         print("  agent %s %s cost=%s denials=%s: %s" % (iso(r["ts"])[5:16], r["kind"], r.get("cost"), r.get("denials"), r["result"][:200]))
     if t.get("code"):
@@ -6069,8 +6370,12 @@ def cmd_task_resume(a):
                 s["state"] = "done" if s["id"] in (a.skip or []) else "pending"
                 s["attempt"] = s.get("attempt", 1) + (0 if s["state"] == "done" else 1)
                 (skipped if s["state"] == "done" else again).append(s["id"])
+        if getattr(a, "decide", None) and t.get("failure"):
+            record_decision(t, t["failure"].get("fingerprint") or fingerprint(t, t["failure"]), a.decide, a.note or "resume decision")
         if t.get("failure"):
-            t["attempts"].append(dict(stage=t["failure"]["stage"], job=t["failure"]["job"], cls=t["failure"]["cls"], sig=t["failure"]["sig"],
+            cost_event(t["name"], "coordinator_resolution", "coordinator", "resolved", stage=t["failure"]["stage"],
+                       fingerprint=t["failure"].get("fingerprint") or fingerprint(t, t["failure"]))
+            t["attempts"].append(dict(stage=t["failure"]["stage"], job=t["failure"]["job"], cls=t["failure"]["cls"], sig=t["failure"]["sig"], fingerprint=t["failure"].get("fingerprint") or fingerprint(t, t["failure"]),
                                       detail=t["failure"]["detail"][:200], fix="resumed by %s: %s" % (who[0], a.note or ""), by="person", ts=now()))
         t["failure"], t["status"], t["reason"] = None, "running", ""
         t["budget_from"] = len(t["attempts"])
@@ -6272,6 +6577,27 @@ def cmd_tool(a):
         sys.stderr.write(r.stderr[-2000:])
         return r.returncode
 
+    if c == "decide":
+        parser = argparse.ArgumentParser(prog="nrp-task decide")
+        parser.add_argument("fingerprint")
+        parser.add_argument("--action", choices=DECISION_ACTIONS, required=True)
+        parser.add_argument("--why", required=True)
+        parser.add_argument("--max-uses", type=int)
+        args = parser.parse_args(rest)
+        task_txn(n, lambda task: record_decision(task, args.fingerprint, args.action, args.why, "task", args.max_uses, os.environ.get("NRP_MONITOR_AGENT_ROLE", "agent")))
+        return 0
+    if c == "apply-decision":
+        if not apply_decision(n, argparse.Namespace(dry_run=False)):
+            sys.exit("decision not applicable or refused by budgets/markers")
+        return 0
+    if c == "retry-cap":
+        if os.environ.get("NRP_MONITOR_AGENT_ROLE") != "deputy" or len(rest) != 1 or not rest[0].isdigit():
+            sys.exit("retry-cap is deputy-only: N")
+        value = int(rest[0])
+        if not t["max_retries"] <= value <= scaled_retry_cap(t["stages"]):
+            sys.exit("retry-cap exceeds scaled cap or lowers the existing cap")
+        task_txn(n, lambda task: task.update(max_retries=value))
+        return 0
     if c == "show":
         return cmd_task_show(argparse.Namespace(name=n))
     if c == "logs":
@@ -6702,10 +7028,10 @@ def setup_config(old, tiers):
     """The agents.json object to write: whatever the user already had (limits, models, follow-up ladder) plus `tiers`, and `runners` (the
     tiers' runners, fixer first; read-only runners are still excluded from writing tiers)."""
     cfg = {k: v for k, v in (old or {}).items() if k != "tiers"}
-    cfg["tiers"] = tiers
+    cfg["tiers"] = dict((old or {}).get("tiers") or {}, **tiers)
     runners = []
-    for tier in ("task", "triage"):
-        for b in tiers.get(tier, []):
+    for tier in ("task", "triage", "deputy"):
+        for b in cfg["tiers"].get(tier, []):
             if b["runner"] not in runners:
                 runners.append(b["runner"])
     if runners:
@@ -6804,6 +7130,11 @@ def cmd_setup(a):
                 raise ValueError("not an object")
         except ValueError:
             sys.exit("%s exists but is not valid JSON; fix or move it first (setup will not overwrite what it cannot read)" % AGENTS_CFG)
+    if getattr(a, "deputy", None):
+        try:
+            tiers["deputy"] = parse_backend_list("deputy", a.deputy)
+        except ValueError as e:
+            sys.exit("--deputy: %s" % e)
     new = setup_config(old, tiers)
     try:
         parse_agent_cfg(new)
@@ -7084,6 +7415,23 @@ def main():
     r.add_argument("--fake-finished", metavar="JOBS", help="comma-separated registered jobs to treat as finished (test)")
     r.add_argument("--tasks-only", action="store_true", help="only advance tasks (no pod checks, chains, legacy jobs; for a test state dir)")
     r.set_defaults(f=cmd_run)
+    x = sub.add_parser("costs")
+    x.add_argument("--days", type=float, default=7)
+    x.add_argument("--task")
+    x.set_defaults(f=cmd_costs)
+    x = sub.add_parser("wake-review")
+    x.add_argument("name")
+    x.add_argument("--by", choices=("rule", "agent", "coordinator"), required=True)
+    x.add_argument("--why", required=True)
+    x.set_defaults(f=cmd_wake_review)
+    x = sub.add_parser("decide")
+    x.add_argument("name")
+    x.add_argument("fingerprint")
+    x.add_argument("--action", choices=DECISION_ACTIONS, required=True)
+    x.add_argument("--scope", choices=("stage", "task"), default="stage")
+    x.add_argument("--max-uses", type=int)
+    x.add_argument("--why", required=True)
+    x.set_defaults(f=cmd_decide)
     tk = sub.add_parser("task", help="owner-approved tasks: the monitor submits, retries (fresh agent) and escalates once").add_subparsers(dest="tcmd", required=True)
     x = tk.add_parser("add", help="validate TASK.json (or YAML), clone its code, copy its manifests; the next pass takes over")
     x.add_argument("file")
@@ -7114,6 +7462,7 @@ def main():
     x.add_argument("--retries", type=int, help="new max_retries")
     x.add_argument("--gpu-ok-until", metavar="YYYY-MM-DD", help="the owner's new last day of GPU OK for the unfinished GPU stages")
     x.add_argument("--note", help="what was decided (kept in the task)")
+    x.add_argument("--decide", choices=DECISION_ACTIONS)
     x.set_defaults(f=cmd_task_resume)
     x = tk.add_parser("needs-owner", help="(the task's coordinator chat) the owner is truly needed: sets NEEDS_OWNER and sends the one DM")
     x.add_argument("name")
@@ -7196,6 +7545,7 @@ def main():
     x.add_argument("--non-interactive", action="store_true", help="no prompts: use the flags, else the suggestions for the installed CLIs, and write")
     x.add_argument("--subscriptions", help="comma list of what you have: claude,codex,gemini,t3 (default: the installed CLIs)")
     x.add_argument("--triage", help="Tier 1 backends in order, RUNNER[:MODEL[:THINKING]],... (gemini thinking: lowest|low|medium|high or a token budget)")
+    x.add_argument("--deputy", help="Deputy backends, RUNNER[:MODEL],...; default Claude Sonnet; preserves existing choice when omitted")
     x.add_argument("--fixer", help="Tier 2 backends in order, RUNNER[:MODEL],... (claude or codex)")
     x.add_argument("--dry-run", action="store_true", help="show the diff, write nothing")
     x.set_defaults(f=cmd_setup)

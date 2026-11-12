@@ -116,3 +116,7 @@ Record measured stage runtime, per-pod peaks and earlier OOM limits in the hando
 `task resume --note TEXT` appends a dated coordinator decision to the Fix log when a handoff is attached.
 Matching later failures follow that decision within the task approval. Notes use the same sanitization and
 1500-character entry limit as fix entries; omitted prompt history remains in the full handoff file.
+
+## Decisions and deputy evidence
+
+Put reusable failure handling in the decision log (`nrp-monitor decide` or `task resume --note TEXT --decide ACTION`), not only in prose. Triage, fixer and deputy prompts include those decisions and the active fingerprint. The deputy sees the same Registrar and Fix log, plus the copied plan section when present; its `HANDOFF_ENTRY` or automatic entry is appended to the Fix log. After handling a coordinator wake, record the intended handler with `nrp-monitor wake-review TASK --by rule|agent|coordinator --why TEXT` so avoidable wakes can be measured.

@@ -2,7 +2,8 @@
   "runners": ["claude", "codex"],
   "tiers": {
     "triage": [{"runner": "gemini", "model": "gemini-3.8-flash", "thinking": "lowest"}, {"runner": "claude", "model": "haiku"}],
-    "task":   [{"runner": "claude", "model": "sonnet"}, {"runner": "codex", "model": "gpt-6.1-sol"}]
+    "task":   [{"runner": "claude", "model": "sonnet"}, {"runner": "codex", "model": "gpt-6.1-sol"}],
+    "deputy": [{"runner": "claude", "model": "sonnet"}]
   },
   "models": {
     "triage":      {"claude": "haiku",  "codex": "gpt-6.1-sol"},
@@ -12,7 +13,8 @@
     "pod":         {"claude": "sonnet", "codex": "gpt-6.1-sol"}
   },
   "limits": {
-    "task": {"turns": 60, "budget": 6.0, "timeout": 2700}
+    "task": {"turns": 60, "budget": 6.0, "timeout": 2700},
+    "deputy": {"turns": 60, "budget": 6.0, "timeout": 2700}
   },
   "followup_ladder": ["triage", "repair", "repair"]
 }

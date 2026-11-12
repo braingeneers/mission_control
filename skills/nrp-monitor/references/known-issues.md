@@ -59,3 +59,7 @@ remove a running or pending Job to clear a name. The submission helper already s
 deletes a terminal same-name Job before applying; resume/observation may still adopt it before
 that helper runs. Preserve logs, then explicitly remove only the confirmed failed owned Job and
 resume through the task's normal submission path. This draft does not change adoption semantics.
+
+## Cost ledger rollout limits
+
+The ledger starts with new events after installation. Historical task/digest events support wake counts but cannot recover unreported tokens or USD cost. T3 relay/CLI wakes do not report coordinator consumption; those costs remain null. Completion wakes are intentionally unchanged pending a separate batching design. Default cap scaling affects new tasks that omit `max_retries`; existing tasks retain their stored cap, though the deputy can raise it within the scaled bound. Recorded resolutions mean accepted state transitions or verified markers, not proof that the eventual outputs pass scientific review.

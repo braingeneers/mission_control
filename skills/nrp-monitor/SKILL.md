@@ -1,6 +1,6 @@
 ---
 name: nrp-monitor
-description: Follow approved NRP Nautilus work unattended instead of polling it. Register staged Jobs as a task with exact S3 success markers; a background pass submits stages, saves logs, checks utilization against the shared NRP Cluster numbers, repairs failures up a ladder (script rules, a triage judge, a fixer, then a wake of the plan's own coordinator chat), continues the approved plan when work finishes, and contacts the owner once, only if that chat says he is needed. Use after the user approves NRP compute, for "keep an eye on this", overnight pipelines and utilization enforcement. Not for deciding what to run or for ad-hoc one-off Jobs.
+description: Follow approved NRP Nautilus work unattended instead of polling it. Register staged Jobs as a task with exact S3 success markers; a background pass submits stages, saves logs, checks utilization against the shared NRP Cluster numbers, repairs failures up a ladder (script rules, a triage judge, a fixer, a bounded fresh deputy, then a wake of the plan's own coordinator chat), continues the approved plan when work finishes, and contacts the owner once, only if that chat says he is needed. Use after the user approves NRP compute, for "keep an eye on this", overnight pipelines and utilization enforcement. Not for deciding what to run or for ad-hoc one-off Jobs.
 ---
 
 # NRP Monitor
@@ -70,7 +70,7 @@ submitter.
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).
-- Handles a failure at the cheapest level that can fix it (script rules, a triage judge, a fixer, then the task's own coordinator
+- Handles a failure at the cheapest level that can fix it (script rules, a triage judge, a fixer, a bounded fresh deputy, then the task's own coordinator
   chat, woken in whatever harness it runs; the person hears only if that chat says so): see
   [operations](references/operations.md). Which agent runs each tier (Claude Code, Codex or Gemini CLI), in what order, and what happens when one is unavailable is
   chosen by `nrp-monitor setup` and stored in `agents.json`: see [agents](references/agents.md). A healthy Job that only the lab floor flags can be waived
@@ -158,3 +158,11 @@ An optional stage `cpu_fallback` declares a manifest path or resources override 
 
 Never-submitted pending stages reuse existing `done_s3` success markers after their gates pass; dependents and completion
 actions proceed normally. Retries are unchanged. Use fresh output keys for new computations (see [tasks](references/tasks.md)).
+
+## Decisions and cost review
+
+Use `nrp-monitor decide TASK FINGERPRINT --action ACTION [--scope task] --why TEXT` for reusable, task-local failure handling; `task show` displays fingerprints and decisions. `task resume --note TEXT --decide ACTION` records the decision and the existing Fix log note together. Retry caps still apply; a new task without an explicit cap defaults to `max(4, ceil(stages/4))`.
+
+Before a failure wakes the coordinator, one fresh Sonnet deputy may resolve it within the same approval and retry/class budgets. Configure `tiers.deputy` / `limits.deputy` in `agents.json`, or disable it with owner `config.json` `"deputy_enabled": false`. The deputy cannot change scientific checks or contact the owner.
+
+After handling a wake, record `nrp-monitor wake-review TASK --by rule|agent|coordinator --why TEXT`. Use `nrp-monitor costs [--days N] [--task NAME]` to inspect `<state>/costs.jsonl`: wakes by task/kind, tier resolution shares, reported costs and avoidable-wake reviews. Completion wake behavior is unchanged. Details: [operations](references/operations.md) and [tasks](references/tasks.md).
