@@ -55,14 +55,20 @@ What to do for each class:
   the stage is resumable; only then delete and resubmit at right. Never infer safe memory from a 10-minute mean.
   If max/median peaks exceed 3 and completed low pods stayed below 20% of request for their whole lives, split inputs
   into size groups with their own memory. Missing peaks or incomparable pods need investigation before a change.
-  For CPU or GPU, diagnose the supplied numbers before changing anything. Resizing is part of your job: GPU use below 40%
-  with CPU use near its request (about 80% or more of the CPU request, or the same op CPU-bound in a sibling CPU stage)
-  means the stage is CPU-bound, so raise the CPU request and limit (equal, within the 20% limit tolerance) to double the
-  current value, at most 8 cores, keep memory inside its band, and resubmit it once if the stage is cheap to resubmit
-  (little progress lost, deadline and `gpu_ok_until` allow it). Keep the scientific computation identical. Write the old and
-  new values, the evidence and what you expect to see into your HANDOFF_ENTRY. Report STOPPED, with a diagnosis and your
-  recommended next step, when a resize would not be enough or is not allowed: the fix needs more than resources (restructuring
-  the work, skipping a stage, another design), the cap is already reached, the same stage was already resized once, or
+  For CPU or GPU, diagnose the supplied numbers before changing anything. Resizing is part of your job: fit the request to
+  what the stage can actually use. GPU use below 40% with CPU use near its request (about 80% or more, or the same op
+  CPU-bound in a sibling CPU stage) means the stage is CPU-bound. First find out how many cores the code can use: check the
+  manifest env (OMP_NUM_THREADS, MKL_NUM_THREADS, OPENBLAS_NUM_THREADS, DataLoader workers, PV3_PARALLEL) and the code
+  (torch.set_num_threads, a thread limiter). A stage pinned to one thread gains nothing from more cores, and cores it cannot
+  use fall under the CPU 20% band, so do not add cores without setting the thread/worker count to match. Then raise the
+  CPU request and limit (equal, within the 20% limit tolerance) to what the code will use, keep memory inside its band, and
+  resubmit once if the stage is cheap to resubmit (little progress lost, deadline and `gpu_ok_until` allow it). There is no
+  fixed core cap: take what the stage can use and the cluster rules allow, and take the next size up only if the measured gain
+  from the last one was clear. Keep the scientific computation identical. Changing thread counts can change floating-point
+  summation order, so say so in your HANDOFF_ENTRY if numerics are compared across paths. Write the old and new values, the
+  evidence and what you expect to see into your HANDOFF_ENTRY. Report STOPPED, with a diagnosis and a recommended next step,
+  when a resize would not be enough or is not allowed: the fix needs more than resources (restructuring the work, skipping a
+  stage, another design), the code cannot use more cores, the stage was already resized and the gain was small, or
   `gpu_ok_until` has passed. The coordinator chat then decides whether to take it on itself or escalate to the owner.
   If you only prepared a manifest for later runs, report DONE with the change and why the running Job is left alone.
   Historical util failures may use the checked UTIL_OK waiver below; new observations do not need a waiver to keep running.
