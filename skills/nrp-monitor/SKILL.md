@@ -166,3 +166,20 @@ Use `nrp-monitor decide TASK FINGERPRINT --action ACTION [--scope task] --why TE
 Before a failure wakes the coordinator, one fresh Sonnet deputy may resolve it within the same approval and retry/class budgets. Configure `tiers.deputy` / `limits.deputy` in `agents.json`, or disable it with owner `config.json` `"deputy_enabled": false`. The deputy cannot change scientific checks or contact the owner.
 
 After handling a wake, record `nrp-monitor wake-review TASK --by rule|agent|coordinator --why TEXT`. Use `nrp-monitor costs [--days N] [--task NAME]` to inspect `<state>/costs.jsonl`: wakes by task/kind, tier resolution shares, reported costs and avoidable-wake reviews. Completion wake behavior is unchanged. Details: [operations](references/operations.md) and [tasks](references/tasks.md).
+
+### Plan completion groups
+
+Plans may declare `groups: collect=1,2; analyze=3`, `wake: group|task|digest`, per-group `wake_collect: digest`, and
+`retries: collect=40; analyze=8`. With groups the default is one coordinator completion wake per group; without them
+legacy task/step behavior remains. `on_done` handles any followup in the same continue agent. Every group step needs a
+registered task and all members must succeed and finish their result checks. Cancelled/failed/held tasks keep it open;
+register all fan-out members before completion. A group already announced never reopens: use another plan id for a new
+batch. Stops and unresolved checks still wake with a reason; the failure ladder is unchanged. `plan show` shows membership
+and policy; `costs` shows avoided completion events; the ledger records `group_wake`.
+
+Optional task `postcheck: {"cmd": ["python", "/path/checker.py"], "expect": "PASS"}` declares a trusted read-only local
+checker, executed with exact argv and a 120 s timeout before success; failure enters the outputs ladder. This is a declared
+contract, not an OS sandbox. Continue/followup agents can rerun it with `nrp-task postcheck`, read their task state folder,
+and use `nrp-task s3 cp URI DEST` for exact objects up to 256 KiB within plan `may_touch` (local downloads only under the
+task's `downloads/`). Success logs capture container stdout before deletion and store `logs/<stage>/outputs.json`; task show
+and continue prompts include the extracted KEY=VALUE lines. Group summaries include checks, outputs and resolution tiers.
