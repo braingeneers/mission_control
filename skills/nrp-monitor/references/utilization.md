@@ -53,7 +53,7 @@ For memory LOW (NRP band: 20–150% of request), wait until each flagged pod is 
 measured runtime, or 30 minutes when no measured history is available. A stage can record measured history as
 `measured_runtime_seconds` in TASK.json; do not substitute its deadline for measured runtime.
 Use each pod's whole-life Thanos peak, including earlier attempts, rather than the 10-minute mean. Set
-`need = max(highest stage pod peak, every recorded OOMKilled attempt's limit)` and `right = ceil(need * 1.25)` Gi.
+`need = max(highest stage pod peak, every recorded OOMKilled attempt's limit)` and `right = ceil(need * 1.5)` Gi.
 Requests at or below `1.2 * right` are sized correctly. Larger requests go to the fixer to update the manifest for
 retries and later runs. Leave running work to finish unless more than two measured hours remain AND the stage is
 resumable; the fixer may then delete and resubmit at the right size. If max/median peaks exceed 3 and low pods stayed
@@ -64,8 +64,8 @@ Both roles receive per-pod peaks and ages, request and limit, OOM history, need,
 suggested verdict. The judge may disagree with the suggestion but must cite the numbers. It cannot edit files or run
 state-changing task commands. Invalid replies escalate. The fixer alone edits manifests, resubmits or splits inputs.
 
-Worked example: big-s requests 12Gi. A 1.2Gi mean at 17 minutes is ramp-up, so no event. Whole-life peaks of
-4.5–7.7Gi and a recorded OOM at 6Gi give need 7.7Gi and right 10Gi. Since 12 <= 1.2*10, the request is sized correctly.
+Worked example: a workload requests 12Gi. A 1.2Gi mean at 17 minutes is ramp-up, so no event. Whole-life peaks of
+4.5–7.7Gi and a recorded OOM at 6Gi give need 7.7Gi and right 12Gi. Since 12 <= 1.2*12, the request is sized correctly.
 The peak range is only about 1.7x (max/median cannot exceed that range), so there is no split.
 
 For legacy chains and standalone registrations, the existing strike handling remains separate.
@@ -92,3 +92,9 @@ flag of that Job is not recorded again; NRP-band and GPU flags are never suppres
 `util-waived` digest line and a task event record it, `task show NAME` lists the waivers (active or ended), and when the task
 has a handoff a Fix log entry says so. After `until`, a Job that is still running and flagged again goes through the fix agent
 again and may be waived again until the cap; then the owner is asked.
+
+Prefer the helper's saved cgroup true peak over sampled metrics for the same container; retain
+whole-life sampled peaks and OOM evidence as lower bounds. Sizing uses 50% headroom consistently
+with profiling. A recorded OOM limit remains a proven need even if usage is below the band between
+short loading spikes. When the request is within the right-size tolerance, the judge records this
+reason and CLOSES; a low mean alone is no reason to STOP or escalate.

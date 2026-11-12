@@ -94,7 +94,7 @@ class Tier0(Base):
         Thanos.value = 0.1 * GI                                          # 30 s samples missed the spike
         self.oom()
         self.run_pass()
-        self.assertEqual(self.task()["tier0"][0]["memory"], "666Mi")    # the limit (512Mi) x1.3, not the 0.1Gi sample x1.3
+        self.assertEqual(self.task()["tier0"][0]["memory"], "1Gi")      # unreliable sample: double the 512Mi OOM limit
         self.assertEqual(len(self.prompts()), 0)
 
     def test_oom_without_a_peak_number_goes_to_the_agent(self):

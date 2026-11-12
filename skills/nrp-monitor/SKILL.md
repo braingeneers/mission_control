@@ -63,8 +63,10 @@ submitter.
 
 - Submits stages whose conditions hold (`after`, `after_s3`), checks success with an exact S3 `head-object` per key
   (never a prefix listing), saves logs, deletes only its own finished Jobs after the markers are verified.
-- Applies fixed Tier 0 rules before any agent: OOM resubmit at observed peak x1.3, exclusion of a node with a known fault, and the
+- Applies fixed Tier 0 rules before any agent: OOM resubmit using cgroup true peak when available, otherwise sampled peak, with a 2x OOM-limit backstop for unreliable low samples, exclusion of a node with a known fault, and the
   scheduler's reason for a long Pending; see [operations](references/operations.md).
+- Budgets resource retries per stage within the task-wide cap. After a successful resource change,
+  raises compatible siblings' manifest resources when explicitly grouped; see [tasks](references/tasks.md).
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).
@@ -103,8 +105,11 @@ submitter.
 
 ## Smoke/profile sizing
 
-The script never chooses or launches a full fan-out on its own after profiling. Register a few representative
-smoke/profile jobs, including the largest/longest item. Mark stages `purpose: "smoke"` or `purpose: "profile"`
+The script never chooses or launches a full fan-out on its own after profiling. Profile 2–3 items expected to be heaviest by input size, unit count or duration, using the real
+configuration. Each profile must report its cgroup true memory peak with
+[nrp-cluster memory_peak.py](../nrp-cluster/references/memory_peak.py). Size memory from the maximum
+true peak (and any recorded OOM limit): ceil(need * 1.5) Gi. RSS is only a fallback diagnostic;
+without a cgroup peak, investigate before fan-out. This 50% headroom rule also applies to later memory LOW review. Mark stages `purpose: "smoke"` or `purpose: "profile"`
 (boolean `smoke`/`profile` also accepted). Registration refuses Job `spec.parallelism` or `spec.completions`
 above `smoke_max_jobs` in nrp-cluster's shared utilization-policy.json (default 3). Select inputs before registration;
 the script cannot infer the largest input. After a successful profile, the Tier 2 fixer or coordinator chat decides
@@ -130,7 +135,7 @@ The optional Antigravity `agy` runner is triage-only; select it through setup, e
 
 ## Utilization review and wake routes
 
-Utilization flags leave healthy stages running. The triage judge returns CLOSE or ESCALATE; the fixer makes every change. Memory LOW uses ramp-up, whole-life per-pod peaks and recorded OOM limits, with 25% headroom. See [utilization](references/utilization.md) for the exact rule and big-s example.
+Utilization flags leave healthy stages running. The triage judge returns CLOSE or ESCALATE; the fixer makes every change. Memory LOW uses ramp-up, whole-life per-pod peaks and recorded OOM limits, with 50% headroom. See [utilization](references/utilization.md) for the exact rule and worked example.
 
 T3 origins can use `origin.link: "t3-thread://v2/ENV/THREAD"` (angle brackets around the link are accepted).
 A configured `<state>/webhooks/<task>` remains the preferred T3 route. Otherwise the monitor sends the wake text

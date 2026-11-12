@@ -67,7 +67,7 @@ class Memory(Base):
         t, s = self.stage()
         e = self.evidence(t, s)
         self.assertTrue(e['ramp_up'])
-        self.assertEqual((e['need_gi'], e['right_gi'], e['suggested_verdict']), (7.7, 10, 'sized correctly'))
+        self.assertEqual((e['need_gi'], e['right_gi'], e['suggested_verdict']), (7.7, 12, 'sized correctly'))
         self.assertAlmostEqual(e['spread'], 7.7/6.1)
         s['measured_runtime_seconds'] = 3600
         e = self.evidence(t, s)
@@ -78,11 +78,20 @@ class Memory(Base):
     def test_oom_floor_and_missing_peaks(self):
         t, s = self.stage()
         e = self.evidence(t, s, {'p2': 1*2**30})
-        self.assertEqual((e['need_gi'], e['right_gi']), (6, 8))
+        self.assertEqual((e['need_gi'], e['right_gi']), (6, 9))
         with patch.object(self.w, 'job_pods', return_value=[]), patch.object(self.w, 'thanos_peak_mem', return_value={}):
             s.pop('memory_peaks_gi', None)
             e = self.w.memory_low_evidence(t, s, 'p2')
         self.assertIn('missing peaks', e['suggested_verdict'])
+
+    def test_true_peak_is_used_for_review(self):
+        t, s = self.stage()
+        folder = self.w.task_dir(t['name']) / 'logs'
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / (s['job'] + '-a1.txt')).write_text('NRP_MEMORY_PEAK ' + json.dumps(
+            {'source': 'cgroup_v2', 'bytes': 12*2**30, 'container': 'worker'}))
+        e = self.evidence(t, s)
+        self.assertEqual((e['true_peak_gi'], e['need_gi'], e['right_gi']), (12, 12, 18))
 
     def test_split_only_with_whole_life_low_pods(self):
         t, s = self.stage()

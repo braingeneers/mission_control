@@ -49,3 +49,12 @@ Wakes block a pass for up to 600 seconds each. Separate task escalations are not
   ordinary NRP-band/GPU failures cannot be waived.
 - Job-side writers must invalidate stale root DONE markers themselves; monitor success checks use
   exact head-object keys and require all Indexed Job completions.
+
+### Same-name Jobs on resume or manual submission
+
+`task resume` can leave a stage pending while a same-name failed Job still exists. A Job created
+manually can also collide with submission. Inspect task ownership and Job state first: never
+remove a running or pending Job to clear a name. The submission helper already saves logs and
+deletes a terminal same-name Job before applying; resume/observation may still adopt it before
+that helper runs. Preserve logs, then explicitly remove only the confirmed failed owned Job and
+resume through the task's normal submission path. This draft does not change adoption semantics.

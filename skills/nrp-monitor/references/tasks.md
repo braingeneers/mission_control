@@ -131,3 +131,14 @@ A stage may also declare `"cpu_fallback": "/path/to/cpu-job.yaml"` or a resource
 `"cpu_fallback": {"requests": {"cpu": "4", "memory": "8Gi"}, "limits": {"cpu": "4", "memory": "8Gi"}}`.
 Only a declared fallback is offered; the coordinator decides how to apply it. The monitor never switches or fans out automatically.
 If the pod gets scheduled while held, the queue hold clears automatically.
+
+### Resource groups and retry sizing
+
+An optional stage `resource_group` is a nonempty string identifying sibling stages in this task
+whose templates have the same resource needs. Declare it only for compatible containers, images,
+commands and arguments, apart from item/shard selectors. The monitor also requires matching ordered
+container names and images; it does not guess equivalence from command text. Without a group,
+no propagation occurs. When a stage succeeds after a Tier 0 or fixer resource retry, the CPU and
+memory requests/limits recorded at retry submission raise (never lower) unfinished siblings' manifest values. Every changed
+sibling gets an event. Running Jobs are left alone; the files apply on later submission/retry.
+Resource-class retry budgets are per stage; `max_retries` remains the task-wide cap.

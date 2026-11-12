@@ -17,8 +17,10 @@ Applied to a failed stage of an `auto` task before a fix agent is started. Each 
 (retry cap, class budget, GPU approval date, manifest rules); a rule that cannot decide, or whose resubmit is refused, leaves the
 manifest untouched and hands the failure to the ladder below. Tier 0 resubmits are recorded with `by tier0` in the task's attempts and show "(Tier 0 rule)" in `task show`.
 
-- **OOM**: the OOMKilled container's memory limit becomes `max(observed peak, limit it hit) x 1.3`, rounded up (peak = max working
-  set since submit from NRP's Prometheus; no number, no change). The request keeps the limit within the shared
+- **OOM**: prefer the saved `NRP_MEMORY_PEAK` cgroup reading for the failed container and attempt;
+  otherwise use the maximum sampled working set since submit from NRP's Prometheus. Memory becomes
+  `max(peak, OOM limit) x 1.3`, rounded up. Without a true peak, a sample below half the OOM limit
+  is unreliable: use twice that limit instead. With neither reading, leave sizing to the agents. The request keeps the limit within the shared
   `limit_to_request_tolerance` (20%). Once per stage; above `tier0_mem_cap_gi` (config.json, default 128) or a second OOM goes to the agents.
 - **Known node fault** (pod status/conditions or the log tail of a single-pod Job show an Xid/uncorrectable ECC, no CUDA device,
   nvidia-container-cli, sandbox or volume-mount failure, NodeLost, ContainerStatusUnknown): the node is recorded in a shared fault list and the stage resubmitted with
@@ -115,7 +117,7 @@ mentions it.
 2. **Cheap triage.** For a registered Job with a resume file, one read-only agent looks first and returns a result or
    `ESCALATE` with evidence.
 3. **Repair.** Up to two repair attempts for a legacy job follow-up (the ladder is configurable: agents.md). A task's Tier 2 agent has a
-   retry budget of 4 total and 3 per failure class. Code fixes are committed on `monitor/<task>`. The agent's prompt
+   task-wide retry cap (`max_retries`, default 4) and class budgets (resources: 3 per stage; other classes remain task-wide). Code fixes are committed on `monitor/<task>`. The agent's prompt
    carries the task's handoff, and its `HANDOFF_ENTRY:` block is appended to the handoff's Fix log (handoff.md).
    A single bad item is skipped and logged; a pattern (more than 5% of items, by default; the `skip_limit_fraction`
    setting, install.md) goes to a person.

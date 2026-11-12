@@ -3335,6 +3335,11 @@ def validate_task(raw, warn, plan_gpu=None):
             res = None
         stage = {"id": sid, "job": job, "manifest": os.path.expanduser(m) if isinstance(m, str) else None,
                  "after": after, "done_s3": d3, "state": st0, "attempt": 1}
+        if "resource_group" in s:
+            if isinstance(s["resource_group"], str) and s["resource_group"].strip():
+                stage["resource_group"] = s["resource_group"]
+            else:
+                bad.append("%s: resource_group must be a nonempty string asserting compatible resource templates" % w)
         if "queue_wait_ceiling" in s:
             try:
                 queue_ceiling_seconds(s["queue_wait_ceiling"])
@@ -3589,7 +3594,14 @@ def task_fail(n, sid, cls, sig, detail, logs=None, extra=None):
             return False
         s = tstage(t, sid)
         s["state"] = "failed"
-        t["failure"] = dict({"stage": sid, "job": s["job"], "cls": cls, "sig": sig, "detail": detail[:400], "logs": logs, "ts": now()}, **(extra or {}))
+        if cls == "resources":
+            try:
+                extra_resources = resource_values(manifest_doc(s["manifest"]))
+            except (OSError, ValueError, KeyError, TypeError):
+                extra_resources = None
+        else:
+            extra_resources = None
+        t["failure"] = dict({"stage": sid, "job": s["job"], "cls": cls, "sig": sig, "detail": detail[:400], "logs": logs, "ts": now(), "resource_values": extra_resources}, **(extra or {}))
         tev(t, "stage %s FAILED [%s] %s" % (sid, cls, detail[:200]))     # no wake here: a failure goes up the ladder first (Tier 0/1/2 handle it)
     return task_txn(n, f)
 
@@ -3604,6 +3616,104 @@ def apply_manifest(ns, path):
     return "ok"
 
 
+def cpu_quantity(value):
+    text = str(value).strip()
+    factor = {"m": .001, "u": .000001, "n": .000000001}.get(text[-1:], 1)
+    return float(text[:-1] if factor != 1 else text) * factor
+
+
+def resource_values(doc):
+    return [{"name": c["name"], **{kind: {key: value for key, value in
+            c.get("resources", {}).get(kind, {}).items() if key in ("cpu", "memory")}
+            for kind in ("requests", "limits")}}
+            for c in doc["spec"]["template"]["spec"]["containers"]]
+
+
+def resource_template(doc):
+    values = resource_values(doc)
+    containers = doc["spec"]["template"]["spec"]["containers"]
+    return [{"name": value["name"], "image": container.get("image"),
+             "resources": {kind: value[kind] for kind in ("requests", "limits")}}
+            for value, container in zip(values, containers)]
+
+
+def class_retries(t, f):
+    """Resource budgets belong to each stage; max_retries still caps the task."""
+    return sum(1 for x in t.get("attempts", [])[t.get("budget_from", 0):]
+               if x.get("cls") == f.get("cls") and
+               (f.get("cls") != "resources" or x.get("stage") == f.get("stage")))
+
+
+def true_memory_peak(text, container=None):
+    """Read the helper's JSON lines. RSS fallback is evidence, not a cgroup true peak."""
+    peaks = []
+    for line in text.splitlines():
+        if not line.startswith("NRP_MEMORY_PEAK "):
+            continue
+        try:
+            row = json.loads(line.split(" ", 1)[1])
+            value = row["bytes"]
+            if (row.get("source") in ("cgroup_v2", "cgroup_v1") and
+                    row.get("container") == container and
+                    isinstance(value, int) and not isinstance(value, bool) and value > 0):
+                peaks.append(value)
+        except (ValueError, KeyError, TypeError):
+            continue
+    return max(peaks) if peaks else None
+
+
+def saved_memory_peak(t, s, container=None, all_attempts=False):
+    logs = task_dir(t["name"]) / "logs"
+    paths = logs.glob(s["job"] + "-a*.txt") if all_attempts else [logs / ("%s-a%d.txt" % (s["job"], s.get("attempt", 1)))]
+    peaks = []
+    for path in paths:
+        try:
+            peak = true_memory_peak(path.read_text(), container)
+            if peak: peaks.append(peak)
+        except OSError:
+            pass
+    return max(peaks) if peaks else None
+
+
+def propagate_resources(t, source):
+    """Explicit resource_group asserts compatible templates; only raise CPU/memory in files."""
+    group = source.get("resource_group")
+    proof = next((x for x in reversed(t.get("attempts", [])) if x.get("stage") == source["id"]
+                  and x.get("cls") == "resources"), {})
+    if (source.get("state") != "done" or not group or not proof.get("resources_changed")
+            or proof.get("by") not in ("tier0", "agent", "monitor") or not proof.get("resource_template")):
+        return
+    try:
+        # Propagate what actually ran, even if a review edited the manifest for later runs.
+        src = proof["resource_template"]
+        signature = [(c["name"], c.get("image")) for c in src]
+        for sibling in t["stages"]:
+            if sibling["id"] == source["id"] or sibling["state"] == "done" or sibling.get("resource_group") != group:
+                continue
+            try:
+                doc = manifest_doc(sibling["manifest"])
+                dst = doc["spec"]["template"]["spec"]["containers"]
+                if [(c["name"], c.get("image")) for c in dst] != signature:
+                    continue
+                changes = []
+                for a, b in zip(src, dst):
+                    for kind in ("requests", "limits"):
+                        for resource in ("cpu", "memory"):
+                            value = a.get("resources", {}).get(kind, {}).get(resource)
+                            old = b.get("resources", {}).get(kind, {}).get(resource)
+                            parse = mem_bytes if resource == "memory" else cpu_quantity
+                            if value is not None and (old is None or parse(str(value)) > parse(str(old))):
+                                b.setdefault("resources", {}).setdefault(kind, {})[resource] = value
+                                changes.append("%s.%s.%s=%s" % (b["name"], kind, resource, value))
+                if changes:
+                    manifest_write(sibling["manifest"], doc)
+                    tev(t, "resource propagation %s -> %s (manifest only): %s" % (source["id"], sibling["id"], ", ".join(changes)))
+            except (OSError, ValueError, KeyError, TypeError) as e:
+                tev(t, "resource propagation to %s skipped: %s" % (sibling["id"], e))
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        tev(t, "resource propagation from %s skipped: %s" % (source["id"], e))
+
+
 def do_submit(n, sid, reason, by):
     """Submit a stage's manifest. A failed stage = a retry (budgets enforced here, whoever asks). Returns (ok, message)."""
     t = task_load(n)
@@ -3615,7 +3725,7 @@ def do_submit(n, sid, reason, by):
         if not f or f["stage"] != sid:
             return False, "stage %s has no recorded failure" % sid
         used = len(t["attempts"][t.get("budget_from", 0):])
-        cls_used = sum(1 for x in t["attempts"][t.get("budget_from", 0):] if x["cls"] == f["cls"])
+        cls_used = class_retries(t, f)
         if used >= t["max_retries"]:
             return False, "RETRY CAP REACHED (%d of %d). Do not resubmit; report STOPPED with the diagnosis." % (used, t["max_retries"])
         if cls_used >= CLASS_BUDGET.get(f["cls"], 1):
@@ -3656,7 +3766,9 @@ def do_submit(n, sid, reason, by):
         s2, f2 = tstage(t, sid), t.get("failure")
         if retry and f2:
             t["attempts"].append({"stage": sid, "job": s2["job"], "cls": f2["cls"], "sig": f2["sig"], "detail": f2["detail"][:200],
-                                  "fix": " ".join(reason.split())[:300], "by": by, "ts": now()})
+                                  "fix": " ".join(reason.split())[:300], "by": by, "ts": now(),
+                                  "resources_changed": f2.get("resource_values") is not None and f2["resource_values"] != resource_values(doc),
+                                  "resource_template": resource_template(doc) if f2["cls"] == "resources" else None})
             s2["attempt"] = s2.get("attempt", 1) + 1
             t["failure"] = None
         s2.update(state="running", submitted=now())
@@ -3938,7 +4050,7 @@ def observe_task(n, jobs):
             if now() - s.get("submitted", 0) < MISSING_GRACE_S:
                 continue
             if all(s3_exists(u, {}) is True for u in s["done_s3"]):
-                task_txn(n, lambda t: (tstage(t, sid).update(state="done", done_ts=now()), tev(t, "stage %s done (Job gone, outputs present)" % sid)))
+                task_txn(n, lambda t: (tstage(t, sid).update(state="done", done_ts=now()), propagate_resources(t, tstage(t, sid)), tev(t, "stage %s done (Job gone, outputs present)" % sid)))
                 digest("done", "stage %s done (Job gone before logs were saved; outputs present)" % sid, n)
                 continue
             if s.get("util_deleted"):
@@ -3959,7 +4071,7 @@ def observe_task(n, jobs):
                 task_fail(n, sid, "outputs", "outputs-missing:" + miss, "Job succeeded but %s does not exist" % miss, p)
                 continue
             kubectl("-n", ns, "delete", "job", s["job"], "--wait=false")
-            task_txn(n, lambda t: (tstage(t, sid).update(state="done", done_ts=now()), tev(t, "stage %s done, Job deleted" % sid)))
+            task_txn(n, lambda t: (tstage(t, sid).update(state="done", done_ts=now()), propagate_resources(t, tstage(t, sid)), tev(t, "stage %s done, Job deleted" % sid)))
             digest("done", "stage %s (%s) succeeded; outputs %s" % (sid, s["job"], ", ".join(s["done_s3"])[:200]), n)
             PASS["stage_done"] = PASS.get("stage_done", 0) + 1
         elif info["state"] == "FAILED":
@@ -3972,7 +4084,7 @@ def task_prompt(t):
     f = t["failure"] or {}
     tpl = (TPL / "task_agent.md").read_text()
     att = t["attempts"]
-    cls_used = sum(1 for x in att[t.get("budget_from", 0):] if x["cls"] == f.get("cls"))
+    cls_used = class_retries(t, f)
     code = t.get("code") or {}
     rep = {"name": t["name"], "goal": t["goal"], "approved": t["approved"], "origin": origin_plain(t.get("origin")), "ns": t["namespace"], "notes": t["notes"] or "(none)",
            "used": str(len(att[t.get("budget_from", 0):])), "max": str(t["max_retries"]), "cls": f.get("cls", "?"),
@@ -4187,11 +4299,14 @@ def tier0_oom(t, s, f):
         return None
     res = c.setdefault("resources", {})
     lim = mem_bytes((res.get("limits") or {}).get("memory") or (res.get("requests") or {}).get("memory") or "")
-    peak = thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted") or now() - 3600)
+    true_peak = saved_memory_peak(t, s, c["name"])
+    if true_peak is None and len(cs_) == 1:
+        true_peak = saved_memory_peak(t, s)
+    peak = true_peak if true_peak is not None else thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted") or now() - 3600)
     if not lim or peak is None:
         return None
     base = max(peak, lim)                                     # an OOM-killed container reached its limit even if the 30 s samples missed it
-    new = base * OOM_FACTOR
+    new = 2 * lim if true_peak is None and peak < .5 * lim else base * OOM_FACTOR
     cap = float(OWNER.get("tier0_mem_cap_gi") or OOM_MAX_GI_DEFAULT) * 2 ** 30
     if new > cap:
         return None
@@ -4202,8 +4317,8 @@ def tier0_oom(t, s, f):
     req_b = new_b if old_req >= lim else min(new_b, max(old_req, new_b / (1 + tol)))        # limit stays within the shared tolerance of the request
     res.setdefault("limits", {})["memory"] = new_text
     res.setdefault("requests", {})["memory"] = mem_text(req_b)
-    return doc, "OOM at %s (observed peak %.1fGi) -> memory %s (peak x%g, Tier 0 rule)" % (
-        mem_text(lim), peak / 2 ** 30, new_text, OOM_FACTOR), {"rule": "oom", "memory": new_text}
+    return doc, "OOM at %s (observed peak %.1fGi) -> memory %s (base x%g, Tier 0 rule)" % (
+        mem_text(lim), peak / 2 ** 30, new_text, new / base), {"rule": "oom", "memory": new_text}
 
 
 def node_fault_of(t, s, f):
@@ -4420,7 +4535,7 @@ def handle_failure(n, a):
     since = t.get("budget_from", 0)
     prior = [x["sig"] for x in t["attempts"] if x["stage"] == f["stage"]]
     used = len(t["attempts"][since:])
-    cls_used = sum(1 for x in t["attempts"][since:] if x["cls"] == f["cls"])
+    cls_used = class_retries(t, f)
     if t["mode"] == "watch":
         # a watch-only task has no ladder: the failure is final, so this is the one `failure` wake (the chat hears it, and so does the owner)
         if not a.dry_run:
@@ -4619,6 +4734,7 @@ def recover_held_completion(n, jobs):
     def recover(t):
         for s in completed:
             tstage(t, s["id"]).update(state="done", done_ts=now())
+            propagate_resources(t, tstage(t, s["id"]))
         t.update(status="running", failure=None)
         for key in ("reason", "coordinator_since", "util_event"):
             t.pop(key, None)
@@ -4836,7 +4952,9 @@ def process_util_event(n, a):
 
 
 MEMORY_RULE = """Memory NRP band is 20–150% of request. Tier 1 is judge only: CLOSE with numbers or ESCALATE with numbers and what looks wrong.
-The fixer alone changes resources. need=max(stage whole-life per-pod peaks, recorded OOM limits); right=ceil(need*1.25) Gi.
+The fixer alone changes resources. need=max(stage whole-life per-pod peaks, recorded OOM limits); right=ceil(need*1.5) Gi.
+A recorded OOM limit is a proven lower bound even when sampled usage idles below the band between spikes.
+CLOSE with that reason when request <= 1.2*right; never STOP or escalate solely for that low mean.
 request <= 1.2*right is sized correctly; above it is oversized. If max/median >3 and low pods remain below 20% of request
 through their whole life, split inputs into size groups. Missing peaks or incomparable pods require explicit review.
 Fixer: write right into the manifest for retries/later runs. Leave running work to finish unless measured time remaining >2h
@@ -4859,6 +4977,9 @@ def memory_low_evidence(t, s, flagged_pod):
     since = min(s.get("memory_since", now()), t.get("created", now()), s.get("submitted", now()),
                 *(now() - age for age in ages.values()))
     peaks = thanos_peak_mem(t["namespace"], s["job"], containers[0]["name"], since, per_pod=True)
+    true_peak = saved_memory_peak(t, s, containers[0]["name"], all_attempts=True)
+    if true_peak is None and len(containers) == 1:
+        true_peak = saved_memory_peak(t, s, all_attempts=True)
     previous = s.get("memory_peaks_gi", {})
     peaks = {k: max(v / 2**30, previous.get(k, 0)) for k, v in peaks.items()} | {k: v for k, v in previous.items() if k not in peaks}
     for name in peaks:
@@ -4874,8 +4995,8 @@ def memory_low_evidence(t, s, flagged_pod):
                 pc = next((c for c in p.get("spec", {}).get("containers", []) if c["name"] == cs.get("name")), {})
                 b = mem_bytes(pc.get("resources", {}).get("limits", {}).get("memory", ""))
                 if b: oom.append(b / 2**30)
-    need = max(list(peaks.values()) + oom + [0])
-    right = math.ceil(need * 1.25)
+    need = max(list(peaks.values()) + oom + [true_peak / 2**30 if true_peak else 0])
+    right = math.ceil(need * 1.5)
     spread = max(peaks.values()) / statistics.median(peaks.values()) if peaks and statistics.median(peaks.values()) else None
     missing = sorted((set(ages) | {flagged_pod}) - set(peaks))
     verdict = "missing peaks: review" if not peaks or missing else ("sized correctly" if request <= 1.2 * right else "oversized")
@@ -4884,7 +5005,7 @@ def memory_low_evidence(t, s, flagged_pod):
     if spread and spread > 3 and low_whole_life and not missing: verdict = "inputs differ in size"
     task_txn(t["name"], lambda t: tstage(t, s["id"]).update(memory_peaks_gi=peaks, oom_limits_gi=sorted(set(oom)), memory_since=since, memory_completed_pods=sorted(finished)))
     return dict(peaks_gi=peaks, ages_seconds=ages, request_gi=request, limit_gi=limit, oom_limits_gi=oom,
-                need_gi=need, right_gi=right, spread=spread, suggested_verdict=verdict, ramp_up=age < threshold,
+                true_peak_gi=true_peak / 2**30 if true_peak else None, need_gi=need, right_gi=right, spread=spread, suggested_verdict=verdict, ramp_up=age < threshold,
                 missing_peak_pods=missing, low_whole_life=low_whole_life, measured_runtime_seconds=runtime, remaining_seconds=max(0, runtime-age) if runtime else None)
 
 
