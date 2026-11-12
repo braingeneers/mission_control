@@ -5,7 +5,7 @@ built-in models and limits. An invalid file is ignored with a digest fault; it n
 
 ## Choosing the backend per tier: `nrp-monitor setup`
 
-Tier 1 (triage) and Tier 2 (fixer) each run on an ordered list of **backends** (`runner`, `model`, optional `thinking`). Tier 3 is always the
+Tier 1 (triage), Tier 2 (fixer) and the deputy each run on an ordered list of **backends** (`runner`, `model`, optional `thinking`). Tier 3 is always the
 task's coordinator chat; there is no separate Opus tier. `install.sh` runs `nrp-monitor setup` once when `agents.json` is missing and a
 terminal is attached (otherwise it prints how to run it). Setup asks which subscriptions you have (Claude Code, Codex, Gemini CLI, Antigravity (agy), T3),
 detects the installed CLIs, suggests Tier 1 = Gemini Flash with the lowest thinking (when Gemini CLI is available, else Haiku / Codex) and
@@ -118,3 +118,14 @@ Tests use a temporary HOME and explicit fake recorder binaries for T3, Claude an
 and requires `NRP_MONITOR_T3_BIN`, `NRP_MONITOR_CLAUDE_BIN` or `NRP_MONITOR_CODEX_BIN` explicitly.
 `NRP_MONITOR_NO_WAKE=1` disables all wake delivery, including webhooks. Never put a real thread or session ID in fixtures.
 The isolation guard tests also remove the explicit binaries and verify that discovery cannot reach an installed client.
+
+## Deputy configuration
+
+The deputy is enabled by default (`config.json`: `"deputy_enabled": false` disables it). It defaults to Claude Sonnet independently of the fixer's configured runner order. Use `nrp-monitor setup --non-interactive --deputy claude:sonnet` (alongside any triage/fixer choices), or set `agents.json` `tiers.deputy` to an ordered backend list to override that choice, and `limits.deputy` to change its bounds. Defaults match the task tier: 60 turns, $6 budget and 2700-second timeout (turn/dollar limits apply to Claude). For example:
+
+```json
+{"tiers":{"deputy":[{"runner":"claude","model":"sonnet"}]},
+ "limits":{"deputy":{"turns":60,"budget":6,"timeout":2700}}}
+```
+
+Only Claude/Codex writing backends are accepted, as for the fixer. Gemini remains triage-only. The deputy has the fixer's task/code tools and may read the copied plan; it gains only task-local decision commands and a bounded retry-cap increase. It cannot use the coordinator's cancel/owner-notification commands.

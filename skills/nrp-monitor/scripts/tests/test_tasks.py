@@ -168,6 +168,8 @@ class T(unittest.TestCase):
         shutil.copy(SCRIPT, self.bin / "nrp-monitor")
         shutil.copy(HERE / "nrp-task", self.bin / "nrp-task")
         shutil.copytree(HERE / "templates", self.state / "templates")
+        # Preserve coverage of the switchable pre-deputy ladder; batch A tests exercise default-on separately.
+        (self.state / "config.json").write_text(json.dumps({"deputy_enabled": False}))
         (self.fake / "cluster.json").write_text('{"jobs": {}}')
         (self.fake / "s3.json").write_text("[]")
         self.env = {"PATH": "%s:/usr/bin:/bin" % self.bin, "HOME": str(self.tmp), "NRP_MONITOR_OWNER_NAME": "Sam", "FAKE_DIR": str(self.fake),

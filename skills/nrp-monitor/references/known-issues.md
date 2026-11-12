@@ -47,5 +47,19 @@ Wakes block a pass for up to 600 seconds each. Separate task escalations are not
 - Live pv3 import behavior after multi-directory reship remains unverified; packaging layout is tested.
 - `UTIL_OK` is intentionally narrow: lab-floor-only, running non-GPU tasks, bounded count/time;
   ordinary NRP-band/GPU failures cannot be waived.
-- Job-side writers must invalidate stale root DONE markers themselves; monitor success checks use
-  exact head-object keys and require all Indexed Job completions.
+- Never-submitted pending stages reuse existing success markers after their gates pass, without rerunning.
+  Use fresh output keys when a new computation is intended: marker existence does not validate provenance.
+  Running Job success still requires all Indexed Job completions and exact head-object keys.
+
+### Same-name Jobs on resume or manual submission
+
+`task resume` can leave a stage pending while a same-name failed Job still exists. A Job created
+manually can also collide with submission. Inspect task ownership and Job state first: never
+remove a running or pending Job to clear a name. The submission helper already saves logs and
+deletes a terminal same-name Job before applying; resume/observation may still adopt it before
+that helper runs. Preserve logs, then explicitly remove only the confirmed failed owned Job and
+resume through the task's normal submission path. This draft does not change adoption semantics.
+
+## Cost ledger rollout limits
+
+The ledger starts with new events after installation. Historical task/digest events support wake counts but cannot recover unreported tokens or USD cost. T3 relay/CLI wakes do not report coordinator consumption; those costs remain null. Completion wakes are intentionally unchanged pending a separate batching design. Default cap scaling affects new tasks that omit `max_retries`; existing tasks retain their stored cap, though the deputy can raise it within the scaled bound. Recorded resolutions mean accepted state transitions or verified markers, not proof that the eventual outputs pass scientific review.

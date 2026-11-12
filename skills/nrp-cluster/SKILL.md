@@ -53,6 +53,10 @@ Use this skill when working on compute pipelines that run as Kubernetes jobs on 
 
 ## Resource sizing and utilization
 
+Before fan-out, measure cgroup true memory peaks on the expected heaviest inputs; see
+Smoke/profile sizing below. Size memory as ceil(max(true peaks, recorded OOM limits) * 1.5) Gi.
+Sampled metrics alone can miss transient loading spikes.
+
 The rules above, as numbers a monitor can check, are also in [references/utilization-policy.json](references/utilization-policy.json);
 the two must agree:
 
@@ -126,8 +130,11 @@ Escalate for issues that are clearly out-of-repo:
 
 ## Smoke/profile sizing
 
-The script never chooses or launches a full fan-out on its own after profiling. Register a few representative
-smoke/profile jobs, including the largest/longest item. Mark stages `purpose: "smoke"` or `purpose: "profile"`
+The script never chooses or launches a full fan-out on its own after profiling. Profile 2–3 items expected to be heaviest by input size, unit count or duration, using the real
+configuration. Each profile must report its cgroup true memory peak with
+[memory_peak.py](references/memory_peak.py). Size memory from the maximum
+true peak (and any recorded OOM limit): ceil(need * 1.5) Gi. RSS is only a fallback diagnostic;
+without a cgroup peak, investigate before fan-out. This 50% headroom rule also applies to later memory LOW review. Mark stages `purpose: "smoke"` or `purpose: "profile"`
 (boolean `smoke`/`profile` also accepted). Registration refuses Job `spec.parallelism` or `spec.completions`
 above `smoke_max_jobs` in nrp-cluster's shared utilization-policy.json (default 3). Select inputs before registration;
 the script cannot infer the largest input. After a successful profile, the Tier 2 fixer or coordinator chat decides
@@ -136,6 +143,20 @@ behind profile stages.
 
 ## Memory LOW review
 
-A utilization flag alone never fails or holds a healthy running task stage. For memory (20–150% of request), skip LOW review during ramp-up: 25% of measured stage runtime, or 30 minutes without history. Use whole-life per-pod Thanos peaks and recorded OOM limits: need is their maximum, right is ceil(need*1.25) Gi. A request <=1.2*right is sized correctly. Otherwise the fixer updates the manifest for retries/later runs; resubmit running work only when resumable and more than two measured hours remain. A max/median peak spread >3 with completed low pods below 20% throughout their lives calls for input size groups. The triage judge receives all numbers and returns CLOSE or ESCALATE; only the fixer changes anything. Missing peaks require review. Example: 12Gi request, peaks 4.5–7.7Gi, earlier OOM at 6Gi => need 7.7, right 10Gi, sized correctly; a 1.2Gi mean at 17 minutes is still ramp-up.
+A utilization flag alone never fails or holds a healthy running task stage. For memory (20–150% of request), skip LOW review during ramp-up: 25% of measured stage runtime, or 30 minutes without history. Prefer reported cgroup true peaks; also retain whole-life per-pod Thanos peaks and recorded OOM limits: need is their maximum, right is ceil(need*1.5) Gi. A request <=1.2*right is sized correctly. Otherwise the fixer updates the manifest for retries/later runs; resubmit running work only when resumable and more than two measured hours remain. A max/median peak spread >3 with completed low pods below 20% throughout their lives calls for input size groups. The triage judge receives all numbers and returns CLOSE or ESCALATE; only the fixer changes anything. Missing peaks require review. Example: 12Gi request, peaks 4.5–7.7Gi, earlier OOM at 6Gi => need 7.7, right 12Gi, sized correctly; a 1.2Gi mean at 17 minutes is still ramp-up.
 
 - `nrp-monitor` asks the coordinator after six hours unschedulable for GPU stages (`queue_wait_ceiling` overrides it); the Job stays queued, resume doubles the ceiling, and CPU fallback requires an explicit coordinator choice.
+
+### Reporting memory peaks
+
+Copy `references/memory_peak.py` into the job image/code bundle and wrap the workload:
+`python memory_peak.py --container CONTAINER --done-json LOCAL_MARKER -- COMMAND ...`.
+Omit `--done-json` when there is no local JSON success marker. It updates an existing marker only
+on success; upload that marker after the wrapper returns. Keep the `NRP_MEMORY_PEAK {...}` line
+in stdout. `--container` must match the manifest container name; omit it only for single-container Jobs.
+The helper reads cgroup v2 `memory.peak`, then v1 `memory.max_usage_in_bytes`, then child-process
+`ru_maxrss` (explicitly marked as a fallback, not a true container peak; it excludes page cache).
+Run it in a fresh job cgroup so the peak belongs to that run. An OOM can kill the wrapper before
+it reports: no line is not evidence of low usage. The monitor reads saved log lines; markers are
+for provenance, not an alternative success check. For multi-container Jobs report each container separately.
+The 1.3x Tier 0 repair factor is a bounded recovery rule; deliberate profile/review sizing uses 1.5x.

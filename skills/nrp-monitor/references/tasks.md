@@ -17,7 +17,7 @@ Required: `name` (lowercase letters, digits and `-`, at most 40), `goal`, `appro
   place at reship (not editable by agents). At most 8, each a distinct package name, no `..`. Declare them for a task registered without
   them with `nrp-monitor task code NAME --pkg-dir DIR --extra-pkg-dir finetune --extra-pkg-dir bwb`.
 - `namespace` (default `braingeneers`), `mode` (`auto`: agents repair and resubmit, `watch`: any failure goes to the
-  person), `max_retries` (0-10, default 4), `label`.
+  person), `max_retries` (nonnegative integer; default `max(4, ceil(n_stages/4))`; explicit values win), `label`.
 - `origin` (**required** for `task add`): `{title, link, assistant?, collaborator?, harness?, session?, cwd?}` of the chat or ticket the work came from.
   `harness` + `session` + `cwd` make the chat wakeable whatever it runs in: `claude` (Claude Code session id), `codex` (Codex session id) or
   `t3` (thread link; webhook preferred when configured); flags `--origin-harness`, `--origin-session`, `--origin-cwd` (operations.md, "Waking the coordinator chat"). Without it
@@ -131,3 +131,42 @@ A stage may also declare `"cpu_fallback": "/path/to/cpu-job.yaml"` or a resource
 `"cpu_fallback": {"requests": {"cpu": "4", "memory": "8Gi"}, "limits": {"cpu": "4", "memory": "8Gi"}}`.
 Only a declared fallback is offered; the coordinator decides how to apply it. The monitor never switches or fans out automatically.
 If the pod gets scheduled while held, the queue hold clears automatically.
+
+### Resource groups and retry sizing
+
+An optional stage `resource_group` is a nonempty string identifying sibling stages in this task
+whose templates have the same resource needs. Declare it only for compatible containers, images,
+commands and arguments, apart from item/shard selectors. The monitor also requires matching ordered
+container names and images; it does not guess equivalence from command text. Without a group,
+no propagation occurs. When a stage succeeds after a Tier 0 or fixer resource retry, the CPU and
+memory requests/limits recorded at retry submission raise (never lower) unfinished siblings' manifest values. Every changed
+sibling gets an event. Running Jobs are left alone; the files apply on later submission/retry.
+Resource, infra and queue retry budgets are per stage (a lost pod or a stuck queue on one shard says nothing about the others); code, util, outputs and unknown budgets are task-wide; `max_retries` remains the task-wide cap.
+
+Before the first submission of a pending stage, after its dependency and `after_s3` gates pass, the monitor checks
+all exact `done_s3` objects. If all exist, it marks the stage done, records reuse in the event log and digest,
+and proceeds with dependents and completion actions. Missing or unknown checks submit as usual. Retries keep their
+existing handling. There is no force-rerun field: use fresh output keys for a new computation.
+
+`task resume --note TEXT` also saves a dated coordinator decision in the handoff's Fix log (when attached),
+without changing the Registrar. Entries use the existing 1500-character sanitization/truncation limit; prompts retain
+newest entries and point to the full file for omitted history. Triage and fix agents apply matching standing decisions
+within the task approval. Resume without a note adds no handoff entry.
+
+## Reusing coordinator decisions
+
+Failures and retry attempts carry a 16-character SHA-256 fingerprint, shown by `task show`, in wake summaries and in agent prompts. Failure detail is lowercased, the stage's own job name replaced, hexadecimal runs of at least eight characters and digits normalized, and whitespace collapsed. The class and explicit `resource_group` also enter the hash. Without a group, container image plus command/args identify the workload; shard/index selectors are normalized while image versions and scientific arguments remain significant. Missing manifest identity isolates the stage.
+
+Record a decision with:
+
+```sh
+nrp-monitor decide TASK FINGERPRINT --action resubmit --scope task --why 'Known transient; retry unchanged'
+# Or record the failed stage decision while handing work back:
+nrp-monitor task resume TASK --note 'Current manifest incorporates the approved fix' --decide resubmit_with_manifest
+```
+
+`decide` defaults to `--scope stage`; `--scope task` covers matching sibling failures inside this task only. `--max-uses N` limits successful applications; omission means unlimited within retry budgets. `task resume --decide` records task scope and keeps the note in the Fix log. Entries in `<state>/tasks/TASK/decisions.json` contain fingerprint, action, scope, stage where applicable, max_uses, uses, who, why and timestamp. A newer decision replaces the same fingerprint/scope/stage entry.
+
+Actions: `resubmit` retries without an automated manifest edit; `resubmit_with_manifest` uses the current manifest file as edited by the coordinator; `escalate` always goes straight to the coordinator (bypassing deputy); `skip_reuse` marks the failed stage done only when every exact `done_s3` object exists. Script decisions run before triage and other Tier 0 repairs, never cross tasks, and consume the same retry/class budgets as other submissions. A refused retry does not consume a decision use. `skip_reuse` consumes a decision use but submits no retry. Watch-only tasks do not apply decisions.
+
+The deputy may use `nrp-task decide FINGERPRINT --action ACTION --why TEXT [--max-uses N]` (always task scope), then `nrp-task apply-decision`. It can use `nrp-task retry-cap N` to raise the task cap to at most the scaled default; it cannot reset class budgets. Existing registered tasks retain their stored cap; the scaled default is applied only when a newly registered task omits `max_retries`.

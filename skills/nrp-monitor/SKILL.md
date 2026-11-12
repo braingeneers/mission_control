@@ -1,6 +1,6 @@
 ---
 name: nrp-monitor
-description: Follow approved NRP Nautilus work unattended instead of polling it. Register staged Jobs as a task with exact S3 success markers; a background pass submits stages, saves logs, checks utilization against the shared NRP Cluster numbers, repairs failures up a ladder (script rules, a triage judge, a fixer, then a wake of the plan's own coordinator chat), continues the approved plan when work finishes, and contacts the owner once, only if that chat says he is needed. Use after the user approves NRP compute, for "keep an eye on this", overnight pipelines and utilization enforcement. Not for deciding what to run or for ad-hoc one-off Jobs.
+description: Follow approved NRP Nautilus work unattended instead of polling it. Register staged Jobs as a task with exact S3 success markers; a background pass submits stages, saves logs, checks utilization against the shared NRP Cluster numbers, repairs failures up a ladder (script rules, a triage judge, a fixer, a bounded fresh deputy, then a wake of the plan's own coordinator chat), continues the approved plan when work finishes, and contacts the owner once, only if that chat says he is needed. Use after the user approves NRP compute, for "keep an eye on this", overnight pipelines and utilization enforcement. Not for deciding what to run or for ad-hoc one-off Jobs.
 ---
 
 # NRP Monitor
@@ -63,12 +63,14 @@ submitter.
 
 - Submits stages whose conditions hold (`after`, `after_s3`), checks success with an exact S3 `head-object` per key
   (never a prefix listing), saves logs, deletes only its own finished Jobs after the markers are verified.
-- Applies fixed Tier 0 rules before any agent: OOM resubmit at observed peak x1.3, exclusion of a node with a known fault, and the
+- Applies fixed Tier 0 rules before any agent: OOM resubmit using cgroup true peak when available, otherwise sampled peak, with a 2x OOM-limit backstop for unreliable low samples, exclusion of a node with a known fault, and the
   scheduler's reason for a long Pending; see [operations](references/operations.md).
+- Budgets resource retries per stage within the task-wide cap. After a successful resource change,
+  raises compatible siblings' manifest resources when explicitly grouped; see [tasks](references/tasks.md).
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).
-- Handles a failure at the cheapest level that can fix it (script rules, a triage judge, a fixer, then the task's own coordinator
+- Handles a failure at the cheapest level that can fix it (script rules, a triage judge, a fixer, a bounded fresh deputy, then the task's own coordinator
   chat, woken in whatever harness it runs; the person hears only if that chat says so): see
   [operations](references/operations.md). Which agent runs each tier (Claude Code, Codex or Gemini CLI), in what order, and what happens when one is unavailable is
   chosen by `nrp-monitor setup` and stored in `agents.json`: see [agents](references/agents.md). A healthy Job that only the lab floor flags can be waived
@@ -103,8 +105,11 @@ submitter.
 
 ## Smoke/profile sizing
 
-The script never chooses or launches a full fan-out on its own after profiling. Register a few representative
-smoke/profile jobs, including the largest/longest item. Mark stages `purpose: "smoke"` or `purpose: "profile"`
+The script never chooses or launches a full fan-out on its own after profiling. Profile 2–3 items expected to be heaviest by input size, unit count or duration, using the real
+configuration. Each profile must report its cgroup true memory peak with
+[nrp-cluster memory_peak.py](../nrp-cluster/references/memory_peak.py). Size memory from the maximum
+true peak (and any recorded OOM limit): ceil(need * 1.5) Gi. RSS is only a fallback diagnostic;
+without a cgroup peak, investigate before fan-out. This 50% headroom rule also applies to later memory LOW review. Mark stages `purpose: "smoke"` or `purpose: "profile"`
 (boolean `smoke`/`profile` also accepted). Registration refuses Job `spec.parallelism` or `spec.completions`
 above `smoke_max_jobs` in nrp-cluster's shared utilization-policy.json (default 3). Select inputs before registration;
 the script cannot infer the largest input. After a successful profile, the Tier 2 fixer or coordinator chat decides
@@ -130,7 +135,7 @@ The optional Antigravity `agy` runner is triage-only; select it through setup, e
 
 ## Utilization review and wake routes
 
-Utilization flags leave healthy stages running. The triage judge returns CLOSE or ESCALATE; the fixer makes every change. Memory LOW uses ramp-up, whole-life per-pod peaks and recorded OOM limits, with 25% headroom. See [utilization](references/utilization.md) for the exact rule and big-s example.
+Utilization flags leave healthy stages running. The triage judge returns CLOSE or ESCALATE; the fixer makes every change. Memory LOW uses ramp-up, whole-life per-pod peaks and recorded OOM limits, with 50% headroom. See [utilization](references/utilization.md) for the exact rule and worked example.
 
 T3 origins can use `origin.link: "t3-thread://v2/ENV/THREAD"` (angle brackets around the link are accepted).
 A configured `<state>/webhooks/<task>` remains the preferred T3 route. Otherwise the monitor sends the wake text
@@ -150,3 +155,31 @@ GPU stages have a default six-hour unschedulable queue ceiling; CPU stages have 
 to a duration such as `6h` to override it. At the ceiling the monitor asks the coordinator and leaves the Job queued.
 `task resume NAME` keeps waiting and doubles the ceiling. Scheduling clears the queue hold automatically.
 An optional stage `cpu_fallback` declares a manifest path or resources override for the coordinator to consider; the monitor never switches automatically.
+
+Never-submitted pending stages reuse existing `done_s3` success markers after their gates pass; dependents and completion
+actions proceed normally. Retries are unchanged. Use fresh output keys for new computations (see [tasks](references/tasks.md)).
+
+## Decisions and cost review
+
+Use `nrp-monitor decide TASK FINGERPRINT --action ACTION [--scope task] --why TEXT` for reusable, task-local failure handling; `task show` displays fingerprints and decisions. `task resume --note TEXT --decide ACTION` records the decision and the existing Fix log note together. Retry caps still apply; a new task without an explicit cap defaults to `max(4, ceil(stages/4))`.
+
+Before a failure wakes the coordinator, one fresh Sonnet deputy may resolve it within the same approval and retry/class budgets. Configure `tiers.deputy` / `limits.deputy` in `agents.json`, or disable it with owner `config.json` `"deputy_enabled": false`. The deputy cannot change scientific checks or contact the owner.
+
+After handling a wake, record `nrp-monitor wake-review TASK --by rule|agent|coordinator --why TEXT`. Use `nrp-monitor costs [--days N] [--task NAME]` to inspect `<state>/costs.jsonl`: wakes by task/kind, tier resolution shares, reported costs and avoidable-wake reviews. Completion wake behavior is unchanged. Details: [operations](references/operations.md) and [tasks](references/tasks.md).
+
+### Plan completion groups
+
+Plans may declare `groups: collect=1,2; analyze=3`, `wake: group|task|digest`, per-group `wake_collect: digest`, and
+`retries: collect=40; analyze=8`. With groups the default is one coordinator completion wake per group; without them
+legacy task/step behavior remains. `on_done` handles any followup in the same continue agent. Every group step needs a
+registered task and all members must succeed and finish their result checks. Cancelled/failed/held tasks keep it open;
+register all fan-out members before completion. A group already announced never reopens: use another plan id for a new
+batch. Stops and unresolved checks still wake with a reason; the failure ladder is unchanged. `plan show` shows membership
+and policy; `costs` shows avoided completion events; the ledger records `group_wake`.
+
+Optional task `postcheck: {"cmd": ["python", "/path/checker.py"], "expect": "PASS"}` declares a trusted read-only local
+checker, executed with exact argv and a 120 s timeout before success; failure enters the outputs ladder. This is a declared
+contract, not an OS sandbox. Continue/followup agents can rerun it with `nrp-task postcheck`, read their task state folder,
+and use `nrp-task s3 cp URI DEST` for exact objects up to 256 KiB within plan `may_touch` (local downloads only under the
+task's `downloads/`). Success logs capture container stdout before deletion and store `logs/<stage>/outputs.json`; task show
+and continue prompts include the extracted KEY=VALUE lines. Group summaries include checks, outputs and resolution tiers.

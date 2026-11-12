@@ -17,8 +17,10 @@ Applied to a failed stage of an `auto` task before a fix agent is started. Each 
 (retry cap, class budget, GPU approval date, manifest rules); a rule that cannot decide, or whose resubmit is refused, leaves the
 manifest untouched and hands the failure to the ladder below. Tier 0 resubmits are recorded with `by tier0` in the task's attempts and show "(Tier 0 rule)" in `task show`.
 
-- **OOM**: the OOMKilled container's memory limit becomes `max(observed peak, limit it hit) x 1.3`, rounded up (peak = max working
-  set since submit from NRP's Prometheus; no number, no change). The request keeps the limit within the shared
+- **OOM**: prefer the saved `NRP_MEMORY_PEAK` cgroup reading for the failed container and attempt;
+  otherwise use the maximum sampled working set since submit from NRP's Prometheus. Memory becomes
+  `max(peak, OOM limit) x 1.3`, rounded up. Without a true peak, a sample below half the OOM limit
+  is unreliable: use twice that limit instead. With neither reading, leave sizing to the agents. The request keeps the limit within the shared
   `limit_to_request_tolerance` (20%). Once per stage; above `tier0_mem_cap_gi` (config.json, default 128) or a second OOM goes to the agents.
 - **Known node fault** (pod status/conditions or the log tail of a single-pod Job show an Xid/uncorrectable ECC, no CUDA device,
   nvidia-container-cli, sandbox or volume-mount failure, NodeLost, ContainerStatusUnknown): the node is recorded in a shared fault list and the stage resubmitted with
@@ -38,12 +40,12 @@ manifest untouched and hands the failure to the ladder below. Tier 0 resubmits a
 ## Escalation ladder
 
 A failure is handled by the cheapest thing that can fix it; a person hears about it only after that has failed, with one
-Slack DM. The triage judge reviews, the fixer changes work, and the chat that owns the work helps if the fixer cannot, and only that chat decides
+Slack DM. The triage judge reviews, the fixer changes work, a fresh deputy tries bounded recovery, and the chat that owns the work helps if the deputy cannot. Only that chat decides
 the owner is needed.
 
 ### Tasks (v3)
 
-0. **Tier 0, script rules, no model.** Classification, success markers, utilization, and the timeout rules below.
+0. **Tier 0, script rules, no model.** Task-scoped coordinator decisions are checked first, then classification, success markers, utilization, and the timeout rules below.
 1. **Tier 1, triage judge** (agent tier `triage`, read-only `nrp-task show|logs|describe|util|s3`). Runs once per failure when a
    benign answer is possible: the Job is still running, pending or finished, or the class is `unknown`/`slow`. A plain terminal failure
    the rules already classified (OOM, traceback, image pull) skips straight to Tier 2. Running utilization flags instead use a separate observation event and always start with the judge; they never fail the stage. Menu: `CLOSE: why`, `ESCALATE: evidence` (anything else counts as
@@ -52,17 +54,18 @@ the owner is needed.
    refuses to close it when the Job is dead and the outputs are missing; the event then goes on to Tier 2.
 2. **Tier 2, fixer** (agent tier `task`, `templates/task_agent.md`; it sees Tier 1's text). Fixes and resubmits within the retry
    budget. It reports STOPPED when it is not confident, needs a scientific or design choice, or its waiver is refused. A failure that
-   repeats after a fix of its own, or a used-up retry budget, skips the agents and goes straight to Tier 3.
+   repeats after a fix of its own, or a used-up retry budget, skips triage/fixer and goes to the deputy before Tier 3.
+- **Deputy, before Tier 3** (agent tier `deputy`, Claude Sonnet by default). One fresh run per task/failure fingerprint and retry generation. It sees goal, approval, the copied plan section when present, handoff, decisions, attempts and saved log paths. It may record/apply task decisions, edit unfinished manifests using measured resources or routine environment repairs, make only the code fixes allowed to the fixer, and resubmit within existing class budgets. `nrp-task retry-cap N` may raise the task cap only up to `max(4, ceil(stages/4))`. It cannot change scientific thresholds, checks, selection or method, act on another task, cancel the task or contact the owner. `RESOLVED` is accepted only when task state proves recovery (or a decision passes script checks); `ESCALATE` supplies a coordinator brief of at most 120 words. Errors, timeouts and unavailable runners escalate. Set `"deputy_enabled": false` in owner `config.json` to restore the earlier path.
 3. **Tier 3, the task's coordinator chat.** The task becomes `WITH_COORDINATOR` (not `NEEDS_OWNER`) and the monitor sends an
    `escalation` event through the task's wake route (session resume, T3 CLI or configured webhook, also used for completion wakes) whose
-   `summary` names the task, the event and the pointers (`task show`, saved logs, the handoff's Fix log). The chat then runs one of:
+   `summary` leads with the deputy brief when present, then names the fingerprint, task, event and pointers (`task show`, saved logs, the handoff's Fix log). The chat then runs one of:
    `nrp-monitor task resume NAME --note TEXT` (hand back: the failed stage is resubmitted, budgets restart), `task cancel NAME`, or,
    only when the owner is truly needed, `task needs-owner NAME --reason TEXT` (sets `NEEDS_OWNER` and sends the one DM).
    Nothing is lost silently: with no wake target configured for the task, a wake that fails delivery 6 passes in a row (about 30 minutes),
    or a delivered wake nobody answers for 24 hours, falls back to `NEEDS_OWNER` with that reason. Watch-only tasks, GPU approval
    expiry and a 6-hour utilization block still go straight to the owner: only a person can decide those.
 
-Tier backends are the `tiers` entries `triage` (Tier 1) and `task` (Tier 2) of `agents.json`, chosen by `nrp-monitor setup` (agents.md). Tier 3 uses no model: it wakes the chat that already
+Tier backends are the `tiers` entries `triage` (Tier 1), `task` (Tier 2), and `deputy` of `agents.json`. Setup chooses the first two and optionally accepts `--deputy`; deputy defaults to Claude Sonnet and uses the same backend/model/limits schema (agents.md). Tier 3 uses no model: it wakes the chat that already
 has the context.
 
 ### Waking the coordinator chat (any harness)
@@ -115,7 +118,7 @@ mentions it.
 2. **Cheap triage.** For a registered Job with a resume file, one read-only agent looks first and returns a result or
    `ESCALATE` with evidence.
 3. **Repair.** Up to two repair attempts for a legacy job follow-up (the ladder is configurable: agents.md). A task's Tier 2 agent has a
-   retry budget of 4 total and 3 per failure class. Code fixes are committed on `monitor/<task>`. The agent's prompt
+   task-wide retry cap (`max_retries`, default `max(4, ceil(stages/4))`; explicit values win) and class budgets (resources: 3 per stage; other classes remain task-wide). Code fixes are committed on `monitor/<task>`. The agent's prompt
    carries the task's handoff, and its `HANDOFF_ENTRY:` block is appended to the handoff's Fix log (handoff.md).
    A single bad item is skipped and logged; a pattern (more than 5% of items, by default; the `skip_limit_fraction`
    setting, install.md) goes to a person.
@@ -146,3 +149,13 @@ range, a named stop, or the files the plan lets it touch. Night code goes on a b
 Terminal Job replacement is separate from normal successful-stage cleanup: an explicitly
 resumed/retried stage saves diagnostics, deletes its old Failed/Complete Job and submits again.
 Running/pending Jobs are never deleted by the submit path; unknown status fails closed.
+
+## Cost and wake evidence
+
+Each new agent run, rule/decision resolution, coordinator wake queue event and owner notification appends a JSON line to `<state>/costs.jsonl`. Rows include task/stage, kind, tier, runner/model, outcome, fingerprint when relevant, USD cost and runner usage (null when unreported). Claude structured usage is retained; Gemini stats and Codex's reported token total are retained when available. No prices or token counts are invented. Reported Claude coordinator-session consumption is appended as a linked `coordinator_result` delivery event; coordinator routes that do not return usage have null cost. A wake is counted when queued, once per event id, rather than on every delivery retry; delivery success/failure remains in task events.
+
+After handling a wake, run `nrp-monitor wake-review TASK --by rule|agent|coordinator --why TEXT`. This records who should have handled it, linked to that task's latest queued coordinator wake. Later reviews of the same wake supersede earlier reviews in the report while preserving the ledger history. `nrp-monitor costs --days 7 [--task NAME]` prints wakes per task/kind, recorded resolution percentages by tier, reported agent costs per tier/model and wake-review counts per intended handler/reason. Unreviewed wakes cannot be called avoidable from this evidence alone. Resolution percentages describe recorded recovery events, not eventual scientific correctness.
+
+Completion wakes retain their existing behavior in this batch. Their volume is measured, not grouped or suppressed. Historical logs do not contain enough usage to reconstruct total coordinator-chat cost.
+
+Baseline snapshot, 2026-11-12 at 22:34 UTC (read-only, UTC date in existing logs): 35 delivered wakes across four origin chats, comprising 19 escalations and 16 completions. Per anonymized origin: A 16 escalation + 2 done; B 0 + 2; C 3 + 2; D 0 + 10. `digest.log` records 20 escalation queues (A 17, C 3), versus 19 deliveries in `monitor.log`; one queued escalation had no delivery recorded at the snapshot. Task event rings keep only 80 entries, so aggregate counts use the append-only logs, mapped to current task origin metadata. Counts reflect the snapshot, not an immutable full-day total; no historical costs or avoidable-wake judgments are inferred. No historical events were imported into the new ledger.

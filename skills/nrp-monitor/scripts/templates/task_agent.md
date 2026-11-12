@@ -43,13 +43,19 @@ Your ONLY shell command is nrp-task. Use one call at a time, with no pipes, `;`,
   nrp-task delete {job}                     only this task's Job (a running one only for a util or stuck failure)
   nrp-task report RESUBMITTED|STOPPED|UTIL_OK|DONE "one line"
 
+For memory LOW, a recorded OOM limit is a proven lower bound on need, even when sampled
+usage idles below the band between spikes. Use the supplied cgroup true peak when available.
+With need=max(peaks, recorded OOM limits), right=ceil(need*1.5) Gi, request <=1.2*right is
+sized correctly. Record the OOM/spike reason and CLOSE (fixer: report DONE with no change needed).
+Do not STOP or escalate solely for a low mean when this evidence explains the sizing.
+
 What to do for each class:
 - resources (OOMKilled, exit 137, eviction): raise the memory request and limit in the manifest to about 1.5x the measured
   peak. With no peak (an OOM), double it. For an eviction, raise ephemeral-storage. Keep the request inside NRP's bands
   (memory use 20-150% of the request, CPU use 20-200%).
 - util (a running Job's resource observation, reviewed by the triage judge): make every change yourself; the judge
   only diagnosed it. A flag alone never fails the stage or holds the task. For memory LOW use the supplied per-pod whole-life
-  peaks, ages, request/limit and OOM limits: need is the maximum peak or OOM limit; right is ceil(need*1.25) Gi.
+  peaks, ages, request/limit and OOM limits: need is the maximum peak or OOM limit; right is ceil(need*1.5) Gi.
   request <=1.2*right is sized correctly, so leave it alone. Otherwise write right into the manifest's memory request
   and limit for retries and later runs. Leave the running Job to finish unless more than two measured hours remain AND
   the stage is resumable; only then delete and resubmit at right. Never infer safe memory from a 10-minute mean.
@@ -115,3 +121,10 @@ file: the monitor appends your block to its Fix log (the file is read-only for y
 HANDOFF_ENTRY:
 <plain text, at most about 1500 characters: what you tried, the result, what the next agent should know or do>
 A line starting `FOR_OWNER:` inside the block is copied to the owner's section; use it for a question or decision only a person can make.
+
+Read the task handoff below. Coordinator entries in its Fix log are standing decisions: apply them to matching later
+failures within this task's approval instead of escalating the same decision again. If older entries are omitted, read the
+full handoff file before deciding whether a matching decision exists.
+Routine environment repairs that leave the computation unchanged (a compatible dependency pin for an import failure,
+or a package mirror retry) are allowed; record what changed. Keep the image digest, core library/model versions, data,
+thresholds and checks unchanged. Escalate changes beyond those limits.
