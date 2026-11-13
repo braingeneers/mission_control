@@ -2968,6 +2968,15 @@ def process_task_webhooks(a, st):
         t = task_load(n) or {}
         target = wake_target(t) or {"harness": "t3"}                   # no target: the webhook path fails and is counted like any failed wake
         for event in (t.get("webhook_outbox") or [])[:10]:
+            current = task_load(n) or {}
+            if current.get("status") == "cancelled" or (current.get("status") == "done" and event.get("event_type") != "done"):
+                def discard(cur):
+                    cur["webhook_outbox"] = [e for e in cur.get("webhook_outbox", []) if e.get("event_id") != event["event_id"]]
+                    (cur.get("wake_tries") or {}).pop(event["event_id"], None)
+                    tev(cur, "ignored queued %s wake for terminal task" % event.get("event_type"))
+                task_txn(n, discard)
+                digest("wake-ignored", "queued %s wake for terminal task" % event.get("event_type"), n)
+                continue
             try:
                 usage = None
                 if target["harness"] in WAKE_EXEC:                       # claude / codex: resume that session with the wake text
@@ -3762,6 +3771,8 @@ def record_decision(t, fp, action, why, scope="task", max_uses=None, who="coordi
 
 
 def apply_decision(n, a):
+    if terminal_task(n):
+        return False
     t = task_load(n)
     f = t.get("failure")
     if not f or t["mode"] != "auto" or a.dry_run:
@@ -3877,7 +3888,54 @@ def deputy_prompt(t, reason):
             (scaled_retry_cap(t["stages"]), reason, plan))
 
 
+def terminal_task(n, detail=None):
+    """Late failures of done/cancelled tasks are audit-only, including queued work."""
+    t = task_load(n) or {}
+    if t.get("status") not in ("done", "cancelled"):
+        return False
+    f = t.get("failure") or {}
+    detail = detail or ("stage %s [%s] %s" % (f.get("stage"), f.get("cls"), f.get("detail")) if f else None)
+    if detail:
+        def record(cur):
+            if cur.get("status") not in ("done", "cancelled"):
+                return False
+            key = "%s: %s" % (cur["status"], detail)
+            if key in cur.get("ignored_failures", []):
+                return False
+            cur.setdefault("ignored_failures", []).append(key)
+            tev(cur, "ignored late failure for %s task: %s" % (cur["status"], detail))
+        if task_txn(n, record):
+            digest("failure-ignored", "late failure for %s task: %s" % (t["status"], detail), n)
+    return True
+
+
+def settled_outcome(n, line, a, kind):
+    """Accept DONE/RESOLVED only when recovery passes the existing script checks."""
+    if terminal_task(n):
+        return True
+    t = task_load(n)
+    report = t.get("report") or {}
+    match = re.match(r"^(RESOLVED|DONE)\b", line or "")
+    answer = report.get("status") or (match.group(1) if match else None)
+    if answer not in ("RESOLVED", "DONE"):
+        return False
+    if a and a.dry_run:
+        return False
+    apply_decision(n, a or argparse.Namespace(dry_run=False))
+    t = task_load(n)
+    if terminal_task(n):
+        return True
+    if t.get("failure"):
+        ok, why = close_failure(n, t["failure"], line, kind=kind)
+        if not ok:
+            return False
+    digest("resolved", "%s settled the event: %s" % (kind, line[:240]), n)
+    return True
+
+
 def task_fail(n, sid, cls, sig, detail, logs=None, extra=None):
+    if terminal_task(n, "stage %s [%s] %s" % (sid, cls, detail[:200])):
+        return False
     def f(t):
         if t.get("failure"):
             return False
@@ -4007,6 +4065,8 @@ def propagate_resources(t, source):
 
 def do_submit(n, sid, reason, by):
     """Submit a stage's manifest. A failed stage = a retry (budgets enforced here, whoever asks). Returns (ok, message)."""
+    if terminal_task(n):
+        return False, "task is terminal"
     t = task_load(n)
     s, ns, f = tstage(t, sid), t["namespace"], t.get("failure")
     retry = s["state"] == "failed"
@@ -4080,7 +4140,7 @@ def escalate(n, reason, a=None):
     out = {}
 
     def f(t):
-        if t["status"] == "NEEDS_OWNER":
+        if t["status"] in ("NEEDS_OWNER", "done", "cancelled"):
             return False
         t["status"], t["reason"], t["needs_since"] = "NEEDS_OWNER", " ".join(reason.split())[:400], now()
         t["escalations"] = t.get("escalations", 0) + 1
@@ -4115,7 +4175,7 @@ def to_coordinator(n, reason, a=None, deputy=True):
     configured for the task there is nobody to wake, so the owner is told instead (NEEDS_OWNER) and nothing is lost. A wake that cannot
     be delivered (wake_failed) or an answer that never comes (check_coordinator_waits) falls back the same way."""
     t = task_load(n)
-    if t["status"] in TASK_HELD:
+    if terminal_task(n) or t["status"] in TASK_HELD:
         return
     failure = t.get("failure")
     if deputy and failure and not (a and a.dry_run) and OWNER.get("deputy_enabled", True):
@@ -4127,8 +4187,8 @@ def to_coordinator(n, reason, a=None, deputy=True):
                 line, den = run_task_agent(n, deputy_prompt(t, reason), a, kind="deputy")
             except Exception as error:
                 line = "ESCALATE: deputy failed (%s)" % type(error).__name__
-            if line.startswith("RESOLVED"):
-                apply_decision(n, a or argparse.Namespace(dry_run=False))
+            if settled_outcome(n, line, a, "deputy"):
+                return
             current = task_load(n)
             if not current.get("failure") or current["status"] == "blocked":
                 return
@@ -4140,7 +4200,7 @@ def to_coordinator(n, reason, a=None, deputy=True):
     out = {}
 
     def f(t):
-        if t["status"] in TASK_HELD:
+        if t["status"] in TASK_HELD + ("done", "cancelled"):
             return False
         t["status"], t["reason"], t["coordinator_since"] = "WITH_COORDINATOR", reason[:400], now()
         t["coordinator_wakes"] = t.get("coordinator_wakes", 0) + 1
@@ -4316,9 +4376,11 @@ def triage_prompt(t):
     return tpl.replace("{handoff}", handoff_prompt(t)) + failure_context(t)
 
 
-def close_failure(n, f, why):
+def close_failure(n, f, why, kind="Tier 1 triage"):
     """Close a triaged event as benign. The script decides, not the verdict: the Job must be alive or done, or the stage's outputs present.
     Returns (ok, refusal)."""
+    if terminal_task(n):
+        return False, "task is terminal"
     t = task_load(n)
     s = tstage(t, f["stage"])
     st_ = job_state(f["job"], t["namespace"])
@@ -4328,7 +4390,7 @@ def close_failure(n, f, why):
 
     def c(t):
         cur = t.get("failure")
-        if not cur or cur.get("ts") != f.get("ts"):
+        if t.get("status") in ("done", "cancelled") or not cur or cur.get("ts") != f.get("ts"):
             return False
         s2 = tstage(t, f["stage"])
         if present and st_ not in ("running", "pending"):
@@ -4337,16 +4399,19 @@ def close_failure(n, f, why):
             s2["state"] = "running"
         s2.pop("util_deleted", None)
         t["failure"] = None
-        tev(t, "event closed by Tier 1 triage, no fix needed: %s" % why[:200])
+        tev(t, "event closed by %s, no fix needed: %s" % (kind, why[:200]))
     if not task_txn(n, c):
         return False, "the failure changed while it was closed"
-    cost_event(n, "triage_resolution", "1", "resolved", stage=f["stage"],
+    cost_event(n, "triage_resolution" if kind == "Tier 1 triage" else kind + "_resolution",
+               "1" if kind == "Tier 1 triage" else "2" if kind == "fixer" else kind, "resolved", stage=f["stage"],
                fingerprint=f.get("fingerprint") or fingerprint(t, f))
-    digest("triage-closed", "stage %s [%s]: no fix needed (%s)" % (f["stage"], f["cls"], why[:240]), n)
+    digest("triage-closed" if kind == "Tier 1 triage" else "resolved", "stage %s [%s]: no fix needed (%s)" % (f["stage"], f["cls"], why[:240]), n)
     return True, ""
 
 
 def observe_task(n, jobs):
+    if terminal_task(n):
+        return
     t = task_load(n)
     ns = t["namespace"]
     for s in t["stages"]:
@@ -4422,6 +4487,8 @@ def task_prompt(t):
 
 
 def run_task_agent(n, prompt_text, a, kind="fix"):
+    if kind in ("fix", "deputy", "triage") and terminal_task(n):
+        return "DONE: task is terminal", []
     t = task_load(n)
     ctx = dict(t.get("failure") or t.get("util_event") or {}) if kind in ("fix", "deputy") else {}            # what the fix agent was started for (a resubmit clears the failure)
     d = str(task_dir(n)).rstrip("/")
@@ -4465,6 +4532,12 @@ def run_task_agent(n, prompt_text, a, kind="fix"):
         full = out
     den = res.get("permission_denials") or []
     line = " ".join(str(res.get("result") or "").split())[:400]
+    if kind in ("fix", "deputy") and not res.get("is_error") and status == "ok":
+        # Explanatory prose and HANDOFF_ENTRY blocks are not the outcome.
+        answer = full.split("HANDOFF_ENTRY:", 1)[0]
+        verdicts = re.findall(r"(?m)^\s*(?:\*\*)?((?:RESOLVED|DONE|ESCALATE|STOPPED|NOT-DONE|RESUBMITTED|UTIL_OK)\b[^\n]*)", answer)
+        if verdicts:
+            line = " ".join(verdicts[-1].split())[:400]
     claim = util_ok_extract(full) if kind == "fix" else None
     if claim is not None:
         task_txn(n, lambda t: t.update(util_ok_claim=claim))                  # the script decides on it in handle_failure
@@ -4721,6 +4794,8 @@ def tier0_fix(n, a):
     """True when a Tier 0 rule edited the manifest and resubmitted the failed stage. Never raises, never starts a model; False hands the
     failure to handle_failure unchanged (watch-only tasks, repeats, anything over a cap, no rule matched)."""
     try:
+        if terminal_task(n):
+            return False
         t = task_load(n)
         f = (t or {}).get("failure")
         if not f or t["mode"] != "auto" or a.dry_run or f.get("cls") not in ("resources", "infra", "code", "unknown"):
@@ -4860,6 +4935,8 @@ def handle_failure(n, a):
     triage, where a benign answer is possible; 'no fix needed' CLOSES the event. Tier 2: the fixer. Tier 3: the task's
     coordinator chat (`to_coordinator`). The owner is told (NEEDS_OWNER + one DM) only by the chat (`task needs-owner`), or when a person's
     decision is the only way on (watch-only task, GPU approval), or when the chat cannot be woken."""
+    if terminal_task(n):
+        return
     t = task_load(n)
     f = t["failure"]
     if not f.get("fingerprint"):
@@ -4922,12 +4999,12 @@ def handle_failure(n, a):
                 return
             task_txn(n, lambda t: tev(t, "Tier 1 said no fix needed but the script refused to close it: " + refused))
         t = task_load(n)
-        if not t.get("failure"):
+        if terminal_task(n) or not t.get("failure"):
             return
         f = t["failure"]
     PASS["agents"] = PASS.get("agents", 0) + 1
     line, den = run_task_agent(n, task_prompt(t), a)                       # Tier 2
-    if is_unavailable(line):
+    if is_unavailable(line) or settled_outcome(n, line, a, "fixer"):
         return
     t = task_load(n)
     rep = (t.get("report") or {})
@@ -4970,6 +5047,8 @@ def note_waiting(n, sid, missing):
 
 
 def advance_task(n, jobs, a):
+    if terminal_task(n):
+        return
     t = task_load(n)
     if a.dry_run:                                                         # read-only: say what the pass would do
         for s in t["stages"]:
@@ -5100,6 +5179,9 @@ def recover_held_completion(n, jobs):
 
 
 def process_tasks(a, st):
+    if not a.dry_run:
+        for n in task_names():
+            terminal_task(n)
     names = [x for x in task_names() if (task_load(x) or {}).get("status") in TASK_LIVE + TASK_HELD]
     PASS["tasks"] = len(names)
     cache = {}
@@ -5282,6 +5364,8 @@ def task_pod_flag(st, n, sid, pod, kind, line):
 
 
 def process_util_event(n, a):
+    if terminal_task(n):
+        return
     t = task_load(n)
     event = t.get("util_event")
     if not event or t.get("failure") or a.dry_run:
