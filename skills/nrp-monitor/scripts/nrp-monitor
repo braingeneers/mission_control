@@ -2436,6 +2436,8 @@ TRIAGE_CLASSES_ALWAYS = ("unknown", "slow")          # Tier 1 (Haiku) always loo
 TASK_MODEL, TASK_TURNS, TASK_BUDGET, TASK_TIMEOUT = "sonnet", "60", "6.00", 2700   # alias "sonnet" followed the newest Sonnet: claude-sonnet-5-5 under this scrubbed env on 2026-11-05
 CODE_PYTHON = Path(OWNER["code_python"]) if OWNER.get("code_python") else None   # config.json "code_python": interpreter for `nrp-task code-test` (needs pytest) and `reship`; default = the one running this script
 BLOCK_ESCALATE_S = 6 * 3600
+BLOCK_RECHECK_S = 600       # while pods outside the bands explain a block: re-check the namespace this often, re-apply only if the set changed
+LAST_BLOCK = {}             # the raw text of the most recent admission refusal (apply_manifest returns only "blocked")
 BLOCK_RE = re.compile(r"utilization (is )?too low|exceeded quota|forbidden:.*quota|denied the request.*utiliz", re.I)
 TRANSIENT_RE = re.compile(r"ConnectionError|EndpointConnectionError|ReadTimeout|timed out|Temporary failure in name resolution|"
                           r"SlowDown|503 Service|Connection reset|BrokenPipe|Name or service not known|urlopen error", re.I)
@@ -3960,8 +3962,154 @@ def apply_manifest(ns, path):
         r = kubectl("-n", ns, "apply", *extra, "-f", path, timeout=180)
         if r.returncode:
             msg = (r.stderr.strip() or r.stdout.strip())[:400]
-            return "blocked" if BLOCK_RE.search(msg) else msg
+            if BLOCK_RE.search(msg):
+                LAST_BLOCK["msg"] = msg
+                return "blocked"
+            return msg
     return "ok"
+
+
+GPU_USE_RE = re.compile(r"\bgpu (\d+)% \(gpu (\d+)")
+
+
+def pod_gpu_request(p):
+    total = 0
+    for c in p.get("spec", {}).get("containers", []):
+        try:
+            total += int((c.get("resources", {}).get("requests") or {}).get("nvidia.com/gpu", 0))
+        except (TypeError, ValueError):
+            pass
+    return total
+
+
+def namespace_offenders(ns):
+    """Every Running pod in `ns`, whoever launched it (no annotation filter), through nrp-util-check: the pods outside NRP's bands
+    (rule nrp or gpu; a lab-floor-only flag is not counted by NRP's webhook) or stuck. Returns a list of dicts: pod, owner (Job or other
+    ownerReference), username (nrp.ai/username annotation, may be ""), service_account, ours (annotation == our owner annotation),
+    usage ({cpu|mem|gpu: use/request/pct}) and line (nrp-util-check's text). Raises RuntimeError when kubectl or the metrics fail."""
+    r = kubectl("-n", ns, "get", "pods", "-o", "json")
+    if r.returncode:
+        raise RuntimeError("kubectl get pods: " + (r.stderr.strip() or r.stdout.strip())[:150])
+    running = {}
+    for p in json.loads(r.stdout or "{}").get("items", []):
+        m = p.get("metadata", {})
+        if p.get("status", {}).get("phase") == "Running" and not m.get("deletionTimestamp"):
+            running[m["name"]] = p
+    if not running:
+        return []
+    u = subprocess.run(["nrp-util-check", "-n", ns, "--min-age", "300"] + sorted(running), capture_output=True, text=True, timeout=300)
+    if u.returncode not in (0, 4, 5):
+        raise RuntimeError("nrp-util-check exit %s: %s" % (u.returncode, (u.stdout.strip() or u.stderr.strip())[:150]))
+    out = []
+    for line in u.stdout.splitlines():
+        m = FLAG.match(line)
+        if not m or m.group(1) not in ("LOW", "STUCK") or m.group(2) not in running or flag_rule(line) == "lab":
+            continue
+        p = running[m.group(2)]
+        meta, refs = p["metadata"], p["metadata"].get("ownerReferences") or []
+        ref = next((o for o in refs if o.get("kind") == "Job"), refs[0] if refs else None)
+        user = (meta.get("annotations") or {}).get("nrp.ai/username") or ""
+        usage = {k: {"use": float(use), "request": float(req), "pct": int(pct)} for k, use, req, pct, mx in FLAG_RES.findall(line)}
+        for pct, gi in GPU_USE_RE.findall(line):
+            usage["gpu"] = {"pct": int(pct), "request": pod_gpu_request(p)}
+        out.append({"pod": m.group(2), "owner": "%s/%s" % (ref.get("kind"), ref.get("name")) if ref else "", "username": user,
+                    "service_account": p.get("spec", {}).get("serviceAccountName") or "", "ours": bool(USER_ANN) and user == USER_ANN,
+                    "usage": usage, "line": line.strip()[:300]})
+    return sorted(out, key=lambda o: o["pod"])
+
+
+def offender_text(o):
+    who = ", ".join(x for x in (o["owner"], ("user " + o["username"]) if o["username"] else "", ("service account " + o["service_account"])
+                                if o["service_account"] and not o["username"] else "") if x) or "owner unknown"
+    use = "; ".join("%s %s" % (k, ("%g/%g (%d%%)" % (v["use"], v["request"], v["pct"])) if "use" in v else
+                               ("%d%% of %d GPU" % (v["pct"], v["request"]))) for k, v in o["usage"].items())
+    return "%s (%s; %s)" % (o["pod"], who, use or o["line"][:80])
+
+
+def block_wake_text(n, stage, job, refusal, offenders, err):
+    head = "NRP refused the submit of task %s (stage %s, Job %s): %s" % (n, stage, job, " ".join(refusal.split())[:200])
+    if err:
+        return ("%s. The namespace-wide utilization check FAILED (%s), so the cause is unknown. Look at all Running pods with "
+                "`kubectl get pods` and `nrp-util-check`; do not retry in a loop. The monitor keeps the task blocked and re-applies it each pass; "
+                "it tells the owner after 6 h." % (head, err[:120]))
+    if not offenders:
+        return ("%s. The namespace-wide utilization check found no Running pod outside the bands, so this may be a quota block or metrics lag. "
+                "The monitor keeps the task blocked and re-applies each pass; it tells the owner after 6 h." % head)
+    ours, others = [o for o in offenders if o["ours"]], [o for o in offenders if not o["ours"]]
+    parts = []
+    if ours:
+        parts.append("OURS (annotation matches): " + "; ".join(offender_text(o) for o in ours))
+    if others:
+        parts.append("OTHERS' (not launched by us): " + "; ".join(offender_text(o) for o in others))
+    return ("%s. Namespace-wide check: %d Running pod(s) outside the bands. %s. Fix or delete our own pods; ask the owner before touching "
+            "anyone else's. The monitor re-checks every %d min and re-applies the submit only when the offender set changes; never retry in a loop."
+            % (head, len(offenders), " | ".join(parts), BLOCK_RECHECK_S // 60))
+
+
+def block_episode(n):
+    """First block of a pending submit: run the namespace-wide check once, save it on t["pending"], write a digest line and wake the
+    coordinator chat once (the task stays `blocked`, so the monitor goes on re-applying when the offenders clear). Later calls in the same
+    episode do nothing. A failed check is logged and still produces the one wake, carrying the raw refusal."""
+    t = task_load(n)
+    p = (t or {}).get("pending") or {}
+    if not t or p.get("checked") is not None:
+        return
+    ns, offenders, err = t["namespace"], [], None
+    try:
+        offenders = namespace_offenders(ns)
+    except Exception as e:
+        err = "%s: %s" % (type(e).__name__, str(e)[:150])
+        log("task %s: namespace utilization check failed: %s" % (n, err))
+    refusal = p.get("refusal") or LAST_BLOCK.get("msg") or "utilization block or quota"
+    text = block_wake_text(n, p.get("stage"), tstage(t, p["stage"])["job"], refusal, offenders, err)
+    out = {}
+
+    def f(t):
+        pp = t.get("pending")
+        if t["status"] != "blocked" or not pp or pp.get("checked") is not None:
+            return False
+        pp.update(checked=now(), rechecked=now(), offenders=offenders, check_error=err, refusal=refusal[:300], woke=now())
+        out["event"] = queue_task_webhook(t, "escalation", summary=text[:2400] + " Look: `nrp-monitor task show %s`." % n)
+        tev(t, "submit BLOCKED: %s" % (("%d offender(s): %s" % (len(offenders), ", ".join(o["pod"] for o in offenders))) if not err else "namespace check failed"))
+    if not task_txn(n, f):
+        return
+    short = lambda os_: ", ".join("%s [%s]" % (o["pod"], o["owner"] or o["username"] or o["service_account"] or "?") for o in os_) or "none"
+    brief = ("namespace check failed (%s)" % err if err else "%d pod(s) outside the bands. ours: %s. others: %s" % (
+        len(offenders), short([o for o in offenders if o["ours"]]), short([o for o in offenders if not o["ours"]])))
+    digest("block", "%s: submit refused by NRP; %s" % (t["label"], brief), n)
+    PASS["coordinator"] = PASS.get("coordinator", 0) + 1
+    if not out["event"]:                                                     # no coordinator chat to wake: the digest line above is the report; the 6 h fallback tells the owner
+        log("task %s: submit blocked and the task has no wake target; digest only" % n)
+
+
+def block_should_reapply(n):
+    """True when the pending submit should be applied again this pass. Pods outside the bands explain the block: no re-apply until a
+    re-check (at most every BLOCK_RECHECK_S) finds the set changed (or empty). No offenders or a failed check: the block is
+    unexplained, so it goes on being applied each pass, as before, with the 6 h escalation as the fallback."""
+    p = (task_load(n) or {}).get("pending") or {}
+    if p.get("checked") is None:
+        block_episode(n)
+        p = (task_load(n) or {}).get("pending") or {}
+    if not p.get("offenders"):
+        return True
+    if now() - p.get("rechecked", p.get("checked", 0)) < BLOCK_RECHECK_S:
+        return False
+    try:
+        new = namespace_offenders(task_load(n)["namespace"])
+    except Exception as e:
+        log("task %s: namespace utilization re-check failed: %s" % (n, str(e)[:150]))
+        task_txn(n, lambda t: (t.get("pending") or {}).update(rechecked=now()) if t.get("pending") else False)
+        return False
+    changed = {o["pod"] for o in new} != {o["pod"] for o in p["offenders"]}
+
+    def f(t):
+        if not t.get("pending"):
+            return False
+        t["pending"].update(offenders=new, rechecked=now())
+        if changed:
+            tev(t, "block re-check: offender set changed (%s); re-applying the submit" % (", ".join(o["pod"] for o in new) or "none left"))
+    task_txn(n, f)
+    return changed
 
 
 def cpu_quantity(value):
@@ -4106,10 +4254,14 @@ def do_submit(n, sid, reason, by):
     if res == "blocked":
         def b(t):
             t["status"] = "blocked"
-            t.setdefault("pending", {"stage": sid, "reason": reason, "by": by, "since": now()})
-            tev(t, "submit of %s BLOCKED (account utilization or quota); the monitor re-applies each pass" % s["job"])
+            if "pending" not in t:
+                tev(t, "submit of %s BLOCKED (account utilization or quota); the monitor checks the namespace once, wakes the coordinator, "
+                       "and re-applies when the offenders change" % s["job"])
+            t.setdefault("pending", {"stage": sid, "reason": reason, "by": by, "since": now(), "refusal": LAST_BLOCK.get("msg", "")[:300]})
         task_txn(n, b)
-        return True, "BLOCKED: NRP refused the submit (utilization block or quota). The monitor re-applies it every pass; do not retry yourself."
+        block_episode(n)
+        return True, ("BLOCKED: NRP refused the submit (utilization block or quota). The monitor checked the namespace once and woke the "
+                      "coordinator; it re-applies only when the offender set changes. Do not retry yourself.")
     if res != "ok":
         return False, "kubectl apply failed: %s" % res
 
@@ -5063,14 +5215,22 @@ def advance_task(n, jobs, a):
                 print("[dry-run] task %s: stage %s Job %s is %s" % (n, s["id"], s["job"], info["state"] if info else "not in the cluster"))
         if t.get("failure"):
             print("[dry-run] task %s: failure [%s] %s -> would start a fix agent or escalate" % (n, t["failure"]["cls"], t["failure"]["detail"][:100]))
+        if t["status"] == "blocked":
+            print("[dry-run] task %s: submit is blocked; would %s" % (n, "re-check the namespace (no wake, no state change)"
+                  if (t.get("pending") or {}).get("checked") is not None else "check the namespace once and wake the coordinator"))
         return
     if t["status"] == "blocked":
         p = t.get("pending") or {}
-        ok, msg = do_submit(n, p.get("stage"), p.get("reason", "re-apply after block"), "monitor") if p else (False, "no pending submit")
+        if p and not block_should_reapply(n):                                 # pods outside the bands explain it: wait, no retry loop
+            ok = True
+        else:
+            ok, msg = do_submit(n, p.get("stage"), p.get("reason", "re-apply after block"), "monitor") if p else (False, "no pending submit")
         t = task_load(n)
         if t["status"] == "blocked":
             if now() - p.get("since", now()) > BLOCK_ESCALATE_S:
-                escalate(n, "submits refused for %s (NRP utilization block or quota)" % ago(p["since"]), a)
+                offs = (t.get("pending") or {}).get("offenders") or []
+                escalate(n, "submits refused for %s (NRP utilization block or quota)%s" % (ago(p["since"]), (
+                    "; still outside the bands: " + ", ".join(o["pod"] for o in offs)) if offs else ""), a)
             return
         if not ok:
             task_txn(n, lambda t: t.update(status="retrying"))

@@ -70,6 +70,10 @@ submitter.
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).
+- When NRP refuses a submit for utilization ("resources utilization is too low"), the task goes `blocked`; the first time, the script checks every
+  Running pod in the namespace (not only ours) with `nrp-util-check`, records the pods outside the bands with their owners and usage on the task,
+  and wakes the coordinator chat once (fix our own, ask the owner before touching others'). It does not retry in a loop: it re-checks every ~10 minutes
+  and re-applies only when the offender set changes or empties; a block the check cannot explain is re-applied each pass and goes to the owner after 6 hours.
 - Handles a failure at the cheapest level that can fix it (script rules, a triage judge, a fixer, a bounded fresh deputy, then the task's own coordinator
   chat, woken in whatever harness it runs; the person hears only if that chat says so): see
   [operations](references/operations.md). Which agent runs each tier (Claude Code, Codex or Gemini CLI), in what order, and what happens when one is unavailable is
