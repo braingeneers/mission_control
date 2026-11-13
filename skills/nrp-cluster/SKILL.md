@@ -71,6 +71,14 @@ fraction of the pod's **request**, averaged over the last 10 minutes of NRP's ow
 A person or lab may add stricter rules in an optional local override that is never part of this repo (see the monitor's
 `references/utilization.md`); a local file can add checks or lower these numbers, not loosen them.
 
+**If NRP refuses a submit** (admission webhook `job.nrp-nautilus.io`: "Your pods resources utilization is too
+low", or a submit, patch or build Job that is denied or BLOCKED), stop and check utilization across the whole
+namespace before retrying. Include pods you did not launch (Workflows/Flowforge `workflows-*` drivers, `nf-*`
+task pods, other workstreams). Run `kubectl get pods` for every Running pod, then pass all their prefixes to
+`nrp-util-check`; the account check only counts pods annotated with your username. Report each pod outside the
+bands with its owner and usage. Fix or delete your own pods. Ask the owner before deleting anyone else's pods.
+Never work around the webhook or retry in a loop.
+
 ## Reference Loading
 
 Read only the files needed for your task:
