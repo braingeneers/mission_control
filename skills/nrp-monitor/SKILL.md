@@ -35,10 +35,13 @@ and never start an agent whose only job is to wait.
 3. **Write `TASK.json`** from [tasks](references/tasks.md): the user's approval in their own words with the date, one
    stage per Job, and for each stage the exact S3 object that exists only when the stage succeeded (`done_s3`).
    Put what a fresh agent needs in `notes` (4 KB).
-4. **Declare what happens when it finishes.** One of: `on_done` (a plan step, so a continue agent moves the approved
-   plan on), `followup` (a one-shot read-only report), or `digest_only` with a reason nothing else is pending. A task
-   with none of these only lands in the digest and nothing acts on it; do not hand back unattended work that still has
-   requested analysis, review or delivery remaining.
+4. **Declare what happens when it finishes.** By default the monitor wakes this chat when the task is done. One of:
+   - `on_done` (a plan step): wakes this chat to check the step's "done when" and continue. It never passes the approved
+     range or a named stop, so use it even when a stop for Hunter comes next.
+   - `followup`: a one-shot read-only report.
+   - `digest_only`: **turns off the completion wake**, so the result goes only to the daily digest. Use it only when nobody
+     needs to look at the result. If checks, a report to Hunter, or a named stop come next, it is not digest-only.
+   Do not hand back unattended work that still has requested analysis, review or delivery remaining.
 5. **Record the origin** (required: `task add` refuses a task without it): the chat or ticket the work came from (`origin.title`,
    `origin.link`, or `--origin-title/--origin-link`) and where it runs, so the monitor wakes that same chat and never a new thread:
    `--origin-harness claude|codex` (the session id is read from `CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID`, or pass `--origin-session`),

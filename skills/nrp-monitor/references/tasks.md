@@ -31,7 +31,8 @@ Required: `name` (lowercase letters, digits and `-`, at most 40), `goal`, `appro
     its tasks are (cancelled ones do not count; one that needs the owner holds it), and its continuation runs once, when the last
     one finishes; the others are closed as `COVERED`. A continue agent may register several tasks for the next step in one run.
   - `followup`: text (at most 2 KB) saying what a one-shot read-only agent should report when the task is done.
-  - `digest_only`: a reason (8-300 characters) nothing else is pending.
+  - `digest_only`: a reason (8-300 characters) nobody needs to look at the result. It turns off the completion wake of the
+    coordinator chat; the task only reaches the digest. Not for a step followed by checks, a report or a named stop: use `on_done`.
 - `handoff`: path to the markdown handoff the registering agent writes from `scripts/templates/handoff.md` (absolute,
   `~`, or relative to the task file's folder); `task add` validates it and copies it into the task's folder, where the
   fix and continue agents read it. Missing, empty or thin (a `## Registrar` of under 200 characters) is a warning, or a
@@ -64,7 +65,7 @@ Derive the deadline from measured runtime with margin; the queue counts toward i
   "approved": "Alice, 2026-11-09 in chat: go ahead with the extract run",
   "notes": "One Job per dataset. A good result is features.npz plus DONE. Resources were sized from the 2026-11-08 pilot.",
   "origin": {"title": "Dataset X features", "link": "https://example.org/the-chat"},
-  "digest_only": "Terminal step; the results are read by hand",
+  "digest_only": "Throwaway probe; nobody reads the result",
   "stages": [
     {"id": "extract", "job": "demo-extract-a", "manifest": "manifests/demo-extract-a.yaml",
      "done_s3": ["s3://braingeneersdev/alice/demo/extract/DONE"]}
