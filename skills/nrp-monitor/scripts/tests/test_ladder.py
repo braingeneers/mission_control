@@ -96,7 +96,7 @@ class LadderTests(Ladder):
     def unknown_failure(self):
         """A real script-classified `unknown` failure: the Job failed with no traceback and no exit reason."""
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", log="worker finished item 17 then went quiet")
+        self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="worker finished item 17 then went quiet")
 
     def sonnet_plan_stop(self, line="STOPPED: cannot tell why the worker stopped"):
         self.plan({"cmds": [["nrp-task", "report", "STOPPED", line[9:]]], "result": line})

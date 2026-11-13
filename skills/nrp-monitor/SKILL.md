@@ -63,9 +63,9 @@ submitter.
 
 - Submits stages whose conditions hold (`after`, `after_s3`), checks success with an exact S3 `head-object` per key
   (never a prefix listing), saves logs, deletes only its own finished Jobs after the markers are verified.
-- Applies fixed Tier 0 rules before any agent: OOM resubmit using cgroup true peak when available, otherwise sampled peak, with a 2x OOM-limit backstop for unreliable low samples, exclusion of a node with a known fault, and the
+- Applies fixed Tier 0 rules before any agent: OOM resubmit using cgroup true peak when available, otherwise sampled peak, with a 2x OOM-limit backstop for unreliable low samples, exclusion of a node with a known fault, an unchanged resubmit of a lost pod (no exit code and no traceback from our container: the environment failed, not our code), and the
   scheduler's reason for a long Pending; see [operations](references/operations.md).
-- Budgets resource retries per stage within the task-wide cap. After a successful resource change,
+- Budgets every failure class per stage within the task-wide cap; the same code/unknown/outputs signature on 3 stages (or 10% of a fan-out) is treated as one systemic bug and goes up the ladder. After a successful resource change,
   raises compatible siblings' manifest resources when explicitly grouped; see [tasks](references/tasks.md).
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see

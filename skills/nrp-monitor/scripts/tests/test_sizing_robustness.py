@@ -22,17 +22,62 @@ def manifest(path, memory='1Gi', cpu='500m', image='worker:v1'):
     return str(path)
 
 
-def test_resource_infra_queue_budgets_are_per_stage_others_task_wide(monitor):
+def test_every_class_budget_is_per_stage(monitor):
     t = {'attempts': [{'cls': 'resources', 'stage': 'a'}] * 3 + [{'cls': 'infra', 'stage': 'a'},
-         {'cls': 'queue', 'stage': 'a'}, {'cls': 'code', 'stage': 'a'}], 'max_retries': 4}
+         {'cls': 'queue', 'stage': 'a'}, {'cls': 'code', 'stage': 'a'}, {'cls': 'unknown', 'stage': 'a'}], 'max_retries': 4}
     assert monitor.class_retries(t, {'cls': 'resources', 'stage': 'b'}) == 0
     assert monitor.class_retries(t, {'cls': 'resources', 'stage': 'a'}) == 3
     assert monitor.class_retries(t, {'cls': 'infra', 'stage': 'b'}) == 0
     assert monitor.class_retries(t, {'cls': 'infra', 'stage': 'a'}) == 1
     assert monitor.class_retries(t, {'cls': 'queue', 'stage': 'b'}) == 0
-    assert monitor.class_retries(t, {'cls': 'code', 'stage': 'b'}) == 1
+    assert monitor.class_retries(t, {'cls': 'code', 'stage': 'b'}) == 0
+    assert monitor.class_retries(t, {'cls': 'unknown', 'stage': 'b'}) == 0   # 2026-11-13: shard 14 used the task's one unknown retry
+    assert monitor.class_retries(t, {'cls': 'unknown', 'stage': 'a'}) == 1
     t['budget_from'] = 3
     assert monitor.class_retries(t, {'cls': 'resources', 'stage': 'a'}) == 0
+
+
+def test_systemic_failure_needs_same_sig_on_several_stages(monitor):
+    stages = [{'id': str(i)} for i in range(20)]
+    bug = {'cls': 'code', 'sig': 'code:KeyError', 'detail': 'KeyError: x'}
+    t = {'stages': stages, 'attempts': [dict(bug, stage='1'), dict(bug, stage='2')]}
+    assert monitor.systemic_failure(t, dict(bug, stage='1')) is None             # 2 stages: not yet
+    assert 'on 3 stages' in monitor.systemic_failure(t, dict(bug, stage='3'))
+    other = {'cls': 'code', 'sig': 'code:ValueError', 'detail': 'ValueError', 'stage': '3'}
+    assert monitor.systemic_failure(t, other) is None                            # a different bug
+    lost = [{'cls': 'infra', 'sig': monitor.LOST_SIG, 'stage': s} for s in '13 14 20 22'.split()]
+    assert monitor.systemic_failure({'stages': stages, 'attempts': lost}, dict(lost[0], stage='30')) is None   # dead nodes are not a bug
+    big = {'stages': [{'id': str(i)} for i in range(100)], 'attempts': [dict(bug, stage=str(i)) for i in range(5)]}
+    assert monitor.systemic_failure(big, dict(bug, stage='9')) is None           # 6 of 100 < 10% of the fan-out
+    big['attempts'] += [dict(bug, stage=str(i)) for i in range(5, 9)]
+    assert 'on 10 stages' in monitor.systemic_failure(big, dict(bug, stage='9'))
+
+
+def _classify(monitor, pods, log='', freason='BackoffLimitExceeded'):
+    job = {'status': {'conditions': [{'type': 'Failed', 'reason': freason}]}}
+
+    class R:
+        def __init__(self, out):
+            self.stdout, self.returncode = json.dumps(out), 0
+    with patch.object(monitor, 'kubectl', lambda *a, **k: R(job if a[2] == 'job' else {'items': pods})):
+        return monitor.classify({'namespace': 'ns'}, {'job': 'j', 'manifest': '/nonexistent'}, log)
+
+
+def test_lost_pod_without_exit_or_traceback_is_infra(monitor):
+    # shard 20, 2026-11-13: pod evicted after NodeNotReady; no pod left, no log, Job says BackoffLimitExceeded
+    cls, sig, _ = _classify(monitor, [], '# saved\n## logs\n(kubectl failed rc=1: error: timed out waiting for the condition)\n## describe pods\n')
+    assert (cls, sig) == ('infra', monitor.LOST_SIG)
+    running = [{'status': {'containerStatuses': [{'name': 'w', 'state': {'running': {}}}]}}]
+    assert _classify(monitor, running)[:2] == ('infra', monitor.LOST_SIG)
+
+
+def test_exit_code_or_traceback_is_not_a_lost_pod(monitor):
+    assert _classify(monitor, [], 'Traceback (most recent call last):\nKeyError: x\n')[0] == 'code'
+    failed = [{'status': {'containerStatuses': [{'name': 'w', 'state': {'terminated': {'exitCode': 1}}}]}}]
+    assert _classify(monitor, failed)[0] == 'unknown'
+    init = [{'status': {'initContainerStatuses': [{'name': 'fetch', 'state': {'terminated': {'exitCode': 2}}}],
+                        'containerStatuses': [{'name': 'w', 'state': {'waiting': {'reason': 'PodInitializing'}}}]}}]
+    assert _classify(monitor, init)[1].startswith('exit2')
 
 
 def test_true_peak_parser_rejects_invalid_and_rss(monitor):

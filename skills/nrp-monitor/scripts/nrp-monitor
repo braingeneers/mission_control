@@ -2421,7 +2421,9 @@ def jwt_days_left():
 TASKS = STATE / "tasks"
 TASK_CACHE = Path(os.environ.get("NRP_TASK_CACHE") or Path.home() / ".cache/nrp-tasks")
 TASK_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
-PER_STAGE_CLASSES = ("resources", "infra", "queue")
+SYSTEMIC_CLASSES = ("code", "unknown", "outputs")     # the same one of these on several stages is one bug, not several bad shards
+SYSTEMIC_STAGES = 3                                   # ... on this many distinct stages (or 10% of a fan-out, whichever is larger)
+LOST_SIG = "lost-pod"                                 # the container never reported an exit and there is no traceback: our code did not fail
 CLASS_BUDGET = {"resources": 3, "util": 3, "code": 3, "queue": 2, "infra": 2, "outputs": 1, "unknown": 1}
 TASK_LIVE = ("running", "retrying", "blocked")
 TASK_HELD = ("NEEDS_OWNER", "WITH_COORDINATOR")      # completion is still observed while waiting for a decision
@@ -3645,7 +3647,7 @@ def classify(t, s, logtxt):
         ps = p.get("status", {})
         if ps.get("reason") == "Evicted":
             return "resources", "evicted@" + mem, "pod evicted: %s" % (ps.get("message") or "")[:200]
-        for cs in ps.get("containerStatuses", []) or []:
+        for cs in (ps.get("initContainerStatuses") or []) + (ps.get("containerStatuses") or []):
             term = (cs.get("state") or {}).get("terminated") or (cs.get("lastState") or {}).get("terminated")
             wait = (cs.get("state") or {}).get("waiting") or {}
             if term and term.get("reason") == "OOMKilled":
@@ -3653,8 +3655,8 @@ def classify(t, s, logtxt):
             if wait.get("reason") in ("ImagePullBackOff", "ErrImagePull", "InvalidImageName", "CreateContainerConfigError",
                                       "CreateContainerError"):
                 return "infra", "waiting:%s" % wait["reason"], "%s: %s" % (wait["reason"], (wait.get("message") or "")[:200])
-            if term and code is None:
-                code = term.get("exitCode")
+            if term and term.get("exitCode") is not None and (code is None or code == 0):
+                code = term.get("exitCode")                   # a non-zero exit (init or main container) wins over a zero one
     if freason == "DeadlineExceeded":
         dl = (j.get("spec") or {}).get("activeDeadlineSeconds") or 0
         js, ps0 = parse_ts(j.get("status", {}).get("startTime")), s.get("pod_started")
@@ -3665,6 +3667,11 @@ def classify(t, s, logtxt):
     lines = [l for l in (logtxt or "").splitlines() if l.strip()]
     err = next((l.strip() for l in reversed(lines[-80:]) if EXC_RE.match(l)), "")
     last = lines[-1].strip() if lines else ""
+    if code is None and not err and "Traceback" not in (logtxt or ""):
+        # General rule, no list of Kubernetes reasons: our container never reported an exit and printed no traceback, so our code
+        # did not fail. Node loss, NotReady/taint evictions, preemption, drains and deleted pods all land here. Retry the stage.
+        return "infra", LOST_SIG, "pod ended without an exit code or traceback from our container (node loss, eviction, " \
+            "preemption or deletion)%s" % ("; Job condition %s" % freason if freason else "")
     if code == 137:
         return "resources", "137@" + mem, "exit 137 (OOM or eviction) at memory %s" % mem
     if (err or last) and TRANSIENT_RE.search(err or last):
@@ -4134,11 +4141,24 @@ def resource_template(doc):
 
 
 def class_retries(t, f):
-    """Resource, infra and queue budgets belong to each stage (a lost pod on one shard
-    says nothing about the others); max_retries still caps the task."""
+    """Every class budget belongs to its stage (a failure on one shard says nothing about the others). The task is guarded by
+    max_retries and by `systemic_failure` (the same code/unknown signature on several stages)."""
     return sum(1 for x in t.get("attempts", [])[t.get("budget_from", 0):]
-               if x.get("cls") == f.get("cls") and
-               (f.get("cls") not in PER_STAGE_CLASSES or x.get("stage") == f.get("stage")))
+               if x.get("cls") == f.get("cls") and x.get("stage") == f.get("stage"))
+
+
+def systemic_failure(t, f):
+    """A reason string when the current code/unknown/outputs failure has the same signature as failures on other stages (one bug
+    hitting the fan-out), else None. Environment failures (infra, resources, queue) never count: dead nodes are not a bug."""
+    if f.get("cls") not in SYSTEMIC_CLASSES:
+        return None
+    stages = {x.get("stage") for x in t.get("attempts", [])[t.get("budget_from", 0):]
+              if x.get("cls") == f.get("cls") and x.get("sig") == f.get("sig")} | {f.get("stage")}
+    need = max(SYSTEMIC_STAGES, -(-len(t.get("stages") or []) // 10))
+    if len(stages) >= need:
+        return "the same [%s] failure on %d stages (%s): one systemic cause, not bad shards; last: %s" % (
+            f["cls"], len(stages), ", ".join(sorted(map(str, stages)))[:80], f.get("detail", "")[:200])
+    return None
 
 
 def true_memory_peak(text, container=None):
@@ -4942,6 +4962,17 @@ def tier0_node(t, s, f):
     return doc, "known node fault on %s (%s) -> node excluded, resubmitted (Tier 0 rule)" % (node, why[:60]), {"rule": "node", "node": node}
 
 
+def tier0_lost(t, s, f):
+    """(unchanged manifest doc, reason, record) for a lost pod; do_submit applies the shared bad-node list and the stage's budget."""
+    if f.get("sig") != LOST_SIG:
+        return None
+    try:
+        doc = manifest_doc(s["manifest"])
+    except Exception:
+        return None
+    return doc, "pod lost without an exit or traceback (environment, not code) -> resubmitted unchanged (Tier 0 rule)", {"rule": "lost"}
+
+
 def tier0_fix(n, a):
     """True when a Tier 0 rule edited the manifest and resubmitted the failed stage. Never raises, never starts a model; False hands the
     failure to handle_failure unchanged (watch-only tasks, repeats, anything over a cap, no rule matched)."""
@@ -4958,9 +4989,9 @@ def tier0_fix(n, a):
         if not s.get("manifest"):
             return False
         node_rule = tier0_node(t, s, f)  # record a fresh fault even if the retry budget is used
-        if f["sig"] in [x["sig"] for x in t["attempts"] if x["stage"] == f["stage"]]:
-            return False
-        for rule in (tier0_node, tier0_oom):
+        if f["sig"] != LOST_SIG and f["sig"] in [x["sig"] for x in t["attempts"] if x["stage"] == f["stage"]]:
+            return False                                       # a lost pod may repeat on the same stage; its per-stage infra budget caps it
+        for rule in (tier0_node, tier0_oom, tier0_lost):
             r = node_rule if rule is tier0_node else rule(t, s, f)
             if not r:
                 continue
@@ -5111,12 +5142,14 @@ def handle_failure(n, a):
     if f["cls"] == "slow" and not a.dry_run and tier0_timeout(n, f):
         return
     why = None
-    if f["sig"] in prior:
+    if f["sig"] in prior and f["sig"] != LOST_SIG:
         why = "stage %s failed the same way again after a retry [%s]: %s" % (f["stage"], f["cls"], f["detail"])
     elif used >= t["max_retries"]:
         why = "retry cap %d reached; last failure [%s]: %s" % (t["max_retries"], f["cls"], f["detail"])
     elif cls_used >= CLASS_BUDGET.get(f["cls"], 1):
-        why = "%s retries used (%d); last failure: %s" % (f["cls"], cls_used, f["detail"])
+        why = "%s retries used (%d) on stage %s; last failure: %s" % (f["cls"], cls_used, f["stage"], f["detail"])
+    else:
+        why = systemic_failure(t, f)
     if why:
         to_coordinator(n, why, a)
         return

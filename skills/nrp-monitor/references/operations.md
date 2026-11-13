@@ -30,7 +30,12 @@ manifest untouched and hands the failure to the ladder below. Tier 0 resubmits a
   uses historical Thanos `kube_pod_info` placement since submit; ambiguous multi-node results
   are left to the agents. The submitted copy receives automatic exclusions so expiry allows
   the node again without editing manifests. At most 3 nodes per stage; the same failure signature again
-  goes to the agents.
+  goes to the agents. Naming the node is optional: a lost pod is resubmitted by the rule below whether or not a node is found.
+- **Lost pod** (class `infra`, signature `lost-pod`): the Job failed, no init or main container reported an exit code and the logs hold no
+  traceback, so our code did not fail. One general test instead of a list of Kubernetes reasons: node loss, NotReady/taint evictions,
+  preemption, drains and deleted pods all land here. The stage is resubmitted unchanged (the shared bad-node list still applies) up to
+  its per-stage infra budget (2); a repeat on the same stage is allowed within that budget. Added 2026-11-13 after HIPPIE shards 20 and 30
+  lost their nodes, could not be placed on one node, were filed `unknown` and used up a task-wide budget.
 - **Long Pending** (no container started 30 minutes after submit): the scheduler's PodScheduled message is recorded once in the
   task events and the digest (`pending`), again when it changes or after 6 hours, with the node restrictions of our own manifest
   (for example a GPU allow-list) when the message blames affinity/selector. Read-only: nothing is resubmitted or extended.
@@ -118,7 +123,7 @@ mentions it.
 2. **Cheap triage.** For a registered Job with a resume file, one read-only agent looks first and returns a result or
    `ESCALATE` with evidence.
 3. **Repair.** Up to two repair attempts for a legacy job follow-up (the ladder is configurable: agents.md). A task's Tier 2 agent has a
-   task-wide retry cap (`max_retries`, default `max(4, ceil(stages/4))`; explicit values win) and class budgets (resources: 3 per stage; other classes remain task-wide). Code fixes are committed on `monitor/<task>`. The agent's prompt
+   task-wide retry cap (`max_retries`, default `max(4, ceil(stages/4))`; explicit values win) and class budgets, all per stage (resources 3, code 3, util 3, infra 2, queue 2, outputs 1, unknown 1). The task-wide guard is the cap plus the systemic rule: the same code/unknown/outputs signature on max(3, 10% of stages) distinct stages goes up the ladder as one bug. Environment classes (infra, resources, queue) never count toward it. Code fixes are committed on `monitor/<task>`. The agent's prompt
    carries the task's handoff, and its `HANDOFF_ENTRY:` block is appended to the handoff's Fix log (handoff.md).
    A single bad item is skipped and logged; a pattern (more than 5% of items, by default; the `skip_limit_fraction`
    setting, install.md) goes to a person.

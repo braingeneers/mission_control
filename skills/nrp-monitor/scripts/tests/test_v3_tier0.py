@@ -165,7 +165,7 @@ class Tier0(Base):
 
     # ------------------------------------------------------------------ known node fault -> exclude the node
     def node_fault(self, node="gpu-node-7", message="NVRM: Xid 79: GPU has fallen off the bus"):
-        self.set_job("t1-a", state="FAILED", node=node, pod_status={"message": message})
+        self.set_job("t1-a", state="FAILED", node=node, term={"reason": "Error", "exitCode": 1}, pod_status={"message": message})
 
     def test_known_node_fault_excludes_the_node_and_resubmits_without_agent(self):
         self.assertEqual(self.add()[0], 0)
@@ -204,6 +204,23 @@ class Tier0(Base):
         self.assertIsNone(mod.mem_bytes("lots"))
         self.assertEqual(mod.mem_text(2.6 * GI), "3Gi")
         self.assertEqual(mod.mem_text(300 * 2 ** 20), "300Mi")
+
+    def test_lost_pod_is_resubmitted_without_agent_up_to_the_stage_infra_budget(self):
+        # 2026-11-13 HIPPIE shards 20 and 30: node went NotReady, pod evicted; no exit code, no traceback, node not identifiable
+        self.assertEqual(self.add()[0], 0)
+        self.run_pass()
+        for attempt in (1, 2):
+            self.set_job("t1-a", state="FAILED", node="", log="")
+            self.run_pass()
+            t = self.task()
+            self.assertEqual(len(self.prompts()), 0)
+            self.assertEqual([x["rule"] for x in t["tier0"]], ["lost"] * attempt)
+            self.assertEqual(t["attempts"][-1]["cls"], "infra")
+            self.assertEqual(t["attempts"][-1]["by"], "tier0")
+        self.set_job("t1-a", state="FAILED", node="", log="")                # a third loss on the same stage: budget (2) used
+        self.run_pass()
+        self.assertEqual(len(self.task()["tier0"]), 2)
+        self.assertNotEqual(self.task()["status"], "running")
 
     def test_an_ordinary_failure_is_not_a_node_fault(self):
         self.assertEqual(self.add()[0], 0)
