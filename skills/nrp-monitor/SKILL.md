@@ -185,8 +185,11 @@ batch. Stops and unresolved checks still wake with a reason; the failure ladder 
 and policy; `costs` shows avoided completion events; the ledger records `group_wake`.
 
 Optional task `postcheck: {"cmd": ["python", "/path/checker.py"], "expect": "PASS"}` declares a trusted read-only local
-checker, executed with exact argv and a 120 s timeout before success; failure enters the outputs ladder. This is a declared
-contract, not an OS sandbox. Continue/followup agents can rerun it with `nrp-task postcheck`, read their task state folder,
+checker, executed with exact argv and a 120 s timeout before success; failure wakes the coordinator (or the owner if the
+coordinator cannot be woken). This is a declared contract, not an OS sandbox. Continue/followup agents can rerun it with `nrp-task postcheck`, read their task state folder,
 and use `nrp-task s3 cp URI DEST` for exact objects up to 256 KiB within plan `may_touch` (local downloads only under the
 task's `downloads/`). Success logs capture container stdout before deletion and store `logs/<stage>/outputs.json`; task show
 and continue prompts include the extracted KEY=VALUE lines. Group summaries include checks, outputs and resolution tiers.
+
+skip_reuse fixes a failed stage whose success markers exist, never a failing postcheck; a broken postcheck/acceptance script is the coordinator's problem.
+Repeated decisions escalate after 3 applications without a newly completed stage. Closing agents receive resume/skip notes, which supersede original artifact locations.

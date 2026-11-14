@@ -2474,9 +2474,11 @@ def task_txn(n, fn):
         if t is None:
             return False
         previous = t.get("status")
+        completed = set(t.get("completed_stages", [])) | {s["id"] for s in t.get("stages", []) if s["state"] == "done"}
         r = fn(t)
         if r is False:
             return False
+        t["completed_stages"] = sorted(completed | {s["id"] for s in t.get("stages", []) if s["state"] == "done"})
         if t.get("status") != previous and t.get("status") in ("done", "failed", "cancelled"):
             terminal_wake(t)
         task_write(t)
@@ -3755,6 +3757,13 @@ def decisions(n):
     return read_json(task_dir(n) / "decisions.json", [])
 
 
+DECISION_NO_PROGRESS_LIMIT = 3
+
+
+def postcheck_failure(f):
+    return f.get("sig") == "postcheck" or f.get("cls") == "postcheck"
+
+
 DECISION_ACTIONS = ("resubmit", "resubmit_with_manifest", "escalate", "skip_reuse")
 
 
@@ -3768,6 +3777,8 @@ def record_decision(t, fp, action, why, scope="task", max_uses=None, who="coordi
         raise ValueError("max_uses must be positive")
     if scope == "stage" and not f.get("stage"):
         raise ValueError("stage scope needs a current failed stage")
+    if action == "skip_reuse" and postcheck_failure(f):
+        raise ValueError("skip_reuse cannot resolve a failing postcheck; the coordinator must fix the acceptance script")
     entries = decisions(t["name"])
     entry = dict(fingerprint=fp, action=action, scope=scope, stage=f.get("stage"), max_uses=max_uses,
                  uses=0, who=who, why=why, ts=now())
@@ -3786,11 +3797,20 @@ def apply_decision(n, a):
     f = t.get("failure")
     if not f or t["mode"] != "auto" or a.dry_run:
         return False
+    if postcheck_failure(f):
+        to_coordinator(n, "postcheck failed: the coordinator must fix the acceptance script; skip_reuse cannot resolve it. " + f.get("detail", ""), a, deputy=False)
+        return True
     fp = f.get("fingerprint") or fingerprint(t, f)
     entries = decisions(n)
     for d in reversed(entries):
         if d["fingerprint"] != fp or (d["scope"] == "stage" and d.get("stage") != f["stage"]):
             continue
+        progress = sorted(set(t.get("completed_stages", [])) | {s["id"] for s in t["stages"] if s["state"] == "done"})
+        streak = (t.get("decision_streaks") or {}).get(fp)
+        count = (streak["count"] if streak["progress"] == progress else 0) if streak else d.get("uses", 0)
+        if count >= DECISION_NO_PROGRESS_LIMIT:
+            to_coordinator(n, "decision %s applied %d times without progress (no new stage completed); coordinator action required" % (fp, count), a, deputy=False)
+            return True
         if d.get("max_uses") is not None and d.get("uses", 0) >= d["max_uses"]:
             continue
         action = d["action"]
@@ -3819,6 +3839,7 @@ def apply_decision(n, a):
                         entry["uses"] = entry.get("uses", 0) + 1
                         write_json(task_dir(n) / "decisions.json", current)
                         break
+                task.setdefault("decision_streaks", {})[fp] = {"count": count + 1, "progress": progress}
                 tev(task, "applied coordinator decision %s" % fp)
             task_txn(n, consumed)
             cost_event(n, "decision", "0", "escalated" if action == "escalate" else "resolved",
@@ -3891,7 +3912,7 @@ def deputy_prompt(t, reason):
             "with nrp-task decide FINGERPRINT --action ACTION --why TEXT; apply with nrp-task apply-decision. "
             "nrp-task retry-cap N may raise the cap up to %d. "
             "Never change thresholds, checks, data selection or method, touch other tasks, cancel the task or contact the owner. "
-            "Mark done only via verified existing success markers (nrp-task decide ... --action skip_reuse). "
+            "skip_reuse fixes a failed stage whose success markers exist, never a failing postcheck; a broken postcheck/acceptance script is the coordinator's problem. "
             "End with RESOLVED: what you did, or ESCALATE: a brief of at most 120 words stating what failed, "
             "what was tried and the exact decision needed.\nEscalation reason: %s\nPlan copy:\n%s" %
             (scaled_retry_cap(t["stages"]), reason, plan))
@@ -5125,6 +5146,9 @@ def handle_failure(n, a):
     if not f.get("fingerprint"):
         f["fingerprint"] = fingerprint(t, f)
         task_txn(n, lambda task: task["failure"].update(fingerprint=f["fingerprint"]))
+    if postcheck_failure(f):
+        to_coordinator(n, "postcheck failed: the coordinator must fix the acceptance script; skip_reuse cannot resolve it. " + f["detail"], a, deputy=False)
+        return
     if apply_decision(n, a):
         return
     since = t.get("budget_from", 0)
@@ -5340,6 +5364,7 @@ def advance_task(n, jobs, a):
             text += ("\nPostcheck: " + json.dumps(task_load(n).get("postcheck_result"))
                      + "\nStage outputs: " + json.dumps({s["id"]: s.get("outputs", {}) for s in task_load(n)["stages"]})
                      + "\nRead saved logs/notes in the task directory. `nrp-task postcheck` reruns only the declared checker.")
+            text += person_resolution_context(task_load(n))
             line, _ = run_task_agent(n, text, a, kind="followup")
             if is_unavailable(line):
                 line = ("the completion report was not written (%s); read the result with `nrp-monitor task show %s`" % (line, n))
@@ -5958,6 +5983,21 @@ def check_on_done(od, raw, src_file, by, parent):
     return {"plan": pid, "from_step": step, "depth": depth, "by": by, "parent": parent}
 
 
+def person_resolution_context(t):
+    # Older state already stores resume notes in attempts. New resumes also cover a task with no failure.
+    resumes = t.get("resume_notes", [])
+    first = min((x["ts"] for x in resumes), default=float("inf"))
+    entries = [(x.get("ts", 0), x.get("fix", "")) for x in t.get("attempts", [])
+               if x.get("by") == "person" and x.get("ts", 0) < first]
+    entries += [(x["ts"], x["note"]) for x in resumes]
+    notes = [note for _, note in sorted(entries, key=lambda x: x[0]) if note]
+    if not notes:
+        return ""
+    return ("\nLatest person/coordinator resume and skip notes (chronological; newest wins):\n"
+            + "\n".join(notes) + "\nThese notes supersede the original brief's artifact locations. "
+            "Verify and report the replacement run/artifacts they name.\n")
+
+
 def continue_prompt(t, h, go, held):
     od = t["on_done"]
     d = plan_dir(od["plan"])
@@ -5973,7 +6013,7 @@ def continue_prompt(t, h, go, held):
            "notes": t.get("notes") or "(none)", "clone": (t.get("code") or {}).get("clone", "(no code clone)")}
     for k, v in rep.items():
         tpl = tpl.replace("{%s}" % k, v)
-    return (tpl.replace("{handoff}", handoff_prompt(t)) + failure_context(t)
+    return (tpl.replace("{handoff}", handoff_prompt(t)) + failure_context(t) + person_resolution_context(t)
             + "\nSave a separate result note for this task: " + str(d / "work" / ("step-" + od["from_step"] + "-" + t["name"] + "-result.md"))
             + "\nFollowup (do this in this same agent): " + t.get("followup", "")
             + "\nPostcheck: " + json.dumps(t.get("postcheck_result"))
@@ -6871,6 +6911,7 @@ def cmd_task_resume(a):
                 if s["state"] != "done" and s.get("manifest") and manifest_gpu(s["manifest"]):
                     s["gpu_ok_until"] = a.gpu_ok_until
         if a.note and a.note.strip():
+            t.setdefault("resume_notes", []).append(dict(note=a.note, ts=now(), skipped=list(skipped)))
             handoff_append(t, "%s | coordinator | resume note" % iso(now()),
                            [("Fix log", handoff_clean(a.note, HANDOFF_ENTRY_MAX))])
         tev(t, "resumed by %s%s" % (who[0], ": " + a.note if a.note else ""))
