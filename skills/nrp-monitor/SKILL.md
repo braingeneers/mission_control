@@ -180,9 +180,16 @@ Plans may declare `groups: collect=1,2; analyze=3`, `wake: group|task|digest`, p
 `retries: collect=40; analyze=8`. With groups the default is one coordinator completion wake per group; without them
 legacy task/step behavior remains. `on_done` handles any followup in the same continue agent. Every group step needs a
 registered task and all members must succeed and finish their result checks. Cancelled/failed/held tasks keep it open;
-register all fan-out members before completion. A group already announced never reopens: use another plan id for a new
-batch. Stops and unresolved checks still wake with a reason; the failure ladder is unchanged. `plan show` shows membership
+register fan-out members together for one aggregate wake. Tasks added after a step was checked get their own check
+and completion wake; a group announces again once its newly registered members finish their checks. Stops and
+unresolved checks still wake with a reason; the failure ladder is unchanged. `plan show` shows membership
 and policy; `costs` shows avoided completion events; the ledger records `group_wake`.
+
+Idle running/waiting plans get one backup coordinator check-in after three hours with all tasks terminal and no new
+activity. Set run-header `fallback_hours: 3` to change the delay or `fallback: off` to disable it. Registration,
+`plan sync`, `wake-review`, and delivered coordinator wakes restart the idle clock and allow one new check-in.
+The backup itself does not reset the clock or repeat. Delivered planned stops for Hunter remain in the digest
+and do not trigger this fallback. The ledger and digest record `plan-fallback`.
 
 Optional task `postcheck: {"cmd": ["python", "/path/checker.py"], "expect": "PASS"}` declares a trusted read-only local
 checker, executed with exact argv and a 120 s timeout before success; failure wakes the coordinator (or the owner if the

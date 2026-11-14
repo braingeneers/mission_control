@@ -2480,6 +2480,7 @@ def task_txn(n, fn):
             return False
         t["completed_stages"] = sorted(completed | {s["id"] for s in t.get("stages", []) if s["state"] == "done"})
         if t.get("status") != previous and t.get("status") in ("done", "failed", "cancelled"):
+            t["terminal_at"] = now()
             terminal_wake(t)
         task_write(t)
         return True if r is None else r
@@ -2975,7 +2976,7 @@ def process_task_webhooks(a, st):
         target = wake_target(t) or {"harness": "t3"}                   # no target: the webhook path fails and is counted like any failed wake
         for event in (t.get("webhook_outbox") or [])[:10]:
             current = task_load(n) or {}
-            if current.get("status") == "cancelled" or (current.get("status") == "done" and event.get("event_type") != "done"):
+            if (current.get("status") == "cancelled" and event.get("event_type") != "plan-fallback") or (current.get("status") == "done" and event.get("event_type") not in ("done", "plan-fallback")):
                 def discard(cur):
                     cur["webhook_outbox"] = [e for e in cur.get("webhook_outbox", []) if e.get("event_id") != event["event_id"]]
                     (cur.get("wake_tries") or {}).pop(event["event_id"], None)
@@ -5895,6 +5896,15 @@ def parse_run_block(section):
          "approved_through": raw.get("approved_through", "none").strip() or "none",
          "stops": split_list(raw.get("stop_for_owner") or raw.get("stop_for_hunter")), "may_touch": split_list(raw.get("may_touch")),
          "templates": split_list(raw.get("templates")), "next": {}}
+    h["fallback"] = raw.get("fallback", "on").lower()
+    try:
+        h["fallback_hours"] = float(raw.get("fallback_hours", 3))
+        if not 0 < h["fallback_hours"] < float("inf"):
+            raise ValueError()
+    except ValueError:
+        bad.append("fallback_hours: a finite positive number")
+    if h["fallback"] not in ("on", "off"):
+        bad.append("fallback: on or off")
     for part in [x for x in (raw.get("next") or "").split(";") if x.strip()]:
         a, _, b = part.partition(">")
         if not b:
@@ -6039,7 +6049,7 @@ def plan_sync(path, pid):
         shutil.copyfile(src, d / "files" / name)
     (d / "plan.md").write_text(sec)
     write_json(d / "header.json", dict(h, source=str(p.resolve()), synced=iso()))
-    plan_txn(pid, lambda st: pev(st, "synced from %s (approved through %s; stops %s)" % (p.name, h["approved_through"], ", ".join(h["stops"]) or "none")))
+    plan_txn(pid, lambda st: (st.update(activity_at=now()), pev(st, "synced from %s (approved through %s; stops %s)" % (p.name, h["approved_through"], ", ".join(h["stops"]) or "none"))))
     return h
 
 
@@ -6195,7 +6205,10 @@ def close_continuation(n, status, line):
                 siblings = step_siblings(cur, include_cancelled=True)
                 if any(other["status"] != "done" or (other.get("continuation") or {}).get("state") != "closed" for other in siblings):
                     return
-                if any(other.get("stop_event_id") for other in [cur] + siblings):
+                registered = max(other.get("created", 0) for other in [cur] + siblings)
+                wake_times = {r.get("event_id"): r["ts"] for r in cost_rows() if r["kind"] == "coordinator_wake"}
+                if any(other.get("stop_event_id") and wake_times.get(other["stop_event_id"], 0) >= registered
+                       for other in [cur] + siblings):
                     return
                 group = task_group(cur, h)
                 if completion_policy(cur) == "group" and group_ready(h, group, group_members(od["plan"], group, h)):
@@ -6322,8 +6335,6 @@ def process_group_wakes(a):
                 if not members or completion_policy(members[0]) != "group" or not group_ready(h, group, members):
                     continue
                 st = plan_state(pid)
-                if group in st.get("group_wakes", {}):
-                    continue
                 summary = "Plan %s group %s complete. " % (pid, group)
                 summary += "; ".join("%s: %d/%d stages done; results %s; postcheck %s; outputs %s; %s" % (
                     t["name"], sum(s["state"] == "done" for s in t["stages"]), len(t["stages"]),
@@ -6335,8 +6346,17 @@ def process_group_wakes(a):
                 summary += "; resolved failures: " + json.dumps([r for r in cost_rows()
                     if r.get("task") in {t["name"] for t in members} and r.get("outcome") == "resolved"])
                 key = pid + ":" + group
+                announced = set(st.get("group_wake_members", {}).get(group, []))
+                for member in members:
+                    announced.update(member.get("group_wake_members", {}).get(key, []))
                 prior = next((t.get("group_wakes", {}).get(key) for t in members if t.get("group_wakes", {}).get(key)), None)
-                if prior:
+                # Reconstruct pre-snapshot claims from their ledger time, without covering later registrations.
+                if not announced and (prior or group in st.get("group_wakes", {})):
+                    claim = prior or st["group_wakes"][group]
+                    claimed_at = next((r["ts"] for r in cost_rows() if r.get("event_id") == claim), 0)
+                    announced = {t["name"] for t in members if t.get("created", 0) <= claimed_at
+                                 or t.get("group_wakes", {}).get(key)}
+                if {t["name"] for t in members} <= announced:
                     st.setdefault("group_wakes", {})[group] = prior
                     write_json(plan_dir(pid) / "state.json", st)
                     continue
@@ -6344,6 +6364,9 @@ def process_group_wakes(a):
                 event = queue_task_webhook(t, "done", summary=summary)
                 if event:
                     t.setdefault("group_wakes", {})[key] = event
+                    names = sorted(t["name"] for t in members)
+                    t.setdefault("group_wake_members", {})[key] = names
+                    st.setdefault("group_wake_members", {})[group] = names
                     task_write(t)
                     st.setdefault("group_wakes", {})[group] = event
                     write_json(plan_dir(pid) / "state.json", st)
@@ -6371,11 +6394,14 @@ def terminal_wake(t):
     if waiting:
         tev(t, "step %s: done wake held until task(s) %s finish" % (t["on_done"]["from_step"], ", ".join(waiting)))
         return
-    if any(x.get("done_event_id") for x in [t] + sib):
+    wake_times = {r.get("event_id"): r["ts"] for r in cost_rows() if r["kind"] == "coordinator_wake"}
+    if any(x.get("done_event_id") and x.get("done_wake_started", wake_times.get(x["done_event_id"], 0)) >= t.get("created", 0)
+           for x in [t] + sib):
         return
     event = queue_task_webhook(t, "done", summary=step_done_summary(t, sib))
     if event:
         t["done_event_id"] = event
+        t["done_wake_started"] = now()
 
 
 def step_done_summary(t, sib):
@@ -6399,6 +6425,78 @@ def step_siblings(t, include_cancelled=False):
     return out
 
 
+def continuation_covers(c, t):
+    return (c.get("state") == "running" or
+            (c.get("state") == "closed" and c.get("status") in ("CONTINUED", "WAITING")
+             and c.get("started", -1) >= t.get("created", 0)))
+
+
+# Plans idle since before the fallback shipped are not woken (no burst into old chats); new activity re-arms them.
+FALLBACK_SINCE = 1794674429  # 2026-11-14 install
+
+
+def process_plan_fallbacks(a):
+    """One backup coordinator check-in per idle period; external activity resets it."""
+    if a.dry_run:
+        return
+    rows = cost_rows()
+    for pid in plan_names():
+        with state_lock():
+            st, h = plan_state(pid), plan_header(pid) or {}
+            if st["status"] not in ("running", "waiting") or h.get("fallback") == "off":
+                continue
+            tasks = [t for n in task_names() for t in [task_load(n)]
+                     if t and (t.get("on_done") or {}).get("plan") == pid]
+            if not tasks or any(t["status"] not in ("done", "failed", "cancelled") or
+                    (t.get("continuation") or {}).get("state") == "running" for t in tasks):
+                continue
+            targets = [t for t in tasks if wake_target(t)]
+            if not targets:
+                continue
+            names = {t["name"] for t in tasks}
+            relevant = [r for r in rows if r.get("task") in names]
+            latest_registration = max(t.get("created", 0) for t in tasks)
+            delivered = {r.get("event_id") for r in relevant if r["kind"] == "coordinator_result"
+                         and r["ts"] >= latest_registration}
+            # Both explicit stop wakes and group summaries can deliver a current planned stop.
+            stop_delivered = any(any(eid and eid in delivered for eid in
+                [t.get("stop_event_id")] + list(t.get("group_wakes", {}).values())) and any(
+                step in h.get("stops", []) for step, _ in next_steps(h, t["on_done"]["from_step"])[1])
+                for t in tasks)
+            if st["status"] == "waiting" and stop_delivered:
+                continue  # existing plan-wait digest retains these owner waits
+            terminal = max(t.get("terminal_at", t.get("finished", t.get("created", 0))) for t in tasks)
+            activity = max([terminal, st.get("activity_at", 0), parse_ts(h.get("synced")) or 0] + [t.get("created", 0) for t in tasks] +
+                           [e.get("t", 0) for entries in st["ledger"].values() for e in entries] +
+                           [r["ts"] for r in relevant if r["kind"] == "wake_review" or
+                            (r["kind"] == "coordinator_result" and r.get("wake_kind") != "plan-fallback")])
+            if activity < FALLBACK_SINCE:
+                continue
+            idle = now() - activity
+            if idle < h.get("fallback_hours", 3) * 3600:
+                continue
+            period = st.get("fallback_period", {})
+            if period.get("activity") != activity:
+                period = {"activity": activity, "count": 0}
+            if period["count"]:
+                continue
+            t = max(targets, key=lambda t: t.get("terminal_at", t.get("finished", t.get("created", 0))))
+            summary = ("Plan %s idle %.1f h: all tasks finished (%s); approved through %s, stops %s; started steps %s. "
+                       "Check results and continue the approved plan, or record why it waits (nrp-monitor wake-review %s ...)." %
+                       (pid, idle / 3600, "; ".join("%s: %s/%s" % (x["name"], x["status"],
+                        (x.get("continuation") or {}).get("status", "unchecked")) for x in tasks),
+                        h.get("approved_through"), ",".join(h.get("stops", [])) or "none", ",".join(st["ledger"]), t["name"]))
+            event = queue_task_webhook(t, "plan-fallback", summary=summary)
+            if event:
+                task_write(t)
+                period.update(count=period["count"] + 1, last=now())
+                st["fallback_period"] = period
+                pev(st, "plan-fallback " + summary)
+                write_json(plan_dir(pid) / "state.json", st)
+                cost_event(t["name"], "plan-fallback", "coordinator", "done", plan=pid, event_id=event)
+                digest("plan-fallback", summary, t["name"])
+
+
 def process_continuations(a, st=None):
     for n in task_names():
         t = task_load(n)
@@ -6417,7 +6515,7 @@ def process_continuations(a, st=None):
             if t.get("step_waits_for") != names:
                 task_txn(n, lambda t: (t.update(step_waits_for=names), tev(t, "step %s is not done: waiting for task(s) %s" % (t["on_done"]["from_step"], names))))
             continue
-        covered = [x["name"] for x in sib if x.get("continuation")]
+        covered = [x["name"] for x in sib if continuation_covers(x.get("continuation") or {}, t)]
         if covered and completion_policy(t) == "task" and not a.dry_run:  # group/digest: each task gets its result check
             task_txn(n, lambda t: (t.update(continuation={"state": "closed", "status": "COVERED", "line": "step %s continued by task %s" % (t["on_done"]["from_step"], covered[0]), "closed": now()}),
                                    tev(t, "step %s continued by task %s" % (t["on_done"]["from_step"], covered[0]))))
@@ -6428,6 +6526,7 @@ def process_continuations(a, st=None):
             log("plan continuation %s error: %s: %s" % (n, type(e).__name__, str(e)[:200]))
 
     process_group_wakes(a)
+    process_plan_fallbacks(a)
 
 
 # ---- plans: code written overnight by the continue agent (design: docs/agents/plan-run/WATCHDOG_ON_DONE.md "Night code") ----

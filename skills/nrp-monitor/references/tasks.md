@@ -171,3 +171,17 @@ nrp-monitor task resume TASK --note 'Current manifest incorporates the approved 
 Actions: `resubmit` retries without an automated manifest edit; `resubmit_with_manifest` uses the current manifest file as edited by the coordinator; `escalate` always goes straight to the coordinator (bypassing deputy); `skip_reuse` marks the failed stage done only when every exact `done_s3` object exists. Script decisions run before triage and other Tier 0 repairs, never cross tasks, and consume the same retry/class budgets as other submissions. A refused retry does not consume a decision use. `skip_reuse` consumes a decision use but submits no retry. Watch-only tasks do not apply decisions.
 
 The deputy may use `nrp-task decide FINGERPRINT --action ACTION --why TEXT [--max-uses N]` (always task scope), then `nrp-task apply-decision`. It can use `nrp-task retry-cap N` to raise the task cap to at most the scaled default; it cannot reset class budgets. Existing registered tasks retain their stored cap; the scaled default is applied only when a newly registered task omits `max_retries`.
+
+### Late plan members and backup check-ins
+
+A sibling continuation covers a task only while running, or when it closed CONTINUED/WAITING and started after
+that task was registered. Failed, stopped, and NOT-DONE checks never cover siblings. A late registration on an
+already checked step gets its own check and wake; group wakes remember the members already announced and
+announce again after new members finish. Register a fan-out together to retain one aggregate completion wake.
+
+Run headers accept `fallback_hours: 3` (positive hours, default three) and `fallback: off`. With all tasks terminal,
+running/waiting plans receive exactly one backup coordinator wake after that much inactivity. Task registration,
+plan sync, wake-review, and delivered ordinary coordinator wakes restart the clock and allow one more check-in
+after the next idle period. The backup attaches to the latest finished task with a coordinator route; its own
+delivery does not restart the clock. `plan-fallback` is recorded in the ledger and digest. A waiting plan with
+a delivered planned owner stop stays in the digest without backup wakes. No additional owner DM is sent.
