@@ -11,7 +11,7 @@ v2 (owner decision 2026-11-05, design docs/design.md): approved work is a TASK.
   task add ... --origin-harness t3|claude|codex [--origin-session ID --origin-cwd DIR]   where the coordinator chat runs: the monitor wakes THAT chat
   nrp-monitor digest [--hours 24]                    silent events + what needs the owner
   nrp-task ...                                        (wrapper for `nrp-monitor tool`) the fix agent's only shell tool
-  nrp-monitor plan sync PATH#ID | list | show ID      plan-run plans (on_done continuation; OFF unless <state>/on_done.enabled exists)
+  nrp-monitor plan sync PATH#ID [--reopen] | close ID --why TEXT [--force] | list | show ID      plan-run plans (on_done continuation; OFF unless <state>/on_done.enabled exists)
   Task field on_done {plan: PATH#ID, from_step: STEP}: when the task is done, ONE Sonnet continue agent checks the step's "done when"
   and may register the next step (nrp-task next-add) only inside approved_through, never a stop_for_owner step, each step once;
   for that step it may also write + test code on a monitor/<task> branch (nrp-task code-begin|code-test|code-commit|code-ship), inside may_touch.
@@ -3639,6 +3639,8 @@ def task_add_raw(raw, src_file, by="session", parent=None):
     if od:
         tev(t, "plan %s step %s (registered by %s%s)" % (od["plan"], od["from_step"], by, ", after task " + parent if parent else ""))
     with state_lock():
+        if od and plan_state(od["plan"])["status"] == "closed":
+            sys.exit("task refused: plan %s is closed" % od["plan"])
         task_write(t)
     agent_manifest_checkpoint(n)
     if od:
@@ -6005,6 +6007,9 @@ def pev(st, msg):
 
 def plan_set(pid, status, msg, reason=None):
     def f(st):
+        if st["status"] == "closed":
+            pev(st, "closed plan: " + msg)
+            return
         st["status"], st["since"] = status, now()
         st["reason"] = reason or ""
         pev(st, msg)
@@ -6014,12 +6019,12 @@ def plan_set(pid, status, msg, reason=None):
 
 def ledger_add(pid, step, task, by, parent):
     plan_txn(pid, lambda st: (st["ledger"].setdefault(step, []).append({"task": task, "by": by, "parent": parent, "t": now()}),
-                              st.update(status="running", since=now(), reason=""),
+                              st.update(status="running", since=now(), reason="") if st["status"] != "closed" else None,
                               pev(st, "step %s registered as task %s by %s" % (step, task, by))))
     digest("plan-start", "plan %s step %s started as task %s (by %s%s)" % (pid, step, task, by, ", after " + parent if parent else ""), task)
 
 
-def plan_sync(path, pid):
+def plan_sync(path, pid, reopen=False):
     """Copy plan `pid` from `path` into plans/<pid>/ (session side: launchd cannot read ~/Desktop). Returns the header."""
     p = Path(path).expanduser()
     try:
@@ -6049,7 +6054,12 @@ def plan_sync(path, pid):
         shutil.copyfile(src, d / "files" / name)
     (d / "plan.md").write_text(sec)
     write_json(d / "header.json", dict(h, source=str(p.resolve()), synced=iso()))
-    plan_txn(pid, lambda st: (st.update(activity_at=now()), pev(st, "synced from %s (approved through %s; stops %s)" % (p.name, h["approved_through"], ", ".join(h["stops"]) or "none"))))
+    def synced(st):
+        if reopen and st["status"] == "closed":
+            st.update(status="running", since=now(), reason="")
+            pev(st, "reopened by plan sync --reopen")
+        st.update(activity_at=now())
+    plan_txn(pid, lambda st: (synced(st), pev(st, "synced from %s (approved through %s; stops %s)" % (p.name, h["approved_through"], ", ".join(h["stops"]) or "none"))))
     return h
 
 
@@ -6107,6 +6117,8 @@ def check_on_done(od, raw, src_file, by, parent):
         h = plan_header(pid)
         if not h:
             raise ChainError("plan %s has no snapshot (register the first task from a session)" % pid)
+    if plan_state(pid)["status"] == "closed":
+        raise ChainError("plan %s is closed; use plan sync PATH#ID --reopen first" % pid)
     if step not in h["steps"]:
         raise ChainError("on_done.from_step %s is not a step of plan %s (%s)" % (step, pid, ", ".join(h["steps"])))
     if step_pos(h, step) > approved_pos(h):
@@ -6173,6 +6185,9 @@ def close_continuation(n, status, line):
     if status == "CONTINUED" and not reg:
         status, line = "WAITING", "agent said CONTINUED but registered no task: " + line
     task_txn(n, lambda t: t["continuation"].update(state="closed", status=status, line=line[:400], closed=now()))
+    if plan_state(od["plan"])["status"] == "closed":
+        plan_txn(od["plan"], lambda st: pev(st, "closed plan: task %s continuation returned %s: %s" % (n, status, line)))
+        return
     msg = "step %s (task %s): %s %s" % (od["from_step"], n, status, line[:300])
     if status == "CONTINUED":
         plan_set(od["plan"], "running", msg)
@@ -6244,6 +6259,10 @@ def close_continuation(n, status, line):
 def continue_task(n, a):
     t = task_load(n)
     od = t["on_done"]
+    if plan_state(od["plan"])["status"] == "closed":
+        if not a.dry_run:
+            skip_closed_continuation(n)
+        return
     h = plan_header(od["plan"])
     if not h:
         task_txn(n, lambda t: t.update(continuation={"state": "closed", "status": "FAILED", "line": "no plan snapshot", "closed": now()}))
@@ -6267,7 +6286,7 @@ def continue_task(n, a):
         return
 
     def claim(t):
-        if t.get("continuation"):
+        if t.get("continuation") or plan_state(od["plan"])["status"] == "closed":
             return False
         t["continuation"] = {"state": "running", "started": now(), "go": go, "registered": []}
     if not task_txn(n, claim):
@@ -6328,6 +6347,8 @@ def process_group_wakes(a):
     if a.dry_run:
         return
     for pid in plan_names():
+        if plan_state(pid)["status"] == "closed":
+            continue
         h = plan_header(pid) or {}
         for group in h.get("groups", {}):
             with state_lock():
@@ -6383,6 +6404,9 @@ def terminal_wake(t):
             event = queue_task_webhook(t, "done")
             if event:
                 t["done_event_id"] = event
+        return
+    if plan_state(t["on_done"]["plan"])["status"] == "closed":
+        tev(t, "plan closed; terminal completion recorded without a wake")
         return
     policy = completion_policy(t)
     if policy in ("group", "digest"):
@@ -6497,10 +6521,24 @@ def process_plan_fallbacks(a):
                 digest("plan-fallback", summary, t["name"])
 
 
+def skip_closed_continuation(n):
+    """Record a late completion once without launching another plan step."""
+    def record(t):
+        if t.get("continuation"):
+            return
+        t["continuation"] = {"state": "closed", "status": "PLAN-CLOSED", "closed": now()}
+        tev(t, "plan closed; continuation skipped")
+    task_txn(n, record)
+
+
 def process_continuations(a, st=None):
     for n in task_names():
         t = task_load(n)
         if not t or t.get("status") != "done" or not t.get("on_done"):
+            continue
+        if plan_state(t["on_done"]["plan"])["status"] == "closed":
+            if not a.dry_run:
+                skip_closed_continuation(n)
             continue
         c = t.get("continuation")
         if c and c.get("state") == "running" and now() - c.get("started", now()) > CONT_STALE_S and not a.dry_run:
@@ -6812,11 +6850,33 @@ def tool_next_add(n, t, rest):
 def cmd_plan_sync(a):
     path, _, pid = a.ref.partition("#")
     try:
-        h = plan_sync(path, pid)
+        h = plan_sync(path, pid, reopen=a.reopen)
     except ChainError as e:
         sys.exit("plan refused: %s" % e)
     print("plan %s synced: steps %s; approved through %s; stops for the owner %s; auto-continue is %s"
           % (pid, ", ".join(h["steps"]), h["approved_through"], ", ".join(h["stops"]) or "none", "on" if on_done_enabled() else "OFF"))
+    return 0
+
+
+def cmd_plan_close(a):
+    if not a.why.strip():
+        sys.exit("plan close requires a non-empty --why")
+    if not plan_header(a.id):
+        sys.exit("no plan %s" % a.id)
+    with state_lock():
+        live = [t["name"] for n in task_names() for t in [task_load(n)]
+                if t and (t.get("on_done") or {}).get("plan") == a.id and
+                (t["status"] not in ("done", "failed", "cancelled") or
+                 (t.get("continuation") or {}).get("state") == "running")]
+        if live and not a.force:
+            sys.exit("plan close refused: live tasks or running continuations: %s; use --force to close without cancelling them" % ", ".join(live))
+        st = plan_state(a.id)
+        st.update(status="closed", since=now(), reason=a.why.strip(), closed_at=now())
+        pev(st, "closed: %s%s" % (a.why.strip(), "; forced with live tasks: " + ", ".join(live) if live else ""))
+        write_json(plan_dir(a.id) / "state.json", st)
+    print("plan %s [closed]: %s" % (a.id, a.why.strip()))
+    if live:
+        print("Live tasks left unchanged: " + ", ".join(live))
     return 0
 
 
@@ -6829,7 +6889,7 @@ def plan_line(pid):
     return "%s [%s] approved through %s; stops %s; %s%s" % (pid, st["status"], h.get("approved_through", "?"),
            ", ".join(h.get("stops") or []) or "none", "started: " + ", ".join(
            "%s=%s" % (s, e[-1]["task"]) for s, e in st["ledger"].items()) if st["ledger"] else "nothing started",
-           ("; waiting: " + st["reason"]) if st.get("reason") else "") + (
+           ("; %s: " % ("closed" if st["status"] == "closed" else "waiting") + st["reason"]) if st.get("reason") else "") + (
            "; night code to review: " + ", ".join("%s@%s (%s)" % (c["branch"], c["commit"][:8], c["clone"]) for c in st["code"]) if st.get("code") else "")
 
 
@@ -8279,7 +8339,13 @@ def main():
     pk = sub.add_parser("plan", help="plan-run plans that tasks continue (on_done); auto-continue is on only when <state>/on_done.enabled exists").add_subparsers(dest="pcmd", required=True)
     x = pk.add_parser("sync", help="copy PATH#ID (the plan section and its run block) into the state dir after the owner answers or widens approval")
     x.add_argument("ref", metavar="PATH#ID")
+    x.add_argument("--reopen", action="store_true", help="reopen a closed plan")
     x.set_defaults(f=cmd_plan_sync)
+    x = pk.add_parser("close", help="close a finished plan without cancelling its tasks")
+    x.add_argument("id")
+    x.add_argument("--why", required=True, help="reason for closing the plan")
+    x.add_argument("--force", action="store_true", help="close even with live tasks or running continuations; list them without cancelling")
+    x.set_defaults(f=cmd_plan_close)
     pk.add_parser("list").set_defaults(f=cmd_plan_list)
     x = pk.add_parser("show")
     x.add_argument("id")

@@ -202,3 +202,9 @@ skip_reuse fixes a failed stage whose success markers exist, never a failing pos
 Repeated decisions escalate after 3 applications without a newly completed stage. Closing agents receive resume/skip notes, which supersede original artifact locations.
 
 Edit manifests structurally (load YAML, change, dump), never by text substitution; every edit is validated. Invalid agent edits are rejected and the previous manifest restored. Existing corrupt manifests go directly to the coordinator; other task-level exceptions escalate after three consecutive matching failures.
+
+Close a finished plan with `nrp-monitor plan close ID --why "Results reviewed and delivered"`.
+Closed plans show as `[closed]` in `plan list`, receive no idle fallback wakes or new on_done
+continuations, and leave the digest’s waiting list. The reason and time remain in plan events.
+Closing refuses live bound tasks or running continuations; `--force` lists them and leaves them
+running. `plan sync PATH#ID` preserves closure; use `plan sync PATH#ID --reopen` to resume.

@@ -185,3 +185,9 @@ plan sync, wake-review, and delivered ordinary coordinator wakes restart the clo
 after the next idle period. The backup attaches to the latest finished task with a coordinator route; its own
 delivery does not restart the clock. `plan-fallback` is recorded in the ledger and digest. A waiting plan with
 a delivered planned owner stop stays in the digest without backup wakes. No additional owner DM is sent.
+
+Close a finished plan with `nrp-monitor plan close ID --why "Results reviewed and delivered"`.
+Closed plans show as `[closed]` in `plan list`, receive no idle fallback wakes or new on_done
+continuations, and leave the digest’s waiting list. The reason and time remain in plan events.
+Closing refuses live bound tasks or running continuations; `--force` lists them and leaves them
+running. `plan sync PATH#ID` preserves closure; use `plan sync PATH#ID --reopen` to resume.
