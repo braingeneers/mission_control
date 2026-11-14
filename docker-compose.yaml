@@ -137,6 +137,8 @@ services:
       - ./service-proxy/neuroview.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/neuroview.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/integrated-system-mcp.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/integrated-system-mcp.braingeneers.gi.ucsc.edu:ro
       - ./service-proxy/notifications.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/notifications.braingeneers.gi.ucsc.edu:ro
+      - ./service-proxy/lit-map.braingeneers.gi.ucsc.edu:/etc/nginx/vhost.d/lit-map.braingeneers.gi.ucsc.edu:ro
+      - ./service-proxy/lit-map.braingeneers.gi.ucsc.edu_location:/etc/nginx/vhost.d/lit-map.braingeneers.gi.ucsc.edu_location:ro
     networks:
       - braingeneers-net
 
@@ -1104,6 +1106,61 @@ services:
       - braingeneers-net
     depends_on:
       workflows-backend:
+        condition: service_healthy
+
+  # Braingeneers Lit-Map intake service: contribute papers to the literature knowledge base.
+  # Image is built on NRP from github.com/braingeneers/lit-map (service/Dockerfile); the tag
+  # and digest come from service/image.lock. The same image runs the per-paper NRP Jobs.
+  # Uploads use relay mode because the braingeneers bucket CORS only allows the uploader origins.
+  lit-map:
+    image: hschweiger15/lit-map-service:20261113-33b9d172@sha256:27d197ae2195dd43983d4ae14c462cf1a94da2f9a6cd4e74ed5e8f4bd1a22062
+    container_name: lit-map
+    restart: unless-stopped
+    entrypoint: /secrets/entrypoint-secrets-setup.sh
+    command:
+      - "--copy"
+      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
+      - "--copy"
+      - "/secrets/kube-config/config:/kube/config"
+      - "/bin/sh"
+      - "-c"
+      - "alembic -c service/alembic.ini upgrade head && uvicorn service.app:app --host 0.0.0.0 --port 8000"
+    expose:
+      - "8000"
+    environment:
+      VIRTUAL_HOST: "lit-map.braingeneers.gi.ucsc.edu"
+      VIRTUAL_PORT: "8000"
+      LETSENCRYPT_HOST: "lit-map.braingeneers.gi.ucsc.edu"
+      LETSENCRYPT_EMAIL: "braingeneers-admins-group@ucsc.edu"
+      LITMAP_DB_URL: "postgresql+psycopg://services:services@sql-db:5432/services"
+      LITMAP_S3_ENDPOINT: "https://s3.braingeneers.gi.ucsc.edu"
+      LITMAP_BUCKET: "braingeneers"
+      LITMAP_PREFIX: "literature/"
+      LITMAP_SITE_PREFIX: "braindance/_lit-map/"
+      LITMAP_WORK: "/local/lit-map"
+      LITMAP_KUBECONFIG: "/kube/config"
+      LITMAP_K8S_NAMESPACE: "braingeneers"
+      # NRP Jobs run this same image (keep identical to the image above).
+      LITMAP_JOB_IMAGE: "hschweiger15/lit-map-service:20261113-33b9d172@sha256:27d197ae2195dd43983d4ae14c462cf1a94da2f9a6cd4e74ed5e8f4bd1a22062"
+      LITMAP_MAX_JOBS: "2"
+      LITMAP_UPLOAD_MODE: "relay"
+      # Admins may delete abusive submissions. Login is CILogon by email, so this is an email list.
+      LITMAP_ADMIN_EMAILS: "hschweig@ucsc.edu,dfparks@ucsc.edu"
+      LITMAP_TRUST_PROXY: "true"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+    networks:
+      - braingeneers-net
+    volumes:
+      - secrets:/secrets:ro
+      - local:/local
+    depends_on:
+      secret-fetcher:
+        condition: service_healthy
+      sql-db:
         condition: service_healthy
 
 # The braingeneers-net network is used to connect the containers together.

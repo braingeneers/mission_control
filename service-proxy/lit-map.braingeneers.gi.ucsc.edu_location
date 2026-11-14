@@ -1,0 +1,6 @@
+# Relay-mode PDF uploads (up to 100 MB plus multipart overhead) stream to the service
+# without nginx buffering them to disk. Keep proxy headers at vhost scope so this location
+# inherits the authenticated identity headers and Authorization stripping from service-proxy/default.
+error_page 401 = @litmap_auth_required;
+client_max_body_size 101m;
+proxy_request_buffering off;

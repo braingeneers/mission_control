@@ -1,0 +1,18 @@
+# Keep the normal oauth2-proxy/session-or-service-account-JWT authentication,
+# trusted identity headers, and downstream Authorization stripping.
+include /etc/nginx/vhost.d/default;
+
+# Background API calls must not follow cross-origin login redirects.
+# The generated root location selects this handler through lit-map.braingeneers.gi.ucsc.edu_location.
+location @litmap_auth_required {
+    default_type application/json;
+    add_header Cache-Control "no-store" always;
+    add_header X-Request-ID $request_id always;
+    if ($request_uri ~ "^/api/") {
+        return 401 '{"detail":{"code":"authentication_required","message":"Sign in again, then retry your request."}}';
+    }
+    return 302 "https://auth.braingeneers.gi.ucsc.edu/oauth2/start?rd=https://$host$request_uri";
+}
+
+access_log /var/log/nginx/lit-map.access.log vhost;
+error_log /var/log/nginx/lit-map.error.log info;
