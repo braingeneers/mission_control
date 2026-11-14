@@ -193,3 +193,5 @@ and continue prompts include the extracted KEY=VALUE lines. Group summaries incl
 
 skip_reuse fixes a failed stage whose success markers exist, never a failing postcheck; a broken postcheck/acceptance script is the coordinator's problem.
 Repeated decisions escalate after 3 applications without a newly completed stage. Closing agents receive resume/skip notes, which supersede original artifact locations.
+
+Edit manifests structurally (load YAML, change, dump), never by text substitution; every edit is validated. Invalid agent edits are rejected and the previous manifest restored. Existing corrupt manifests go directly to the coordinator; other task-level exceptions escalate after three consecutive matching failures.

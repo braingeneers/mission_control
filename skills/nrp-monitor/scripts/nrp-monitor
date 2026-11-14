@@ -3058,6 +3058,80 @@ def resize_advice(line):
 
 
 # ---- manifests, S3, code -------------------------------------------------------------------------------------
+def manifest_structure(doc):
+    """Reject malformed Job trees before any code walks container resources."""
+    if not isinstance(doc, dict) or doc.get("kind") != "Job":
+        raise ValueError("kind must be Job")
+    if not isinstance(doc.get("metadata"), dict):
+        raise ValueError("metadata must be a mapping")
+    node = doc
+    for key in ("spec", "template", "spec"):
+        node = node.get(key)
+        if not isinstance(node, dict):
+            raise ValueError("Job spec.template.spec must contain mappings")
+    for key in ("containers", "initContainers"):
+        containers = node.get(key, [])
+        if not isinstance(containers, list) or (key == "containers" and not containers):
+            raise ValueError("%s must be a container list" % key)
+        for c in containers:
+            if not isinstance(c, dict):
+                raise ValueError("container must be a mapping")
+            res = c.get("resources", {})
+            if not isinstance(res, dict):
+                raise ValueError("container resources must be a mapping")
+            for field in ("requests", "limits"):
+                if field in res and not isinstance(res[field], dict):
+                    raise ValueError("container resources.%s must be a mapping" % field)
+
+
+def manifest_error(path, error):
+    mark = getattr(error, "problem_mark", None)
+    where = "%s:%d:%d" % (path, mark.line + 1, mark.column + 1) if mark else str(path)
+    return "%s: %s: %s" % (where, type(error).__name__, getattr(error, "problem", None) or str(error))
+
+
+def agent_manifest_checkpoint(n):
+    """Durable originals: nrp-task submit runs in a separate process while the agent edits."""
+    t = task_load(n)
+    paths = {s["manifest"] for s in t["stages"] if s.get("manifest")}
+    folder = task_dir(n) / "manifests"
+    paths.update(str(p) for p in folder.glob("*") if p.suffix in (".yaml", ".yml", ".json"))
+    originals = {}
+    for path in sorted(paths):
+        manifest_structure(manifest_doc(path))
+        originals[path] = Path(path).read_text()
+    write_json(task_dir(n) / "agent-manifests.json", originals)
+    return originals
+
+
+def validate_agent_manifests(n, originals=None):
+    checkpoint = task_dir(n) / "agent-manifests.json"
+    if originals is None:
+        originals = json.loads(checkpoint.read_text()) if checkpoint.exists() else {}
+    paths = set(originals) | {s["manifest"] for s in task_load(n)["stages"] if s.get("manifest")}
+    paths.update(str(p) for p in (task_dir(n) / "manifests").glob("*") if p.suffix in (".yaml", ".yml", ".json"))
+    errors = []
+    for path in sorted(paths):
+        try:
+            manifest_structure(manifest_doc(path))
+        except Exception as error:
+            detail = manifest_error(path, error)
+            if path in originals:
+                Path(path).write_text(originals[path])
+                detail += " (previous manifest restored)"
+            elif Path(path).exists():
+                # Preserve evidence without leaving invalid YAML among the accepted manifests.
+                Path(path).rename(str(path) + ".rejected")
+                detail += " (invalid new manifest quarantined as .rejected)"
+            errors.append(detail)
+    if errors:
+        def record(t):
+            t.setdefault("manifest_rejections", []).extend(errors)
+            tev(t, "manifest edit rejected: " + "; ".join(errors))
+        task_txn(n, record)
+    return errors
+
+
 def manifest_check(path, ns, job):
     """Parse one Job manifest (YAML/JSON) and check the NRP house rules. Returns a list of problems."""
     try:
@@ -3071,6 +3145,10 @@ def manifest_check(path, ns, job):
         return ["cannot read manifest %s: %s" % (path, str(e)[:120])]
     if len(docs) != 1 or not isinstance(docs[0], dict):
         return ["%s: exactly one Job per manifest file" % path]
+    try:
+        manifest_structure(docs[0])
+    except ValueError as e:
+        return [manifest_error(path, e)]
     j, bad = docs[0], []
     md, spec = j.get("metadata") or {}, j.get("spec") or {}
     if j.get("kind") != "Job":
@@ -3561,6 +3639,7 @@ def task_add_raw(raw, src_file, by="session", parent=None):
         tev(t, "plan %s step %s (registered by %s%s)" % (od["plan"], od["from_step"], by, ", after task " + parent if parent else ""))
     with state_lock():
         task_write(t)
+    agent_manifest_checkpoint(n)
     if od:
         ledger_add(od["plan"], od["from_step"], n, by, parent)
     for w in warn:
@@ -3907,7 +3986,7 @@ def deputy_prompt(t, reason):
         if path.exists():
             plan = path.read_text()
     return (task_prompt(t) + "\nYou are the fresh deputy before the coordinator. "
-            "Work only inside this task's goal and approval. You may edit unfinished manifests using measured resources, "
+            "Work only inside this task's goal and approval. Edit manifests structurally (load YAML, change, dump), never by text substitution; every edit is validated. You may edit unfinished manifests using measured resources, "
             "make routine environment fixes allowed to the fixer, resubmit within budgets, and record task-scoped decisions "
             "with nrp-task decide FINGERPRINT --action ACTION --why TEXT; apply with nrp-task apply-decision. "
             "nrp-task retry-cap N may raise the cap up to %d. "
@@ -4270,6 +4349,11 @@ def do_submit(n, sid, reason, by):
             return False, "RETRY CAP REACHED (%d of %d). Do not resubmit; report STOPPED with the diagnosis." % (used, t["max_retries"])
         if cls_used >= CLASS_BUDGET.get(f["cls"], 1):
             return False, "%s RETRY BUDGET USED (%d). Report STOPPED with the diagnosis." % (f["cls"], cls_used)
+    checkpoint = task_dir(n) / "agent-manifests.json"
+    if checkpoint.exists():
+        errors = validate_agent_manifests(n)
+        if errors:
+            return False, "manifest edit rejected: " + "; ".join(errors)
     probs = manifest_check(s["manifest"], ns, s["job"])
     if probs:
         return False, "manifest refused: " + "; ".join(probs)
@@ -4325,6 +4409,7 @@ def do_submit(n, sid, reason, by):
         t["status"] = "retrying" if retry or t["status"] == "retrying" else "running"
         tev(t, "submitted %s (attempt %d) by %s: %s" % (s2["job"], s2["attempt"], by, reason[:200]))
     task_txn(n, ok)
+    agent_manifest_checkpoint(n)
     return True, "SUBMITTED %s attempt %d (retries used %d of %d)" % (s["job"], tstage(task_load(n), sid)["attempt"],
                                                                        len(task_load(n)["attempts"]), t["max_retries"])
 
@@ -4517,11 +4602,12 @@ def tier0_timeout(n, f):
         return False
     try:
         text = Path(s["manifest"]).read_text()
-        m = re.search(r"(?m)^(\s*activeDeadlineSeconds:\s*)(\d+)\s*$", text)
-        old = int(m.group(2))
-    except (OSError, AttributeError, ValueError):
+        doc = manifest_doc(s["manifest"])
+        old = int(doc["spec"]["activeDeadlineSeconds"])
+    except (OSError, KeyError, TypeError, ValueError):
         return False
-    Path(s["manifest"]).write_text(text[:m.start(2)] + str(old * 2) + text[m.end(2):])
+    doc["spec"]["activeDeadlineSeconds"] = old * 2
+    manifest_write(s["manifest"], doc)
     ok, msg = do_submit(n, f["stage"], "Tier 0: deadline %ds passed while running and the stage resumes by skipping finished items; resubmitted with 2x deadline (%d s)" % (old, old * 2), "monitor")
     if not ok:
         Path(s["manifest"]).write_text(text)
@@ -4710,8 +4796,21 @@ def run_task_agent(n, prompt_text, a, kind="fix"):
     cwd = WORK / "task"
     task_txn(n, lambda t: (t.update(agent_started=now()), t.pop("report", None), t.pop("util_ok_claim", None)))
     log("task %s: %s agent start" % (n, kind))
-    runner, status, out, _, _ = dispatch_agent(cmd.spec, prompt_text, cwd, None, env,
-                                               on_failover=lambda m: task_txn(n, lambda t: tev(t, m)))
+    originals = agent_manifest_checkpoint(n) if kind in ("fix", "deputy", "continue") else None
+    rejection_count = len(t.get("manifest_rejections", []))
+    try:
+        runner, status, out, _, _ = dispatch_agent(cmd.spec, prompt_text, cwd, None, env,
+                                                   on_failover=lambda m: task_txn(n, lambda t: tev(t, m)))
+    finally:
+        if originals is not None:
+            validate_agent_manifests(n, originals)
+    rejected = (task_load(n).get("manifest_rejections") or [])[rejection_count:]
+    if originals is not None and not rejected:
+        agent_manifest_checkpoint(n)
+    if rejected:
+        status = "error"
+        out = json.dumps({"is_error": True, "result": "ESCALATE: manifest edit rejected: " + "; ".join(rejected)})
+        to_coordinator(n, "agent manifest fix failed: " + "; ".join(rejected), a, deputy=False)
     if status == "unavailable":                                    # the last runner ran out mid-call
         task_txn(n, lambda t: t.pop("agent_started", None))
         return out, []
@@ -4799,6 +4898,7 @@ def manifest_doc(path):
 
 
 def manifest_write(path, doc):
+    manifest_structure(doc)  # validate before replacing the previously accepted bytes
     try:
         import yaml
         Path(path).write_text(yaml.safe_dump(doc, sort_keys=False))
@@ -5396,6 +5496,9 @@ def recover_held_completion(n, jobs):
     return True
 
 
+TASK_EXCEPTION_LIMIT = 3
+
+
 def process_tasks(a, st):
     if not a.dry_run:
         for n in task_names():
@@ -5406,6 +5509,24 @@ def process_tasks(a, st):
     for n in names:
         t = task_load(n)
         try:
+            # Deterministic manifest corruption cannot improve by retrying. Do not edit legacy files.
+            if t["status"] not in TASK_HELD and not a.dry_run:
+                invalid = None
+                for stage in t["stages"]:
+                    if stage.get("manifest"):
+                        try:
+                            manifest_doc(stage["manifest"])
+                        except Exception as error:
+                            invalid = manifest_error(stage["manifest"], error)
+                            break
+                if invalid:
+                    log("task %s invalid manifest: %s" % (n, invalid))
+                    task_txn(n, lambda cur: cur.update(task_exception=dict(
+                        signature="invalid-manifest", count=1, detail=invalid, escalated=True)))
+                    to_coordinator(n, "invalid task manifest: " + invalid, a, deputy=False)
+                    continue
+            if (t.get("task_exception") or {}).get("escalated") and t["status"] in TASK_HELD:
+                continue
             if t["namespace"] not in cache:
                 cache[t["namespace"]] = fetch_jobs(t["namespace"])
             if t["status"] in TASK_HELD:
@@ -5415,8 +5536,21 @@ def process_tasks(a, st):
                 if t["status"] in TASK_HELD and (a.dry_run or not recover_held_completion(n, cache[t["namespace"]])):
                     continue
             advance_task(n, cache[t["namespace"]], a)
+            if t.get("task_exception") and not a.dry_run:
+                task_txn(n, lambda cur: cur.pop("task_exception", None))
         except Exception as e:
-            log("task %s error: %s: %s" % (n, type(e).__name__, str(e)[:200]))
+            detail = "%s: %s" % (type(e).__name__, str(e))
+            log("task %s error: %s" % (n, detail[:1000]))
+            if not a.dry_run:
+                signature = hashlib.sha256(detail.encode()).hexdigest()[:16]
+                def record(cur):
+                    prior = cur.get("task_exception") or {}
+                    count = prior.get("count", 0) + 1 if prior.get("signature") == signature else 1
+                    cur["task_exception"] = dict(signature=signature, count=count, detail=detail,
+                                                 escalated=count >= TASK_EXCEPTION_LIMIT)
+                task_txn(n, record)
+                if task_load(n)["task_exception"]["escalated"]:
+                    to_coordinator(n, "task pass failed %d consecutive times: %s" % (TASK_EXCEPTION_LIMIT, detail), a, deputy=False)
 
     try:
         check_coordinator_waits(a)
@@ -5615,7 +5749,7 @@ A recorded OOM limit is a proven lower bound even when sampled usage idles below
 CLOSE with that reason when request <= 1.2*right; never STOP or escalate solely for that low mean.
 request <= 1.2*right is sized correctly; above it is oversized. If max/median >3 and low pods remain below 20% of request
 through their whole life, split inputs into size groups. Missing peaks or incomparable pods require explicit review.
-Fixer: write right into the manifest for retries/later runs. Leave running work to finish unless measured time remaining >2h
+Fixer: edit manifests structurally (load YAML, change, dump), never by text substitution; every edit is validated. Write right into the manifest for retries/later runs. Leave running work to finish unless measured time remaining >2h
 AND the stage is resumable; only then resubmit at right. Never shrink below OOM evidence. UTIL flags alone never hold a task."""
 
 

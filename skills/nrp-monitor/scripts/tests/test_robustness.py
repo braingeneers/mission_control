@@ -50,7 +50,7 @@ class T3Wake(Base):
 class Memory(Base):
     def stage(self):
         manifest = self.tmp / 'job.json'
-        manifest.write_text(json.dumps({'spec': {'template': {'spec': {'containers': [
+        manifest.write_text(json.dumps({'kind': 'Job', 'metadata': {'name': 't1-a'}, 'spec': {'template': {'spec': {'containers': [
             {'name': 'worker', 'resources': {'requests': {'memory': '12Gi'}, 'limits': {'memory': '12Gi'}}}
         ]}}}}))
         self.w.TPL = Path(__file__).resolve().parents[1] / 'templates'

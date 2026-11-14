@@ -91,7 +91,7 @@ def test_agy_config_restriction_and_setup(w):
 
 
 def test_submit_blocks_live_job_and_cleans_terminal(w,tmp_path):
-    manifest=tmp_path/'job.json'; manifest.write_text(json.dumps({'spec':{'template':{'spec':{}}}}))
+    manifest=tmp_path/'job.json'; manifest.write_text(json.dumps({'kind':'Job','metadata':{'name':'job'},'spec':{'template':{'spec':{'containers':[{'name':'worker','image':'worker:v1'}]}}}}))
     t={'name':'t','namespace':'test','failure':None,'stages':[{'id':'s','job':'job','state':'pending','manifest':str(manifest)}]}
     for status in ('running','pending','error','FAILED','ok','missing'):
         def apply(ns,path):
@@ -118,7 +118,7 @@ def test_same_fault_does_not_refresh_forever(w):
 
 
 def test_stage_node_cli(w,tmp_path):
-    path=tmp_path/'manifest'; path.write_text(json.dumps({'spec':{'template':{'spec':{}}}}))
+    path=tmp_path/'manifest'; path.write_text(json.dumps({'kind':'Job','metadata':{'name':'job'},'spec':{'template':{'spec':{'containers':[{'name':'worker','image':'worker:v1'}]}}}}))
     t={'stages':[{'id':'s','manifest':str(path)}]}
     with patch.object(w,'task_load',return_value=t):
         assert w.cmd_task_stage(SimpleNamespace(name='t',stage='s',resumable=False,exclude_node=['bad']))==0

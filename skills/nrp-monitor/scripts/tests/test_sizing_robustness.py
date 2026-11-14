@@ -16,7 +16,7 @@ def monitor(tmp_path):
 
 
 def manifest(path, memory='1Gi', cpu='500m', image='worker:v1'):
-    doc = {'spec': {'template': {'spec': {'containers': [{'name': 'worker', 'image': image,
+    doc = {'kind': 'Job', 'metadata': {'name': 'work'}, 'spec': {'template': {'spec': {'containers': [{'name': 'worker', 'image': image,
         'resources': {'requests': {'memory': memory, 'cpu': cpu}, 'limits': {'memory': memory, 'cpu': cpu}}}]}}}}
     path.write_text(json.dumps(doc))
     return str(path)

@@ -21,7 +21,8 @@ def task(m, name='sample', group='workers'):
     d = m.task_dir(name)
     d.mkdir(parents=True, exist_ok=True)
     manifest = d / 'manifest.json'
-    manifest.write_text(json.dumps({'spec': {'template': {'spec': {'containers': [
+    manifest.write_text(json.dumps({'kind': 'Job', 'metadata': {'name': 'work-17'},
+                                    'spec': {'template': {'spec': {'containers': [
         {'image': 'worker:v1', 'command': ['python', 'run.py', '--shard-index', '7'], 'args': ['--threshold', '0.1']} ]}}}}))
     t = dict(name=name, label=name, namespace='test', status='running', mode='auto', notes='',
              goal='Process approved items', approved='Owner approved this task', max_retries=4,
