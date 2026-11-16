@@ -74,7 +74,7 @@ submitter.
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).
 - GPU pods are also judged on long averages, because NRP enforces a ~3 h average and 10-min samples miss Jobs that alternate GPU and CPU
-  phases (owner decision 2026-11-15): a 1 h GPU mean under NRP's 40 % floor warns the owning chat (at most hourly); a 2.5 h mean under it makes
+  phases (owner decision 2026-11-15): a 1 h GPU mean under NRP's 40 % floor wakes the owning chat with an urgent order to stop the Job now and redesign it (at most hourly; the owner gets a short DM only when no chat can be woken); a 2.5 h mean under it makes
   the monitor save the logs and delete the Job itself, and a task's stage fails as util/gpu so the fixer restructures before any resubmit.
   GPU flags never wait for "time left".
 - When NRP refuses a submit for utilization ("resources utilization is too low"), the task goes `blocked`; the first time, the script checks every

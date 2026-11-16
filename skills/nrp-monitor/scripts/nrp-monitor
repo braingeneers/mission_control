@@ -1419,11 +1419,21 @@ def gpu_long_pass(a, st, mine):
                 continue
             seen.setdefault(pod, {})["warned"] = now()
             log("gpu-long WARN %s: %s" % (pod, line[:200]))
-            push("GPU pod %s averages %s GPU over the last %d min, under NRP's %d%% floor (NRP deletes GPU pods under it on its ~3 h average "
-                 "and records a violation). The monitor deletes the Job itself if its %d-min average is still under the floor. Restructure "
-                 "now: parallel work per pod, or CPU phases off the GPU pod."
-                 % (pod, pct_s, GPU_WARN_WINDOW_MIN, round(100 * gpu_floor()), GPU_ENFORCE_WINDOW_MIN),
-                 "gpu-warn:%s" % pod, refs=refs)
+            text = ("URGENT, ACT NOW: GPU pod %s (Job %s) averaged only %s GPU over the last %d min, under NRP's %d%% floor. This is a cluster "
+                 "policy violation in progress: NRP deletes idle GPU pods, records a strike, and three strikes get the account suspended (the "
+                 "whole lab loses NRP). STOP THIS JOB NOW: save what you need from its logs, then delete it (`nrp-task delete JOB` for a task, "
+                 "else `kubectl -n %s delete job JOB`). Do not wait for it to finish, do not wait for more data, do not just report. Then work "
+                 "out why the GPU sits idle (serial work, CPU phases, data loading, too small a batch) and change the design before any "
+                 "resubmit: parallel items per pod, CPU phases in a CPU Job, or a CPU-only request. Never resubmit it unchanged. If you do "
+                 "nothing, the monitor deletes it at the %d-min mark."
+                 % (pod, owner or "-", pct_s, GPU_WARN_WINDOW_MIN, round(100 * gpu_floor()), NS, GPU_ENFORCE_WINDOW_MIN))
+            woke = None
+            if tk and wake_target(task_load(tk[0]) or {"name": tk[0]}):  # task_txn maps a None result to True, so test the target first
+                woke = task_txn(tk[0], lambda t, x=text: queue_task_webhook(t, "gpu_warning", summary=x) or False)
+            if not woke:                                                  # no chat to wake (not a task, or no wake target): the owner, short
+                push("URGENT: GPU pod %s at %s GPU over %d min, under NRP's %d%% floor (strike risk). Stop the Job now and fix the design; "
+                     "the monitor deletes it at %d min." % (pod, pct_s, GPU_WARN_WINDOW_MIN, round(100 * gpu_floor()), GPU_ENFORCE_WINDOW_MIN),
+                     "gpu-warn:%s" % pod, refs=refs)
             if tk:
                 task_txn(tk[0], lambda t, l=line: (t.setdefault("util", []).append("%s [gpu-3h warn] %s" % (iso(), l[:200])), t["util"].__delitem__(slice(None, -10))))
             continue
@@ -2990,6 +3000,12 @@ def wake_text(t, event):
         body = "NRP task %s: stage %s failed [%s] %s. Look: `nrp-monitor task show %s`." % (n, f.get("stage"), f.get("cls"), (f.get("detail") or "")[:200], n)
     else:
         body = "NRP task %s: %s event. Look: `nrp-monitor task show %s`." % (n, kind, n)
+    if kind == "gpu_warning":
+        return ("[NRP monitor GPU ALARM: automated, from the monitor script, not from the owner. Highest priority: handle this before anything "
+                "else in this chat.]\n%s\nThis is not a judgment call: stopping the Job is required. After you have deleted it and recorded what "
+                "must change (LOG/PLAN beside the work), run `nrp-monitor wake-review %s --by coordinator --why TEXT`. Resubmit only with the "
+                "changed design and inside the plan's approval; if the redesign is a decision that is Hunter's, say so in one line and use "
+                "`nrp-monitor task needs-owner`." % (body, n))[:3000]
     return ("[NRP monitor wake: an automated message from the monitor script, not from the owner. The monitor's own subagents already handled "
             "what they could; you are woken as a last resort, and the owner only after you.]\n%s\nUse your judgment on what to do next. "
             "Usually you can and should keep going now, in this turn: no later turn follows this message, so work you defer will not happen "

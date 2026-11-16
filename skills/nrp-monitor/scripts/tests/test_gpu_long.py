@@ -62,6 +62,14 @@ class GpuLong(unittest.TestCase):
     def test_other_owners_pods_ignored(self):
         self.assertEqual(self.act(enforce=[at(REAL, 150, 279).replace(POD, "someone-else-pod")]), [])
 
+    def test_gpu_warning_wake_is_an_order(self):
+        t = {"name": "t1", "stages": []}
+        txt = self.m.wake_text(t, {"event_type": "gpu_warning", "summary": "URGENT, ACT NOW: STOP THIS JOB NOW"})
+        self.assertIn("GPU ALARM", txt)
+        self.assertIn("STOP THIS JOB NOW", txt)
+        self.assertIn("stopping the Job is required", txt)
+        self.assertNotIn("Use your judgment", txt)
+
     def test_policy_floor(self):
         self.assertAlmostEqual(self.m.gpu_floor(), 0.40)
 
