@@ -73,9 +73,10 @@ submitter.
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).
-- GPU pods are also judged on the ~3 h average NRP enforces (10-min samples miss Jobs that alternate GPU and CPU phases): under 50 %
-  from 45 min of age the owning chat is warned once an hour; under NRP's 40 % floor from 90 min the monitor saves the logs and deletes the Job
-  itself, and a task's stage fails as util/gpu so the fixer restructures before any resubmit. GPU flags never wait for "time left".
+- GPU pods are also judged on long averages, because NRP enforces a ~3 h average and 10-min samples miss Jobs that alternate GPU and CPU
+  phases (owner decision 2026-11-15): a 1 h GPU mean under NRP's 40 % floor warns the owning chat (at most hourly); a 2.5 h mean under it makes
+  the monitor save the logs and delete the Job itself, and a task's stage fails as util/gpu so the fixer restructures before any resubmit.
+  GPU flags never wait for "time left".
 - When NRP refuses a submit for utilization ("resources utilization is too low"), the task goes `blocked`; the first time, the script checks every
   Running pod in the namespace (not only ours) with `nrp-util-check`, records the pods outside the bands with their owners and usage on the task,
   and wakes the coordinator chat once (fix our own, ask the owner before touching others'). It does not retry in a loop: it re-checks every ~10 minutes
