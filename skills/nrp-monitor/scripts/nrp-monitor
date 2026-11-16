@@ -2968,6 +2968,9 @@ def wake_failed(n, event, why):
             else:
                 out["dropped"] = True
     task_txn(n, f)
+    if event.get("event_type") == "gpu_warning" and out.get("tries") == 1:   # a GPU alarm cannot wait ~30 min of retries: tell the owner now
+        push("GPU ALARM NOT DELIVERED to the chat (%s); act yourself: %s" % (why[:40], event.get("summary") or ""),
+             "gpu-warn-undelivered:%s" % event.get("event_id"), refs=["task:" + n])
     if out.get("reason") is not None:
         escalate(n, "the coordinator chat could not be woken (delivery failed %d passes in a row: %s). %s" % (out["tries"], why, out["reason"]))
     elif out.get("dropped"):
