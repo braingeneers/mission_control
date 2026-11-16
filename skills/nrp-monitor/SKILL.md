@@ -212,3 +212,10 @@ Closed plans show as `[closed]` in `plan list`, receive no idle fallback wakes o
 continuations, and leave the digest’s waiting list. The reason and time remain in plan events.
 Closing refuses live bound tasks or running continuations; `--force` lists them and leaves them
 running. `plan sync PATH#ID` preserves closure; use `plan sync PATH#ID --reopen` to resume.
+
+When a plan waits on a decision only the owner can make, the coordinator runs
+`nrp-monitor plan needs-owner PLAN --reason TEXT` (optional `--by WHO`). This sends
+one owner DM and pauses idle coordinator check-ins. The owner continues with
+`nrp-monitor plan resume PLAN [--note TEXT]` or `nrp-monitor plan sync PATH#PLAN`
+after updating approval. For a finished task linked to a plan, `task needs-owner`
+hands the plan to the owner without changing the task.

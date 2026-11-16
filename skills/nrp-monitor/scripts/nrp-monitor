@@ -4584,7 +4584,7 @@ def coordinator_summary(t, reason):
     bits.append("After handling: `nrp-monitor wake-review %s --by rule|agent|coordinator --why TEXT`." % n)
     bits.append("Look: `nrp-monitor task show %s`; saved logs %s; fix log (handoff) %s." % (n, f.get("logs") or "(none)", task_dir(n) / "handoff.md"))
     bits.append("Then: fix it and `nrp-monitor task resume %s --note TEXT` (resubmits the failed stage, budgets restart), or `nrp-monitor task cancel %s`, "
-                "or only if the owner is truly needed `nrp-monitor task needs-owner %s --reason TEXT` (sends the one DM)." % (n, n, n))
+                "or only if the owner is truly needed `nrp-monitor task needs-owner %s --reason TEXT` (sends the one DM); for a plan blocked on the owner: `nrp-monitor plan needs-owner PLAN --reason TEXT`." % (n, n, n))
     if reason.startswith("Deputy:"):
         bits.insert(0, reason.split(" | ", 1)[0])
     return " ".join(bits)[:2400]
@@ -6202,6 +6202,11 @@ def plan_sync(path, pid, reopen=False):
         if reopen and st["status"] == "closed":
             st.update(status="running", since=now(), reason="")
             pev(st, "reopened by plan sync --reopen")
+        if st.pop("owner_wait", None):
+            if st["status"] != "closed":
+                st.update(status="running", since=now(), reason="")
+            pev(st, "owner wait cleared by plan sync")
+            digest("plan-resume", "plan %s owner wait cleared by plan sync" % pid)
         st.update(activity_at=now())
     plan_txn(pid, lambda st: (synced(st), pev(st, "synced from %s (approved through %s; stops %s)" % (p.name, h["approved_through"], ", ".join(h["stops"]) or "none"))))
     return h
@@ -6611,7 +6616,7 @@ def process_plan_fallbacks(a):
     for pid in plan_names():
         with state_lock():
             st, h = plan_state(pid), plan_header(pid) or {}
-            if st["status"] not in ("running", "waiting") or h.get("fallback") == "off":
+            if st.get("owner_wait") or st["status"] not in ("running", "waiting") or h.get("fallback") == "off":
                 continue
             tasks = [t for n in task_names() for t in [task_load(n)]
                      if t and (t.get("on_done") or {}).get("plan") == pid]
@@ -6650,10 +6655,11 @@ def process_plan_fallbacks(a):
                 continue
             t = max(targets, key=lambda t: t.get("terminal_at", t.get("finished", t.get("created", 0))))
             summary = ("Plan %s idle %.1f h: all tasks finished (%s); approved through %s, stops %s; started steps %s. "
-                       "Check results and continue the approved plan, or record why it waits (nrp-monitor wake-review %s ...)." %
+                       "Check results and continue the approved plan, or record why it waits (nrp-monitor wake-review %s ...). "
+                       "If blocked on the owner: nrp-monitor plan needs-owner %s --reason TEXT." %
                        (pid, idle / 3600, "; ".join("%s: %s/%s" % (x["name"], x["status"],
                         (x.get("continuation") or {}).get("status", "unchecked")) for x in tasks),
-                        h.get("approved_through"), ",".join(h.get("stops", [])) or "none", ",".join(st["ledger"]), t["name"]))
+                        h.get("approved_through"), ",".join(h.get("stops", [])) or "none", ",".join(st["ledger"]), t["name"], pid))
             event = queue_task_webhook(t, "plan-fallback", summary=summary)
             if event:
                 task_write(t)
@@ -6991,6 +6997,50 @@ def tool_next_add(n, t, rest):
     return rc
 
 
+def cmd_plan_needs_owner(a):
+    if not plan_header(a.id):
+        sys.exit("no plan %s" % a.id)
+    reason = a.reason.strip()
+    if len(reason) < 8:
+        sys.exit("--reason: say what the owner must decide (at least a short sentence)")
+    by = getattr(a, "by", None) or os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CODEX_THREAD_ID") or "cli"
+    count = []
+    def wait(st):
+        if st["status"] == "closed":
+            sys.exit("plan %s is closed" % a.id)
+        if st.get("owner_wait"):
+            sys.exit("plan %s already waits on the owner: %s" % (a.id, st["owner_wait"]["reason"]))
+        st.update(status="waiting", since=now(), reason=reason,
+                  owner_wait={"reason": reason, "since": now(), "by": by},
+                  owner_wait_count=st.get("owner_wait_count", 0) + 1)
+        count.append(st["owner_wait_count"])
+        pev(st, "needs the owner (by %s): %s" % (by, reason))
+    plan_txn(a.id, wait)
+    digest("plan-wait", "plan %s needs the owner: %s" % (a.id, reason))
+    # Keep the continuation command ahead of the reason: push bounds its text.
+    push("Plan %s needs the owner; continue with `nrp-monitor plan resume %s`. Reason: %s" %
+         (a.id, a.id, reason), "plan-owner:%s:%d" % (a.id, count[0]))
+    print("plan %s now waits on the owner; sent one DM. Reason: %s. Continue with `nrp-monitor plan resume %s`" % (a.id, reason, a.id))
+    return 0
+
+
+def cmd_plan_resume(a):
+    if not plan_header(a.id):
+        sys.exit("no plan %s" % a.id)
+    def resume(st):
+        if not st.get("owner_wait"):
+            sys.exit("plan %s has no owner wait" % a.id)
+        if st["status"] == "closed":
+            sys.exit("plan %s is closed" % a.id)
+        st.pop("owner_wait")
+        st.update(status="running", since=now(), reason="", activity_at=now())
+        pev(st, "owner wait cleared by plan resume" + (": " + a.note if a.note else ""))
+    plan_txn(a.id, resume)
+    digest("plan-resume", "plan %s resumed%s" % (a.id, ": " + a.note if a.note else ""))
+    print("plan %s resumed; idle check-in re-armed from now" % a.id)
+    return 0
+
+
 def cmd_plan_sync(a):
     path, _, pid = a.ref.partition("#")
     try:
@@ -7030,7 +7080,8 @@ def plan_names():
 
 def plan_line(pid):
     h, st = plan_header(pid) or {}, plan_state(pid)
-    return "%s [%s] approved through %s; stops %s; %s%s" % (pid, st["status"], h.get("approved_through", "?"),
+    owner = st.get("owner_wait")
+    return ("owner wait since %s (by %s): %s; " % (iso(owner["since"]), owner["by"], owner["reason"]) if owner else "") + "%s [%s] approved through %s; stops %s; %s%s" % (pid, st["status"], h.get("approved_through", "?"),
            ", ".join(h.get("stops") or []) or "none", "started: " + ", ".join(
            "%s=%s" % (s, e[-1]["task"]) for s, e in st["ledger"].items()) if st["ledger"] else "nothing started",
            ("; %s: " % ("closed" if st["status"] == "closed" else "waiting") + st["reason"]) if st.get("reason") else "") + (
@@ -7102,9 +7153,13 @@ def render_digest(hours):
              "Sent by the monitor script, not by one chat: each task/chain below names the chat that owns it (origin) when recorded."]
     lines.extend(bad_node_lines())
     nh = needs_owner()
-    lines.append("\n## Needs the owner (%d)" % len(nh))
+    owner_plans = [(p, plan_state(p)["owner_wait"]) for p in plan_names() if plan_state(p).get("owner_wait")]
+    lines.append("\n## Needs the owner (%d)" % (len(nh) + len(owner_plans)))
     lines += ["- %s (%s): %s  -> `nrp-monitor task show %s`" % (n, origin_plain(t.get("origin"), "goal: " + t.get("goal", "")[:60]),
-                                                               t.get("reason", "")[:300], n) for n, t in nh] or ["- nothing"]
+                                                               t.get("reason", "")[:300], n) for n, t in nh]
+    lines += ["- plan %s (since %s): %s -> `nrp-monitor plan show %s`" % (p, iso(w["since"]), w["reason"], p) for p, w in owner_plans]
+    if not nh and not owner_plans:
+        lines.append("- nothing")
     co = coordinating()
     lines.append("\n## With the coordinator chat, owner not notified (%d)" % len(co))
     lines += ["- %s (%s) for %s: %s  -> `nrp-monitor task show %s`" % (n, origin_plain(t.get("origin"), "goal: " + t.get("goal", "")[:60]),
@@ -7366,8 +7421,11 @@ def cmd_task_needs_owner(a):
     t = task_load(a.name)
     if not t:
         sys.exit("no task %s" % a.name)
-    if t["status"] in ("done", "cancelled"):
-        sys.exit("task %s is %s; nothing to hand to the owner" % (a.name, t["status"]))
+    if t["status"] in ("done", "cancelled", "failed"):
+        pid = (t.get("on_done") or {}).get("plan")
+        if pid:
+            return cmd_plan_needs_owner(argparse.Namespace(id=pid, reason=a.reason, by=getattr(a, "by", None)))
+        sys.exit("task %s is %s; nothing to hand to the owner; for a blocked plan use `nrp-monitor plan needs-owner PLAN --reason TEXT`" % (a.name, t["status"]))
     if t["status"] == "NEEDS_OWNER":
         sys.exit("task %s is already NEEDS_OWNER (reason: %s)" % (a.name, t.get("reason", "")[:200]))
     if len(a.reason.strip()) < 8:
@@ -8475,6 +8533,7 @@ def main():
     x.add_argument("name")
     x.add_argument("--reason", required=True, help="what the owner must decide")
     x.set_defaults(f=cmd_task_needs_owner)
+    x.add_argument("--by", help="who requests the owner decision")
     x = tk.add_parser("handoff", help="attach a handoff (markdown from templates/handoff.md) to a task registered without one; copied into the task dir")
     x.add_argument("name")
     x.add_argument("file")
@@ -8492,6 +8551,15 @@ def main():
     x.add_argument("--why", required=True, help="reason for closing the plan")
     x.add_argument("--force", action="store_true", help="close even with live tasks or running continuations; list them without cancelling")
     x.set_defaults(f=cmd_plan_close)
+    x = pk.add_parser("needs-owner", help="hand a blocked plan to the owner and send one DM")
+    x.add_argument("id")
+    x.add_argument("--reason", required=True)
+    x.add_argument("--by")
+    x.set_defaults(f=cmd_plan_needs_owner)
+    x = pk.add_parser("resume", help="clear a plan's owner wait")
+    x.add_argument("id")
+    x.add_argument("--note")
+    x.set_defaults(f=cmd_plan_resume)
     pk.add_parser("list").set_defaults(f=cmd_plan_list)
     x = pk.add_parser("show")
     x.add_argument("id")

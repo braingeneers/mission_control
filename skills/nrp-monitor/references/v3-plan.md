@@ -87,3 +87,10 @@ backend list chosen at install time; the next entry only on unavailable/auth/lim
   (6) several tasks per plan step.
 - Open questions for (2) and (5) answered 2026-11-11 (see Hunter's answers); built in the same session.
 - Delegation: Sonnet/Sol agents for coding and tests (Hunter's preference); keep the build session small and relay with a handoff.
+
+When a plan waits on a decision only the owner can make, the coordinator runs
+`nrp-monitor plan needs-owner PLAN --reason TEXT` (optional `--by WHO`). This sends
+one owner DM and pauses idle coordinator check-ins. The owner continues with
+`nrp-monitor plan resume PLAN [--note TEXT]` or `nrp-monitor plan sync PATH#PLAN`
+after updating approval. For a finished task linked to a plan, `task needs-owner`
+hands the plan to the owner without changing the task.
