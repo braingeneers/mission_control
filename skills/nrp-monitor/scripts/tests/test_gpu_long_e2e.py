@@ -1,6 +1,6 @@
 """End to end for the NRP GPU rule (Hunter 2026-11-15): a fake `nrp-util-check` on PATH reports a low-GPU pod of a registered task, the
 real check_pods pass runs, and the alarm must reach the owning chat as an order to stop the Job (not a DM to the owner), once an hour;
-an undeliverable alarm DMs the owner at once; at 2.5 h the monitor deletes the Job and fails the stage as util/gpu.
+an undeliverable alarm DMs the owner at once; at 90 min (30 min after the warning) the monitor deletes the Job and fails the stage as util/gpu.
 Run: python3 -m pytest tests/test_gpu_long_e2e.py"""
 import argparse
 import os
@@ -56,8 +56,8 @@ def env(monitor, tmp_path, monkeypatch):  # noqa: F811
         p.stop()
 
 
-def util(e, w60=None, w150=None):
-    for w, line in ((60, w60), (150, w150)):
+def util(e, w60=None, w90=None):
+    for w, line in ((60, w60), (90, w90)):
         p = e.dir / ("window_%d.txt" % w)
         p.write_text(line + "\n" if line else "")
 
@@ -74,14 +74,14 @@ def run_pass(e):
 
 
 def test_1h_low_gpu_wakes_owning_chat_with_stop_order(env):
-    util(env, w60=LINE % (POD, 70, 60, 30), w150=LINE % (POD, 70, 70, 30))
+    util(env, w60=LINE % (POD, 70, 60, 30), w90=LINE % (POD, 70, 70, 30))
     run_pass(env)
     calls = (env.dir / "calls.txt").read_text()
-    assert "--window 60" in calls and "--window 150" in calls and "--frac 0.4" in calls
+    assert "--window 60" in calls and "--window 90" in calls and "--frac 0.4" in calls
     assert len(env.wakes) == 1, env.wakes
     target, text = env.wakes[0]
     assert target == {"harness": "t3-cli", "session": "coord-thread-1"}
-    for must in ("GPU ALARM", "STOP THIS JOB NOW", "not a judgment call", POD, "30%", "three strikes", "150-min"):
+    for must in ("GPU ALARM", "STOP THIS JOB NOW", "not a judgment call", POD, "30%", "three strikes", "90-min", "30 minutes"):
         assert must in text, must
     assert not env.pushes, env.pushes                                  # the agent acts; the owner is not paged
     t = env.m.task_load(env.name)
@@ -107,8 +107,8 @@ def test_undeliverable_alarm_dms_owner_on_first_failure(env):
     assert len(env.wakes) == 1 and "STOP THIS JOB NOW" in env.wakes[0][1]
 
 
-def test_2p5h_low_gpu_deletes_job_and_fails_stage(env):
-    util(env, w60=LINE % (POD, 160, 60, 30), w150=LINE % (POD, 160, 150, 35))
+def test_90min_low_gpu_deletes_job_and_fails_stage(env):
+    util(env, w60=LINE % (POD, 100, 60, 30), w90=LINE % (POD, 100, 90, 35))
     run_pass(env)
     assert ("-n", env.m.NS, "delete", "job", "work-17", "--wait=false") in env.kube, env.kube
     t = env.m.task_load(env.name)

@@ -252,7 +252,7 @@ WAIT_POLL_S = int(os.environ.get("NRP_MONITOR_POLL_S") or 30)
 DEFAULT_S3 = "https://s3-west.nrp-nautilus.io"
 POD_DEDUPE_S = 30 * 60
 GPU_WARN_WINDOW_MIN = 60       # NRP judges a GPU pod on its ~3 h average (warning mail 2026-11-15), not on a 10-min sample.
-GPU_ENFORCE_WINDOW_MIN = 150   # Hunter 2026-11-15: warn on the 1 h average under the floor; delete when the 2.5 h average is under it
+GPU_ENFORCE_WINDOW_MIN = 90    # Hunter 2026-11-15: warn on the 1 h average under the floor; delete when the 90-min average is under it (30 min to save logs)
 GPU_WARN_DEDUPE_S = 60 * 60
 STRIKE_GAP_S = 8 * 60          # strike 2 needs a flag this long after the OVERSIZED verdict: the second pass after it (passes run every 5 min)
 NOTIFY_DEDUPE_S = 60 * 60
@@ -1376,7 +1376,7 @@ def _gpu_low(lines, mine, min_age_s):
 
 def gpu_long_actions(warn_lines, enforce_lines, mine):
     """[(pod, "enforce"|"warn", pct, age_s, line)] from two `nrp-util-check --frac <gpu_floor>` runs:
-    enforce: the GPU_ENFORCE_WINDOW_MIN (2.5 h) mean is under NRP's floor and the pod is at least that old (DCGM numbers only);
+    enforce: the GPU_ENFORCE_WINDOW_MIN (90 min) mean is under NRP's floor and the pod is at least that old (DCGM numbers only);
     warn: the GPU_WARN_WINDOW_MIN (1 h) mean is under the floor (or there is no DCGM series) and the pod is at least that old.
     The lowest GPU of a multi-GPU pod decides. A pod without a DCGM series is warned, never enforced."""
     floor = 100 * gpu_floor()
@@ -1391,7 +1391,7 @@ def gpu_long_actions(warn_lines, enforce_lines, mine):
 def gpu_long_pass(a, st, mine):
     """NRP's GPU rule is a ~3 h average above 40 %. The 10-min strikes reset whenever one sample is fine, so a Job that alternates GPU and
     CPU phases (RT-Sort: detect on the GPU, merge on the CPU) passed every check while its 3 h mean sat at 36 % (NRP warning 2026-11-15).
-    This pass reads long windows directly: a 1 h mean under NRP's floor wakes the owning chat; a 2.5 h mean under it
+    This pass reads long windows directly: a 1 h mean under NRP's floor wakes the owning chat; a 90-min mean under it
     saves the logs and deletes the Job itself, so NRP never has to; a task's stage then fails as class util with rule gpu (the fixer
     must restructure, e.g. run levels in parallel or move CPU phases off the GPU pod, never resubmit unchanged)."""
     if not mine:
@@ -1424,8 +1424,8 @@ def gpu_long_pass(a, st, mine):
                  "whole lab loses NRP). STOP THIS JOB NOW: save what you need from its logs, then delete it (`nrp-task delete JOB` for a task, "
                  "else `kubectl -n %s delete job JOB`). Do not wait for it to finish, do not wait for more data, do not just report. Then work "
                  "out why the GPU sits idle (serial work, CPU phases, data loading, too small a batch) and change the design before any "
-                 "resubmit: parallel items per pod, CPU phases in a CPU Job, or a CPU-only request. Never resubmit it unchanged. If you do "
-                 "nothing, the monitor deletes it at the %d-min mark."
+                 "resubmit: parallel items per pod, CPU phases in a CPU Job, or a CPU-only request. Never resubmit it unchanged. You have about "
+                 "30 minutes: if the Job still runs at the %d-min mark, the monitor deletes it, keeping only the pod log."
                  % (pod, owner or "-", pct_s, GPU_WARN_WINDOW_MIN, round(100 * gpu_floor()), NS, GPU_ENFORCE_WINDOW_MIN))
             woke = None
             if tk and wake_target(task_load(tk[0]) or {"name": tk[0]}):  # task_txn maps a None result to True, so test the target first
@@ -5897,7 +5897,7 @@ AND the stage is resumable; only then resubmit at right. Never shrink below OOM 
 GPU (rule gpu) is different: NRP deletes GPU pods whose ~3 h average is under 40% and records a violation (three strikes suspend the
 account). For a GPU flag, judge the trend, not one sample: `nrp-util-check --window 60 POD`. If the 1 h mean is under 40%, the fixer
 stops the Job (`nrp-task delete`) and restructures before any resubmit (parallel items per pod, CPU phases in a CPU Job); the
-"leave running work to finish" rule does not apply to GPU flags. The monitor itself deletes a GPU Job whose 2.5 h mean is under 40%."""
+"leave running work to finish" rule does not apply to GPU flags. The monitor itself deletes a GPU Job whose 90-min mean is under 40%, 30 min after the 1 h warning."""
 
 
 def memory_low_evidence(t, s, flagged_pod):
