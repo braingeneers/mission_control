@@ -2890,7 +2890,7 @@ def wake_target(t):
     """Resume a recorded session, use the preferred T3 webhook, or send to the recorded T3 thread through its CLI."""
     o = t.get("origin") or {}
     if o.get("harness") in ("claude", "codex") and o.get("session"):
-        return {"harness": o["harness"], "session": o["session"], "cwd": o.get("cwd") or ""}
+        return {"harness": o["harness"], "session": o["session"], "cwd": o.get("cwd") or "", "task": t["name"]}
     if (STATE / "webhooks" / t["name"]).exists():
         return {"harness": "t3"}
     link = str(o.get("link") or "").strip().strip("<>")
@@ -2988,6 +2988,25 @@ WAKE_TOOLS = ["Bash(nrp-monitor task show:*)", "Bash(nrp-monitor task resume:*)"
 # a resumed chat may still run the old command name from its handoff; `nrp-watchdog` is an installed shim of nrp-monitor
 WAKE_TOOLS += ["Bash(nrp-monitor decide:*)", "Bash(nrp-monitor wake-review:*)"]
 WAKE_TOOLS += [t.replace("nrp-monitor", "nrp-watchdog") for t in WAKE_TOOLS]
+# A wake that can only run the commands above cannot read a log or fix a bug, so it can only report (bwb-mtp smoke, 2026-11-15: the
+# coordinator saw the cause, could not fix it, and the task sat 24 h until NEEDS_OWNER). A Claude wake also gets: nrp-task scoped to its
+# task (logs, s3 reads, reship/submit, code-test/commit/ship), files in that task's and plans' state and in the chat's own repo, a few git
+# commands run in that repo, and PushNotification. No arbitrary shell, kubectl, deletes outside nrp-task's rules or other repos.
+WAKE_GIT = ["Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)", "Bash(git add:*)", "Bash(git commit:*)",
+            "Bash(git pull --ff-only:*)", "Bash(git push origin main:*)"]
+
+
+def wake_tools(target):
+    tools = list(WAKE_TOOLS) + ["Bash(nrp-task:*)", "PushNotification", "Grep", "Glob"] + WAKE_GIT
+    state = str(STATE.resolve())
+    tools += ["Read(/%s/**)" % state]
+    for sub in ("tasks", "plans"):
+        tools += ["Edit(/%s/%s/**)" % (state, sub), "Write(/%s/%s/**)" % (state, sub)]
+    cwd = target.get("cwd") or ""
+    if cwd and os.path.isabs(cwd) and os.path.isdir(cwd) and os.path.realpath(cwd) != os.path.realpath(str(Path.home())):
+        cwd = os.path.realpath(cwd)
+        tools += ["Read(/%s/**)" % cwd, "Edit(/%s/**)" % cwd, "Write(/%s/**)" % cwd]
+    return tools
 
 
 def wake_text(t, event):
@@ -3009,18 +3028,23 @@ def wake_text(t, event):
                 "must change (LOG/PLAN beside the work), run `nrp-monitor wake-review %s --by coordinator --why TEXT`. Resubmit only with the "
                 "changed design and inside the plan's approval; if the redesign is a decision that is Hunter's, say so in one line and use "
                 "`nrp-monitor task needs-owner`." % (body, n))[:3000]
-    return ("[NRP monitor wake: an automated message from the monitor script, not from the owner. The monitor's own subagents already handled "
-            "what they could; you are woken as a last resort, and the owner only after you.]\n%s\nUse your judgment on what to do next. "
+    head = ("[NRP monitor wake: an automated message from the monitor script, not from the owner. The monitor's own subagents already handled "
+            "what they could; you are woken as a last resort, and the owner only after you.]\n")
+    tail = ("\nUse your judgment on what to do next. "
             "Usually you can and should keep going now, in this turn: no later turn follows this message, so work you defer will not happen "
             "until someone asks. After handling this wake, record `nrp-monitor wake-review %s --by rule|agent|coordinator --why TEXT`. Continue the plan's next steps inside its approved range and the task's approval (review outputs, fix, "
             "resume, register the next step). Stop only at a stop_for_hunter step, a decision that is Hunter's, or a fix that needs "
-            "tools you do not have here; then say in one line what is needed, and use `nrp-monitor task needs-owner` only if he must act." % (body, n))[:3000]
+            "tools you do not have here; then say in one line what is needed, and use `nrp-monitor task needs-owner` only if he must act.\n"
+            "Tools in a Claude wake: `nrp-task` (NRP_TASK is set: logs, s3 ls/cat, reship, submit, code-test/commit/ship), Read/Edit/Write in "
+            "this task's state folder and this chat's repo, git commit/push to main there, PushNotification. If you cannot finish, put "
+            "\"NEEDS YOU:\" and the one thing needed at the top of your reply and call PushNotification once; the owner reads this chat." % n)
+    return head + body[:3000 - len(head) - len(tail)] + tail     # trim the summary, never the instructions
 
 
 def wake_argv(target):
     if target["harness"] == "claude":      # --resume: the same session, so the wake lands in that chat's history; --no-session-persistence is NOT used
         return ["claude", "-p", "--resume", target["session"], "--permission-mode", "dontAsk", "--output-format", "json",
-                "--allowedTools"] + WAKE_TOOLS
+                "--allowedTools"] + wake_tools(target)
     return ["codex", "exec", "resume", "--all", "--skip-git-repo-check", target["session"], "-"]     # prompt on stdin; no --ephemeral (it must persist)
 
 
@@ -3047,8 +3071,11 @@ def wake_session(target, text, timeout=None):
         raise WakeError("claude coordinator session is open or recently active; deferred to avoid a fork")
     cwd = target.get("cwd") if target.get("cwd") and os.path.isdir(target["cwd"]) else str(Path.home())
     binary = wake_binary(h)
+    env = clean_env()
+    if target.get("task"):
+        env["NRP_TASK"] = target["task"]                                 # nrp-task acts on this task only
     try:
-        r = subprocess.run([binary] + wake_argv(target)[1:], input=text, capture_output=True, text=True, cwd=cwd, env=clean_env(), timeout=timeout or WAKE_TIMEOUT_S)
+        r = subprocess.run([binary] + wake_argv(target)[1:], input=text, capture_output=True, text=True, cwd=cwd, env=env, timeout=timeout or WAKE_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         raise WakeError("%s resume timed out after %ds" % (h, timeout or WAKE_TIMEOUT_S))
     except OSError as e:

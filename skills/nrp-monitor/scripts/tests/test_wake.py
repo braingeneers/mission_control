@@ -24,6 +24,7 @@ FAKE = """#!/bin/sh
 d="@FAKE@"
 printf '%s\\n' "$@" > "$d/$(basename "$0").argv"
 pwd > "$d/$(basename "$0").cwd"
+printf '%s' "$NRP_TASK" > "$d/$(basename "$0").nrp_task"
 cat > "$d/$(basename "$0").stdin"
 echo x >> "$d/$(basename "$0").calls"
 [ -f "$d/rc" ] && { echo "$(cat "$d/out" 2>/dev/null)" ; echo "resume failed: no conversation" >&2; exit "$(cat "$d/rc")"; }
@@ -121,7 +122,7 @@ class OriginHarness(Base):
 
     def test_wake_target_follows_the_origin_then_the_webhook(self):
         w = self.w
-        self.assertEqual(w.wake_target(self.task(harness="claude")), {"harness": "claude", "session": SID_C, "cwd": str(self.chat_dir)})
+        self.assertEqual(w.wake_target(self.task(harness="claude")), {"harness": "claude", "session": SID_C, "cwd": str(self.chat_dir), "task": "t1"})
         self.assertEqual(w.wake_target(self.task(harness="codex"))["harness"], "codex")
         self.assertIsNone(w.wake_target(self.task()))
         (self.tmp / "state" / "webhooks").mkdir()
@@ -142,11 +143,23 @@ class Delivery(Base):
         self.assertNotIn("--model", argv, "the chat keeps its own model")
         self.assertIn("Bash(nrp-monitor task needs-owner:*)", argv)
         self.assertNotIn("Bash(nrp-monitor:*)", argv, "only the commands the wake names")
+        # 2026-11-15 regression: a wake that could only run nrp-monitor saw a code bug, could not fix it, and the task sat 24 h.
+        chat, state = str(self.chat_dir.resolve()), str((self.tmp / "state").resolve())
+        for tool in ("Bash(nrp-task:*)", "PushNotification", "Read(/%s/**)" % chat, "Edit(/%s/**)" % chat, "Read(/%s/**)" % state,
+                     "Edit(/%s/tasks/**)" % state, "Bash(git commit:*)"):
+            self.assertIn(tool, argv, "a wake must be able to fix what it finds")
+        self.assertEqual((self.fake / "claude.nrp_task").read_text(), "t1", "nrp-task is scoped to the woken task")
+        for broad in ("Bash", "Bash(*)", "Bash(kubectl:*)", "Bash(aws:*)", "Bash(python3:*)", "Edit", "Write", "Read(//**)", "Edit(/%s/**)" % state):
+            self.assertNotIn(broad, argv, "no arbitrary shell, cloud CLI or whole-state writes")
         self.assertEqual((self.fake / "claude.cwd").read_text().strip(), str(self.chat_dir.resolve()), "run in the chat's own directory")
         text = (self.fake / "claude.stdin").read_text()
         self.assertIn("boom", text)
         self.assertIn("last resort", text)
         self.assertIn("NRP monitor wake", text)
+        self.assertIn("NEEDS YOU:", text, "a wake that cannot finish says so at the top of its reply")
+        long_text = self.w.wake_text(self.w.task_load("t1"), {"event_type": "escalation", "summary": "x" * 5000})
+        self.assertLessEqual(len(long_text), 3000)
+        self.assertTrue(long_text.rstrip().endswith("the owner reads this chat."), "a long summary is trimmed, not the instructions")
         self.assertEqual(self.outbox(), [], "delivered: acknowledged")
         self.assertIn("wake delivered: escalation via claude", "\n".join(self.w.task_load("t1")["events"]))
 

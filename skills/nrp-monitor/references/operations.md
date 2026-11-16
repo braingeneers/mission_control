@@ -80,8 +80,11 @@ The task's `origin` says how to reach its chat: `harness` t3 (thread link, or co
 (without `--origin-session` the id is read from `CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID` of the shell that runs the command, only when the
 harness is named; a delegated child session gets a warning) or `nrp-monitor origin task NAME --harness ... --session ... --evidence ...`.
 For a closed session, for `claude` the monitor runs `claude -p --resume ID` in the chat's directory, for `codex` `codex exec resume
-ID -` (prompt on stdin), so the wake lands in that chat's history. The Claude wake may run only `nrp-monitor task show|resume|cancel|needs-owner`,
-`digest` and `status`. Before Claude resume, the monitor checks for a running process naming the session or
+ID -` (prompt on stdin), so the wake lands in that chat's history. The Claude wake may run `nrp-monitor task show|resume|cancel|needs-owner`,
+`decide`, `wake-review`, `digest` and `status`, plus what it needs to fix what it finds: `nrp-task` with NRP_TASK set to the woken task,
+Read in the state dir, Edit/Write in its `tasks/` and `plans/` and in the chat's own repo, a few git commands (commit, push origin main),
+Grep/Glob and PushNotification. No arbitrary shell, kubectl or aws. A wake that still cannot finish puts "NEEDS YOU:" at the top of its
+reply and sends one PushNotification; the owner reads that chat. Before Claude resume, the monitor checks for a running process naming the session or
 transcript activity within five minutes. An open/recent session is deferred, never reported
 as delivered, because headless resume can fork an unseen sibling. Uncertain process inspection
 also defers. These deferrals count toward `WAKE_MAX_TRIES` exactly like a failed webhook (an escalation falls back to
