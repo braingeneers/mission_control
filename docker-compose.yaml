@@ -1113,7 +1113,7 @@ services:
   # and digest come from service/image.lock. The same image runs the per-paper NRP Jobs.
   # Uploads use relay mode because the braingeneers bucket CORS only allows the uploader origins.
   lit-map:
-    image: hschweiger15/lit-map-service:20261117-75a848e3@sha256:e128341582c6cadf5e8c57b2e0bc0ec818cbeaff35d8c1b819b5e49f4c4af7c8
+    image: hschweiger15/lit-map-service:20261117-0f12d31d@sha256:eb9ae5bcf1e0f59f6a1cd53179fe29a6cbdf090f696bb039ed690e573625aff3
     container_name: lit-map
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1141,7 +1141,7 @@ services:
       LITMAP_KUBECONFIG: "/kube/config"
       LITMAP_K8S_NAMESPACE: "braingeneers"
       # NRP Jobs run this same image (keep identical to the image above).
-      LITMAP_JOB_IMAGE: "hschweiger15/lit-map-service:20261117-75a848e3@sha256:e128341582c6cadf5e8c57b2e0bc0ec818cbeaff35d8c1b819b5e49f4c4af7c8"
+      LITMAP_JOB_IMAGE: "hschweiger15/lit-map-service:20261117-0f12d31d@sha256:eb9ae5bcf1e0f59f6a1cd53179fe29a6cbdf090f696bb039ed690e573625aff3"
       LITMAP_MAX_JOBS: "2"
       LITMAP_UPLOAD_MODE: "relay"
       # Admins may delete abusive submissions. Login is CILogon by email, so this is an email list.
