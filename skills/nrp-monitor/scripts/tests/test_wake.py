@@ -131,6 +131,56 @@ class OriginHarness(Base):
         self.assertEqual(w.wake_target(self.task(harness="claude"))["harness"], "claude", "an explicit session beats a webhook file")
 
 
+class VisibleT3Wake(Base):
+    """2026-11-16: a headless claude resume never shows in the T3 chat, so a wake that needed the owner sat unseen and could not
+    rebuild pinned code (no tar/aws). A chat with a T3 link is woken through `t3 thread send`: a visible turn with its normal tools."""
+    LINK = "t3-thread://v2/env1/thread-42"
+
+    def t3(self, rc=0):
+        (self.bin / "t3").write_text(FAKE.replace("@FAKE@", str(self.fake)).replace("[ -f \"$d/rc\" ]", "[ %d -ne 0 ] && exit %d; [ -f \"$d/rc\" ]" % (rc, rc)))
+        (self.bin / "t3").chmod(0o755)
+        os.environ["NRP_MONITOR_T3_BIN"] = str(self.bin / "t3")
+
+    def linked(self):
+        t = self.task(harness="claude")
+        t["origin"]["link"] = self.LINK
+        self.w.task_write(t)
+        self.w.task_txn("t1", lambda t: self.w.queue_task_webhook(t, "escalation", summary="NRP task t1 needs its coordinator chat: boom"))
+        return t
+
+    def test_a_t3_linked_chat_is_woken_visibly_in_t3_not_headless(self):
+        self.t3()
+        self.linked()
+        target = self.w.wake_target(self.w.task_load("t1"))
+        self.assertEqual((target["harness"], target["session"], target["fallback"]["harness"]), ("t3-cli", "thread-42", "claude"))
+        self.deliver()
+        self.assertEqual(self.argv("t3"), ["thread", "send", "thread-42", "-"])
+        text = (self.fake / "t3.stdin").read_text()
+        self.assertIn("boom", text)
+        self.assertIn("visible turn", text, "the T3 turn is told it has its normal tools and should finish the fix")
+        self.assertEqual(self.calls("claude"), 0, "no invisible headless resume when T3 takes the message")
+        self.assertEqual(self.outbox(), [])
+
+    def test_t3_down_falls_back_to_the_headless_session_and_needs_you_reaches_the_owner_now(self):
+        self.t3(rc=1)
+        self.linked()
+        (self.bin / "claude").write_text("#!/bin/sh\ncat >/dev/null\necho x >> %s/claude.calls\n"
+                                         "echo '{\"type\":\"result\",\"is_error\":false,\"result\":\"NEEDS YOU: rebuild the source tgz\"}'\n" % self.fake)
+        self.deliver()
+        self.assertEqual((self.calls("t3"), self.calls("claude")), (1, 1))
+        self.assertEqual(self.outbox(), [], "the fallback delivered the wake")
+        self.push.assert_called_once()
+        msg, key = self.push.call_args[0][:2]
+        self.assertIn("rebuild the source tgz", msg, "a headless NEEDS YOU is invisible in T3, so the owner is told at once")
+        self.assertTrue(key.startswith("needs-you:t1:"))
+
+    def test_a_headless_reply_without_needs_you_does_not_bother_the_owner(self):
+        self.t3(rc=1)
+        self.linked()
+        self.deliver()
+        self.push.assert_not_called()
+
+
 class Delivery(Base):
     def test_claude_session_is_resumed_not_started(self):
         t = self.task(harness="claude")
@@ -159,7 +209,7 @@ class Delivery(Base):
         self.assertIn("NEEDS YOU:", text, "a wake that cannot finish says so at the top of its reply")
         long_text = self.w.wake_text(self.w.task_load("t1"), {"event_type": "escalation", "summary": "x" * 5000})
         self.assertLessEqual(len(long_text), 3000)
-        self.assertTrue(long_text.rstrip().endswith("the owner reads this chat."), "a long summary is trimmed, not the instructions")
+        self.assertTrue(long_text.rstrip().endswith("DMs the owner that line."), "a long summary is trimmed, not the instructions")
         self.assertEqual(self.outbox(), [], "delivered: acknowledged")
         self.assertIn("wake delivered: escalation via claude", "\n".join(self.w.task_load("t1")["events"]))
 

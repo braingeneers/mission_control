@@ -2889,12 +2889,19 @@ def handoff_prompt(t):
 def wake_target(t):
     """Resume a recorded session, use the preferred T3 webhook, or send to the recorded T3 thread through its CLI."""
     o = t.get("origin") or {}
+    session = None
     if o.get("harness") in ("claude", "codex") and o.get("session"):
-        return {"harness": o["harness"], "session": o["session"], "cwd": o.get("cwd") or "", "task": t["name"]}
-    if (STATE / "webhooks" / t["name"]).exists():
-        return {"harness": "t3"}
+        session = {"harness": o["harness"], "session": o["session"], "cwd": o.get("cwd") or "", "task": t["name"]}
     link = str(o.get("link") or "").strip().strip("<>")
     match = re.fullmatch(r"t3-thread://v2/[^/\s]+/([^/\s]+)", link)
+    if match and session:
+        # Hunter 2026-11-16: a headless resume never shows in the T3 chat, so a wake that needed him sat unseen. A T3 send is a visible
+        # turn in that chat with its normal tools (it can finish the fix); the headless resume is only the fallback when T3 is down.
+        return {"harness": "t3-cli", "session": match.group(1), "fallback": session}
+    if session:
+        return session
+    if (STATE / "webhooks" / t["name"]).exists():
+        return {"harness": "t3"}
     if match:
         return {"harness": "t3-cli", "session": match.group(1)}
     return None
@@ -3009,8 +3016,8 @@ def wake_tools(target):
     return tools
 
 
-def wake_text(t, event):
-    """What a resumed claude/codex chat reads (a T3 relay composes its own text from the event). Short: summary, pointers and the commands."""
+def wake_text(t, event, harness="claude"):
+    """What a resumed claude/codex chat or a T3 thread reads (a T3 relay composes its own text from the event). Short: summary, pointers and the commands."""
     n, kind = t["name"], event.get("event_type")
     if event.get("summary"):
         body = event["summary"]
@@ -3034,10 +3041,14 @@ def wake_text(t, event):
             "Usually you can and should keep going now, in this turn: no later turn follows this message, so work you defer will not happen "
             "until someone asks. After handling this wake, record `nrp-monitor wake-review %s --by rule|agent|coordinator --why TEXT`. Continue the plan's next steps inside its approved range and the task's approval (review outputs, fix, "
             "resume, register the next step). Stop only at a stop_for_hunter step, a decision that is Hunter's, or a fix that needs "
-            "tools you do not have here; then say in one line what is needed, and use `nrp-monitor task needs-owner` only if he must act.\n"
-            "Tools in a Claude wake: `nrp-task` (NRP_TASK is set: logs, s3 ls/cat, reship, submit, code-test/commit/ship), Read/Edit/Write in "
-            "this task's state folder and this chat's repo, git commit/push to main there, PushNotification. If you cannot finish, put "
-            "\"NEEDS YOU:\" and the one thing needed at the top of your reply and call PushNotification once; the owner reads this chat." % n)
+            "tools you do not have here; then say in one line what is needed, and use `nrp-monitor task needs-owner` only if he must act.\n" % n) + (
+               "This wake is a visible turn in the owner's T3 chat with this chat's normal tools: finish the whole fix yourself (rebuild and "
+               "upload pinned code, edit the manifest, resume). If you still cannot finish, put \"NEEDS YOU:\" and the one thing needed at the "
+               "top of your reply; the owner sees this chat." if harness == "t3-cli" else
+               "Tools in a Claude wake: `nrp-task` (NRP_TASK is set: logs, s3 ls/cat, reship, submit, code-test/commit/ship), Read/Edit/Write in "
+               "this task's state folder and this chat's repo, git commit/push to main there, PushNotification. If you cannot finish, put "
+               "\"NEEDS YOU:\" and the one thing needed at the top of your reply; this headless reply is not visible in T3, so the monitor "
+               "DMs the owner that line.")
     return head + body[:3000 - len(head) - len(tail)] + tail     # trim the summary, never the instructions
 
 
@@ -3153,8 +3164,20 @@ def process_task_webhooks(a, st):
                 continue
             try:
                 usage = None
-                if target["harness"] in WAKE_EXEC:                       # claude / codex: resume that session with the wake text
-                    usage = WAKE_EXEC[target["harness"]](target, wake_text(t, event))
+                if target["harness"] in WAKE_EXEC:                       # t3-cli: visible T3 turn; claude / codex: resume that session
+                    try:
+                        used = target
+                        usage = WAKE_EXEC[target["harness"]](target, wake_text(t, event, target["harness"]))
+                    except WakeError as first:
+                        if not target.get("fallback"):
+                            raise
+                        log("task %s t3 wake failed (%s); falling back to the headless session" % (n, first))
+                        used = target["fallback"]
+                        usage = WAKE_EXEC[used["harness"]](used, wake_text(t, event, used["harness"]))
+                    reply = str((usage or {}).get("result") or "") if isinstance(usage, dict) else ""
+                    if used["harness"] != "t3-cli" and reply.lstrip().startswith("NEEDS YOU:"):
+                        # A headless reply is invisible in T3: tell the owner now instead of after the 24h coordinator timeout.
+                        push("coordinator chat could not finish: " + reply.strip(), "needs-you:%s:%s" % (n, event["event_id"]), refs=["task:" + n])
                 else:
                     url, workstream = webhook_config(n)
                     payload = dict(event, workstream=workstream)

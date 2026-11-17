@@ -79,12 +79,16 @@ The task's `origin` says how to reach its chat: `harness` t3 (thread link, or co
 `codex` (a Codex session id), plus the session's `cwd`. Register with `--origin-harness claude|codex [--origin-session ID] [--origin-cwd DIR]`
 (without `--origin-session` the id is read from `CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID` of the shell that runs the command, only when the
 harness is named; a delegated child session gets a warning) or `nrp-monitor origin task NAME --harness ... --session ... --evidence ...`.
+When the origin has both a T3 thread link and a claude/codex session (a chat run inside T3), the wake goes to the T3 thread with
+`t3 thread send THREAD -`: a visible turn in that chat, with the chat's normal tools, so it can finish the fix (Hunter 2026-11-16: headless
+resumes never show in T3, so a NEEDS YOU sat unseen). If T3 is not running, it falls back to the headless resume below, and a headless reply
+that starts with "NEEDS YOU:" is pushed to the owner at once (it is invisible in T3).
 For a closed session, for `claude` the monitor runs `claude -p --resume ID` in the chat's directory, for `codex` `codex exec resume
 ID -` (prompt on stdin), so the wake lands in that chat's history. The Claude wake may run `nrp-monitor task show|resume|cancel|needs-owner`,
 `decide`, `wake-review`, `digest` and `status`, plus what it needs to fix what it finds: `nrp-task` with NRP_TASK set to the woken task,
 Read in the state dir, Edit/Write in its `tasks/` and `plans/` and in the chat's own repo, a few git commands (commit, push origin main),
 Grep/Glob and PushNotification. No arbitrary shell, kubectl or aws. A wake that still cannot finish puts "NEEDS YOU:" at the top of its
-reply and sends one PushNotification; the owner reads that chat. Before Claude resume, the monitor checks for a running process naming the session or
+reply; the monitor DMs the owner that line. Before Claude resume, the monitor checks for a running process naming the session or
 transcript activity within five minutes. An open/recent session is deferred, never reported
 as delivered, because headless resume can fork an unseen sibling. Uncertain process inspection
 also defers. These deferrals count toward `WAKE_MAX_TRIES` exactly like a failed webhook (an escalation falls back to
