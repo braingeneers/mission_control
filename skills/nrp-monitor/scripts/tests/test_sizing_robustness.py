@@ -92,8 +92,8 @@ def test_true_peak_parser_rejects_invalid_and_rss(monitor):
 
 
 @pytest.mark.parametrize('sample,true,expected', [(0.1*GI, None, '2Gi'), (.5*GI, None, '2Gi'),
-                                                   (.1*GI, 3*GI, '4Gi'), (None, 2*GI, '3Gi')])
-def test_oom_backstop_and_true_peak_precedence(monitor, tmp_path, sample, true, expected):
+                                                   (.1*GI, 3*GI, '2Gi'), (None, 2*GI, '3Gi')])
+def test_oom_backstop_and_working_set_precedence(monitor, tmp_path, sample, true, expected):
     s = {'id': 'a', 'job': 'work', 'manifest': manifest(tmp_path/'a.json')}
     t = {'name': 't', 'namespace': 'test'}
     with patch.object(monitor, 'job_pods', return_value=[]), patch.object(monitor, 'saved_memory_peak', return_value=true), \

@@ -76,6 +76,17 @@ def cmd_tool(a):
         sys.stderr.write(r.stderr[-2000:])
         return r.returncode
 
+    from . import util as _m_util
+    if c in ("resize", "restart"):
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--stage")
+        parser.add_argument("--cpu")
+        parser.add_argument("--mem")
+        opts = parser.parse_args(rest)
+        opts.name = n
+        ok, message = _m_util.utilization_restart(n, opts.stage, opts.cpu, opts.mem)
+        print(message)
+        return 0 if ok else 1
     if c == "decide":
         parser = argparse.ArgumentParser(prog="nrp-task decide")
         parser.add_argument("fingerprint")

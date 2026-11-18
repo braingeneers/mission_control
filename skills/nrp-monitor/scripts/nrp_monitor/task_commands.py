@@ -339,3 +339,17 @@ def cmd_origin(a):
     print("%s %s origin recorded: %s" % (kind, name, _m_wake.origin_plain(new)))
     return 0
 
+
+def cmd_util_restart(a):
+    from . import state as _m_state
+    from . import util as _m_util
+    _m_state.STATE.mkdir(parents=True, exist_ok=True)
+    with open(_m_state.LOCK, "a") as lock:
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            print("monitor pass in progress; retry after it finishes")
+            return 1
+        ok, message = _m_util.utilization_restart(a.name, a.stage, getattr(a, "cpu", None), getattr(a, "mem", None))
+    print(message)
+    return 0 if ok else 1

@@ -109,6 +109,9 @@ def test_real_submit_refusal_enters_red_alert(monitor):
 
 def util_task(m, mode, rule):
     t = task(m, 'watcher')
+    doc = m.manifest_doc(t['stages'][0]['manifest'])
+    doc['spec']['template']['spec']['containers'][0]['name'] = 'worker'
+    m.manifest_write(t['stages'][0]['manifest'], doc)
     line = 'LOW work-17-abc age 2h, 10m mean: mem 1.00/16.00 (6%%) %s rule=%s' % (
         '[NRP violation]' if rule == 'nrp' else '[lab 40% rule]', rule)
 
@@ -123,7 +126,10 @@ def util_task(m, mode, rule):
 
 def review(m, agent):
     with patch.object(m, 'run_task_agent', agent), patch.object(m, 'task_prompt', return_value='FIX'), \
-            patch.object(m, 'triage_prompt', return_value='JUDGE'):
+            patch.object(m, 'triage_prompt', return_value='JUDGE'), \
+            patch.object(m, 'namespace_offenders', return_value=[]), \
+            patch.object(m, 'memory_low_evidence', return_value={'need_gi': 6.1, 'right_gi': 10}), \
+            patch.object(m, 'thanos_query', return_value=[{'value': [0, '2']}]):
         m.process_util_event('watcher', A)
     t = m.task_load('watcher')
     assert 'util_event' not in t
@@ -140,18 +146,17 @@ def test_nrp_floor_fixer_no_change_still_wakes_chat(monitor):
     util_task(monitor, 'auto', 'nrp')
     prompts = []
     wakes = review(monitor, lambda n, prompt, a, **k: (prompts.append(prompt), ('DONE: no change needed', None))[1])
-    assert len(prompts) == 1 and 'working-set peak' in prompts[0] and 'memory.peak' in prompts[0]
-    assert 'NOT an allowed outcome' in prompts[0]
+    assert prompts == []  # deterministic action replaces an agent review
     assert len(wakes) == 1
 
 
 def test_nrp_floor_fixer_resubmit_needs_no_wake(monitor):
     util_task(monitor, 'auto', 'nrp')
 
-    def fixer(n, prompt, a, **k):
-        monitor.task_txn(n, lambda t: t['stages'][0].update(submitted=900))     # the fixer resized and resubmitted
-        return 'DONE: resized to 10Gi and resubmitted', None
-    assert review(monitor, fixer) == []
+    monitor.task_txn('watcher', lambda t: t['stages'][0].update(resumable=True))
+    with patch.object(monitor, 'utilization_restart', return_value=(True, 'queued')) as restart:
+        assert review(monitor, lambda *a, **kw: (_ for _ in ()).throw(AssertionError('no agent'))) == []
+        restart.assert_called_once()
 
 
 def test_lab_floor_watch_only_keeps_digest(monitor):

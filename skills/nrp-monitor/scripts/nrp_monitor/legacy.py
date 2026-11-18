@@ -73,7 +73,7 @@ def check_pods(a, st):
     for kind, pod, line in flagged:
         strike = 2 if st["strikes"].get(pod) else 1
         gap = 10**9 if kind == "FAILED" else (_m_state.STRIKE_GAP_S if strike == 2 else _m_state.POD_DEDUPE_S)
-        if _m_state.now() - st["pods"].get(pod, 0) < gap:
+        if _m_state.now() - st["pods"].get(pod, 0) < gap and not (_m_util.flag_rule(line) == "nrp" and _m_state.task_of_job(mine.get(pod))):
             continue
         if kind == "FAILED":
             if not a.dry_run:

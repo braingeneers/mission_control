@@ -244,6 +244,9 @@ class O(unittest.TestCase):
         self.run_pass()
         self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="shard check <FAILED> & <!channel>: 2 of 16")
         self.run_pass()
+        self.assertEqual(self.task()["status"], "WITH_COORDINATOR")
+        rc, _, err = self.wd("task", "needs-owner", "t1", "--reason", self.task()["failure"]["detail"])
+        self.assertEqual(rc, 0, err)
         srv.shutdown()
         self.assertEqual(len(Stub.got), 1, (self.state / "monitor.log").read_text()[-1500:])
         auth, payload = Stub.got[0]

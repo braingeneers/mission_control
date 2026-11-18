@@ -56,7 +56,9 @@ def tier0_oom(t, s, f):
     true_peak = _m_sizing.saved_memory_peak(t, s, c["name"])
     if true_peak is None and len(cs_) == 1:
         true_peak = _m_sizing.saved_memory_peak(t, s)
-    peak = true_peak if true_peak is not None else thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted") or _m_state.now() - 3600)
+    peak = thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted") or _m_state.now() - 3600)
+    if peak is None:
+        peak = true_peak
     if not lim or peak is None:
         return None
     base = max(peak, lim)                                     # an OOM-killed container reached its limit even if the 30 s samples missed it

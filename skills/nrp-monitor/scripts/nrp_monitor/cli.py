@@ -257,6 +257,14 @@ def main():
     x = tk.add_parser("show")
     x.add_argument("name")
     x.set_defaults(f=_m_task_commands.cmd_task_show)
+    for command in ("resize", "restart"):
+        x = tk.add_parser(command)
+        x.add_argument("name")
+        x.add_argument("--stage")
+        if command == "resize":
+            x.add_argument("--cpu")
+            x.add_argument("--mem")
+        x.set_defaults(f=_m_task_commands.cmd_util_restart)
     x = tk.add_parser("watch", help="set one task to watch mode when no monitor pass is running")
     x.add_argument("name")
     x.set_defaults(f=_m_task_commands.cmd_task_watch)

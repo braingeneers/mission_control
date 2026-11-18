@@ -113,3 +113,51 @@ def mem_text(b):
     import math
     return "%dGi" % math.ceil(b / 2 ** 30) if b >= 2 ** 30 else "%dMi" % max(64, math.ceil(b / 2 ** 20))
 
+
+def zero_node_reason(doc):
+    """Required selectors are AND; affinity terms are OR. Read errors fail open."""
+    from . import cluster as _m_cluster
+    from . import state as _m_state
+    global UTIL_NODE_CACHE
+    spec = doc["spec"]["template"]["spec"]
+    selector = spec.get("nodeSelector") or {}
+    required = spec.get("affinity", {}).get("nodeAffinity", {}).get("requiredDuringSchedulingIgnoredDuringExecution")
+    if not selector and required is None:
+        return None
+    if "util_nodes" not in _m_state.PASS:
+        try:
+            r = _m_cluster.kubectl("get", "nodes", "-o", "json")
+            UTIL_NODE_CACHE = json.loads(r.stdout)["items"] if r.returncode == 0 else None
+        except Exception:
+            UTIL_NODE_CACHE = None
+        _m_state.PASS["util_nodes"] = len(UTIL_NODE_CACHE) if UTIL_NODE_CACHE is not None else -1
+    nodes = UTIL_NODE_CACHE
+    if nodes is None:
+        return None
+    def matches(e, labels):
+        k, op, vals = e["key"], e["operator"], e.get("values", [])
+        v = labels.get(k)
+        if op == "In": return v in vals
+        if op == "NotIn": return v not in vals
+        if op == "Exists": return k in labels
+        if op == "DoesNotExist": return k not in labels
+        if op in ("Gt", "Lt"):
+            try: return int(v) > int(vals[0]) if op == "Gt" else int(v) < int(vals[0])
+            except (ValueError, TypeError, IndexError): return False
+        return False
+    for node in nodes:
+        if node.get("spec", {}).get("unschedulable"):
+            continue
+        labels = node["metadata"].get("labels", {})
+        if any(labels.get(k) != v for k, v in selector.items()):
+            continue
+        if required is None:
+            return None
+        for term in required.get("nodeSelectorTerms", []):
+            if (term.get("matchExpressions") or term.get("matchFields")) and all(matches(e, labels) for e in term.get("matchExpressions", [])) and all(
+                    matches(e, {"metadata.name": node["metadata"]["name"]}) for e in term.get("matchFields", [])):
+                return None
+    return "zero schedulable nodes match nodeSelector=%s required nodeAffinity=%s" % (selector, required)
+
+
+UTIL_NODE_CACHE = None

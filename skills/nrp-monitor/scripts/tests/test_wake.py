@@ -325,12 +325,12 @@ class OneWake(Base):
         self.assertEqual(t["status"], "NEEDS_OWNER")
         self.assertIn("no coordinator webhook or harness session", t["reason"])
 
-    def test_watch_only_failure_is_final_and_sends_the_one_failure_wake(self):
+    def test_watch_only_failure_wakes_coordinator_first(self):
         self.task(harness="codex", mode="watch")
         self.w.task_fail("t1", "a", "code", "sig", "Traceback in stage a")
         self.w.handle_failure("t1", SimpleNamespace(dry_run=False))
-        self.assertEqual([e["event_type"] for e in self.outbox()], ["failure"])
-        self.assertEqual(self.w.task_load("t1")["status"], "NEEDS_OWNER")
+        self.assertEqual([e["event_type"] for e in self.outbox()], ["escalation"])
+        self.assertEqual(self.w.task_load("t1")["status"], "WITH_COORDINATOR")
 
     def plan_step(self, *names, step="3"):
         pid = "plan-x"

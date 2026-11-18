@@ -168,6 +168,12 @@ def do_submit(n, sid, reason, by):
         _m_state.task_txn(n, hold)
         return True, ("HELD: NRP RED ALERT, NRP is refusing new pods on the account. The monitor sends this submit when its dry-run "
                       "accepts again. Do not retry yourself; resize or delete low pods instead.")
+    from .. import sizing as _m_sizing
+    zero = _m_sizing.zero_node_reason(_m_task_registry.manifest_doc(s["manifest"]))
+    if zero:
+        _m_ladder.task_fail(n, sid, "unschedulable", "zero-nodes", zero)
+        _m_ladder.to_coordinator(n, zero, deputy=False)
+        return False, zero
     st_ = _m_cluster.job_state(s["job"], ns)
     if st_ in ("running", "pending", "error"):
         return False, "Job %s is still %s" % (s["job"], st_)
@@ -212,6 +218,8 @@ def do_submit(n, sid, reason, by):
         s2.update(state="running", submitted=_m_state.now())
         s2.pop("pod_started", None)
         s2["dl"] = {"resubmits": (s2.get("dl") or {}).get("resubmits", 0)}      # a new Job gets fresh deadline tracking (Tier 0, deadline_watch)
+        for key in ("nrp_flag_since", "nrp_woken", "nrp_stopped"):
+            s2.pop(key, None)
         s2.pop("util_deleted", None)
         if (t.get("util_event") or {}).get("stage") == sid:
             t.pop("util_event", None)

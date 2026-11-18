@@ -30,8 +30,8 @@ Applied to a failed stage of an `auto` task before a fix agent is started. Each 
 (retry cap, class budget, GPU approval date, manifest rules); a rule that cannot decide, or whose resubmit is refused, leaves the
 manifest untouched and hands the failure to the ladder below. Tier 0 resubmits are recorded with `by tier0` in the task's attempts and show "(Tier 0 rule)" in `task show`.
 
-- **OOM**: prefer the saved `NRP_MEMORY_PEAK` cgroup reading for the failed container and attempt;
-  otherwise use the maximum sampled working set since submit from NRP's Prometheus. Memory becomes
+- **OOM**: prefer the maximum sampled working set since submit from NRP's Prometheus;
+  fall back to the saved `NRP_MEMORY_PEAK` cgroup reading only without working-set series. Memory becomes
   `max(peak, OOM limit) x 1.3`, rounded up. Without a true peak, a sample below half the OOM limit
   is unreliable: use twice that limit instead. With neither reading, leave sizing to the agents. The request keeps the limit within the shared
   `limit_to_request_tolerance` (20%). Once per stage; above `tier0_mem_cap_gi` (config.json, default 128) or a second OOM goes to the agents.
@@ -80,8 +80,8 @@ the owner is needed.
    `nrp-monitor task resume NAME --note TEXT` (hand back: the failed stage is resubmitted, budgets restart), `task cancel NAME`, or,
    only when the owner is truly needed, `task needs-owner NAME --reason TEXT` (sets `NEEDS_OWNER` and sends the one DM).
    Nothing is lost silently: with no wake target configured for the task, a wake that fails delivery 6 passes in a row (about 30 minutes),
-   or a delivered wake nobody answers for 24 hours, falls back to `NEEDS_OWNER` with that reason. Watch-only tasks, GPU approval
-   expiry and a 6-hour utilization block still go straight to the owner: only a person can decide those.
+   or a delivered wake nobody answers for 24 hours, falls back to `NEEDS_OWNER` with that reason. Watch-only failures go to the coordinator first, without automatic fixes. GPU approval
+   expiry and a 6-hour utilization block still go straight to the owner.
 
 Tier backends are the `tiers` entries `triage` (Tier 1), `task` (Tier 2), and `deputy` of `agents.json`. Setup chooses the first two and optionally accepts `--deputy`; deputy defaults to Claude Sonnet and uses the same backend/model/limits schema (agents.md). Tier 3 uses no model: it wakes the chat that already
 has the context.
@@ -152,7 +152,7 @@ mentions it.
    times per task; otherwise it is the stop below.
 4. **A person.** The task becomes `NEEDS_OWNER` (tasks stored under the earlier name `NEEDS_HUNTER` are read as this) and the owner gets
    one DM. For a task that is: when its coordinator chat runs `task needs-owner`, when Tier 3 cannot reach the chat (above), for a
-   watch-only task, GPU approval expiry, or a 6-hour utilization block. For a legacy job: when the follow-up ladder is used up.
+   GPU approval expiry, or a 6-hour utilization block. For a legacy job: when the follow-up ladder is used up.
    `nrp-monitor task resume NAME` continues after they decide.
 
 An accepted util waiver sends no DM, uses no retry and adds a `util-waived` line to the digest. Retries are silent. When no agent can
@@ -184,3 +184,20 @@ After handling a wake, run `nrp-monitor wake-review TASK --by rule|agent|coordin
 Completion wakes retain their existing behavior in this batch. Their volume is measured, not grouped or suppressed. Historical logs do not contain enough usage to reconstruct total coordinator-chat cost.
 
 Baseline snapshot, 2026-11-12 at 22:34 UTC (read-only, UTC date in existing logs): 35 delivered wakes across four origin chats, comprising 19 escalations and 16 completions. Per anonymized origin: A 16 escalation + 2 done; B 0 + 2; C 3 + 2; D 0 + 10. `digest.log` records 20 escalation queues (A 17, C 3), versus 19 deliveries in `monitor.log`; one queued escalation had no delivery recorded at the snapshot. Task event rings keep only 80 entries, so aggregate counts use the append-only logs, mapped to current task origin metadata. Counts reflect the snapshot, not an immutable full-day total; no historical costs or avoidable-wake judgments are inferred. No historical events were imported into the new ledger.
+
+### Utilization patch P (2026-11-18)
+
+Before submit, required nodeSelector and nodeAffinity terms (including GPU product) must match
+at least one schedulable node. Zero matches records `unschedulable` and routes directly to the
+coordinator with no retry. Node reads are cached once per pass; read errors preserve normal submit.
+Watch-only failures now wake the coordinator first; the owner hears only on `task needs-owner`
+or unavailable coordinator delivery. NRP band safety stops are the explicit exception.
+
+Use `task resize NAME [--stage S] [--cpu X] [--mem Y]` or `task restart NAME [--stage S]`
+for replacement without a failure, retry budget or owner notice (also in scoped `nrp-task`).
+These save logs, cancel old queued wakes and submit on the next pass. NRP band violations
+resize/restart resumable work; otherwise they wake its coordinator with measured sizing and
+stop the registered Job after `nrp_violation_grace_minutes` (config.json; default 30), or at
+three namespace violators with the default four-pod account threshold. Logs/S3 outputs survive.
+See utilization.md for measurement fallback and spiky-job handling. This supersedes the older
+“observations never hold a task” guidance for NRP bands.

@@ -343,9 +343,9 @@ def recorded_decision(c):
     return STOP if _m_decisions.apply_decision(c.n, c.a) else None
 
 
-@guard("watch")
+@guard("coordinator-only")
 def watch_only(c):                      # a watch-only task has no ladder: the failure is final
-    return c.t["mode"] == "watch" and "watch-only task, stage %s failed [%s]: %s" % (c.f["stage"], c.f["cls"], c.f["detail"])
+    return c.t["mode"] == "watch" and "watch-only stage %s failed [%s]: %s" % (c.f["stage"], c.f["cls"], c.f["detail"])
 
 
 def deadline_rule(c):                   # Tier 0 timeout rule (the other Tier 0 rules run first, in tier0.tier0_fix)
@@ -460,12 +460,7 @@ LADDER = (postcheck_guard, recorded_decision, watch_only, deadline_rule, same_si
 
 
 def act(c, d):
-    if d.action == "watch" and not c.a.dry_run:      # the one `failure` wake: the chat hears it, and so does the owner
-        f = c.f
-        _m_state.task_txn(c.n, lambda t: _m_wake.queue_task_webhook(t, "failure", summary="NRP task %s (watch-only): stage %s failed [%s] %s. Look: "
-                          "`nrp-monitor task show %s`. The owner is notified too: a watch-only task has no automatic fixes."
-                          % (c.n, f["stage"], f["cls"], f["detail"][:200], c.n)))
-    if d.action in ("owner", "watch"):
+    if d.action == "owner":
         escalate(c.n, d.reason, c.a)
     elif d.action.startswith("coordinator"):
         to_coordinator(c.n, d.reason, c.a, deputy=d.action == "coordinator")

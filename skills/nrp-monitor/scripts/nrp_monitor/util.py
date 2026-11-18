@@ -148,6 +148,9 @@ def task_pod_flag(st, n, sid, pod, kind, line):
         return
     t = _m_state.task_load(n)
     stage = _m_state.tstage(t, sid)
+    if rule == "nrp":
+        utilization_band_action(n, sid, pod, line)
+        return
     evidence = memory_low_evidence(t, stage, pod, working_set_only=rule == "nrp") if kind == "LOW" and any(k == "mem" and int(pct) < 20 for k, use, req, pct, mx in _m_state.FLAG_RES.findall(line)) else None
     if evidence and evidence["ramp_up"]:
         return
@@ -186,7 +189,8 @@ def process_util_event(n, a):
     context = dict(t, failure=event)
     numbers = json.dumps(event.get("evidence"), sort_keys=True)
     if event.get("rule") == "nrp":                                        # below NRP's own floor: the review may not end in "no change"
-        return util_nrp_review(n, t, event, context, numbers, a)
+        _m_state.task_txn(n, lambda cur: cur.pop("util_event", None))
+        return utilization_band_action(n, event["stage"], event.get("pod", ""), event["detail"])
     prompt = _m_ladder.triage_prompt(context) + "\nMemory evidence (GiB): " + numbers + "\n" + _m_state.MEMORY_RULE
     line, _ = _m_task_agents.run_task_agent(n, prompt, a, kind="triage")
     if _m_agents.is_unavailable(line):
@@ -278,7 +282,7 @@ def memory_low_evidence(t, s, flagged_pod, working_set_only=False):
                 pc = next((c for c in p.get("spec", {}).get("containers", []) if c["name"] == cs.get("name")), {})
                 b = _m_sizing.mem_bytes(pc.get("resources", {}).get("limits", {}).get("memory", ""))
                 if b: oom.append(b / 2**30)
-    need = max(list(peaks.values()) + oom + [true_peak / 2**30 if true_peak and not working_set_only else 0])   # memory.peak counts page cache
+    need = max(list(peaks.values()) + oom + [true_peak / 2**30 if true_peak and not peaks else 0])   # memory.peak counts page cache
     right = math.ceil(need * 1.5)
     spread = max(peaks.values()) / statistics.median(peaks.values()) if peaks and statistics.median(peaks.values()) else None
     missing = sorted((set(ages) | {flagged_pod}) - set(peaks))
@@ -315,3 +319,132 @@ def check_orphans(a, st):
     if not a.dry_run:
         _m_notify.write_json(_m_state.ORPHANS, seen)
 
+
+def utilization_restart(n, sid=None, cpu=None, mem=None, container_resources=None):
+    """Explicit replacement, without a failure or retry. Delete only a registered stage Job."""
+    from . import cluster as _m_cluster
+    from . import ladder as _m_ladder
+    from . import notify as _m_notify
+    from . import sizing as _m_sizing
+    from . import state as _m_state
+    from .task import pass_ as _m_task_pass_
+    from .task import registry as _m_task_registry
+    from .task import model as _m_model
+    t = _m_state.task_load(n)
+    if not t or _m_ladder.terminal_task(n):
+        return False, "task missing or terminal"
+    candidates = [s for s in t["stages"] if s["state"] == "running"]
+    s = _m_state.tstage(t, sid) if sid else (candidates[0] if len(candidates) == 1 else None)
+    if not s or s["state"] not in ("running", "pending"):
+        return False, "select a running or pending stage"
+    doc = _m_task_registry.manifest_doc(s["manifest"])
+    import math
+    for value, parse in ((cpu, _m_sizing.cpu_quantity), (mem, _m_sizing.mem_bytes)):
+        if value is None:
+            continue
+        try:
+            parsed = parse(str(value)) or 0
+            if not math.isfinite(parsed) or parsed <= 0:
+                return False, "resources must be positive finite quantities"
+        except (ValueError, TypeError, OverflowError):
+            return False, "invalid resource quantity"
+    for c in doc["spec"]["template"]["spec"]["containers"]:
+        sized = (container_resources or {}).get(c["name"], {})
+        for key, value in (("cpu", sized.get("cpu", cpu)), ("memory", sized.get("memory", mem))):
+            if value is not None:
+                for kind in ("requests", "limits"):
+                    c.setdefault("resources", {}).setdefault(kind, {})[key] = str(value)
+    _m_task_pass_.save_task_logs(t, s, "utilization restart")
+    r = _m_cluster.kubectl("-n", t["namespace"], "delete", "job", s["job"], "--wait=true", "--timeout=180s", timeout=240)
+    if r.returncode and "NotFound" not in r.stderr:
+        return False, "could not delete old Job: " + r.stderr[:150]
+    _m_task_registry.manifest_write(s["manifest"], doc)
+    def reset(cur):
+        stage = _m_state.tstage(cur, s["id"])
+        stage.update(state="pending", attempt=stage.get("attempt", 1) + 1)
+        for key in ("nrp_flag_since", "nrp_woken", "nrp_stopped", "submitted"):
+            stage.pop(key, None)
+        cur.pop("util_event", None)
+        cur["webhook_outbox"] = []
+        _m_model.transition(cur, "release")
+        _m_state.tev(cur, "utilization restart stage %s cpu=%s memory=%s (no retry)" % (s["id"], cpu, mem))
+    _m_state.task_txn(n, reset)
+    _m_notify.digest("util-restart", "stage %s cpu=%s memory=%s" % (s["id"], cpu, mem), n)
+    return True, "restart queued for next pass"
+
+
+def utilization_band_action(n, sid, pod, line):
+    """An NRP band flag always has a bounded lifetime, even for watch-only tasks."""
+    from . import cluster as _m_cluster
+    from . import config as _m_config
+    from . import ladder as _m_ladder
+    from . import notify as _m_notify
+    from . import sizing as _m_sizing
+    from . import state as _m_state
+    from .task import pass_ as _m_task_pass_
+    from .task import registry as _m_task_registry
+    from . import tier0 as _m_tier0
+    from . import timeouts as _m_timeouts
+    from . import wake as _m_wake
+    import math
+    t = _m_state.task_load(n)
+    s = _m_state.tstage(t, sid)
+    if s["state"] != "running":
+        return
+    first = s.get("nrp_flag_since", _m_state.now())
+    _m_state.task_txn(n, lambda cur: _m_state.tstage(cur, sid).setdefault("nrp_flag_since", first))
+    grace = float(_m_state.OWNER.get("nrp_violation_grace_minutes", 30)) * 60
+    try:
+        count = len(_m_cluster.namespace_offenders(t["namespace"]))
+    except Exception:
+        count = 0
+    stop = _m_state.now() - first >= grace or count >= int(_m_config.util_policy().get("account_block_after_violating_pods", 4)) - 1
+    if stop:
+        _m_task_pass_.save_task_logs(t, s, "NRP violation safety stop")
+        r = _m_cluster.kubectl("-n", t["namespace"], "delete", "job", s["job"], "--wait=true", "--timeout=180s", timeout=240)
+        reason = "NRP band violation safety stop: " + line
+        if r.returncode and "NotFound" not in r.stderr:
+            reason += " DELETE FAILED: " + r.stderr[:150]
+        else:
+            _m_state.task_txn(n, lambda cur: _m_state.tstage(cur, sid).update(state="pending", util_deleted=True))
+        if not s.get("nrp_stopped"):
+            _m_state.task_txn(n, lambda cur: _m_state.tstage(cur, sid).update(nrp_stopped=True))
+            _m_ladder.to_coordinator(n, reason, deputy=False)
+            if _m_state.task_load(n)["status"] != "NEEDS_OWNER":
+                _m_notify.push("NRP task %s: %s" % (n, reason[:250]), "nrp-stop:" + n + ":" + str(first), refs=["task:" + n])
+        _m_notify.digest("util-stop", reason, n)
+        return
+    doc = _m_task_registry.manifest_doc(s["manifest"])
+    cs = doc["spec"]["template"]["spec"]["containers"]
+    evidence = memory_low_evidence(t, s, pod, working_set_only=True)
+    window = max(300, int(_m_state.now() - s.get("submitted", first)) + 120)
+    rows = _m_cluster.thanos_query('max(max_over_time(rate(container_cpu_usage_seconds_total{namespace=%s,pod=~%s,container=%s}[5m])[%ds:30s]))' % (json.dumps(t["namespace"]), json.dumps(re.escape(s["job"]) + "-.*"), json.dumps(cs[0]["name"]), window))
+    peak_cpu = float(rows[0]["value"][1]) if rows else None
+    small = _m_config.util_policy().get("small_pod_exempt") or {"cpu": 1, "memory_bytes": 2000000000}
+    cpu = str(max(float(small.get("cpu", 1)), math.ceil(peak_cpu * 1500) / 1000)) if peak_cpu is not None else None
+    mem = str(max(int(small.get("memory_bytes", 2000000000)), evidence["right_gi"] * 2**30)) if (evidence["need_gi"] or evidence.get("peaks_gi") or evidence.get("true_peak_gi") is not None) else None
+    details = '"No change" is not an allowed answer. mean/request: %s; memory peak=%sGi proposed=%s bytes; CPU peak=%s proposed=%s; grace deadline=%s' % (line, evidence["need_gi"], mem, peak_cpu, cpu, _m_state.iso(first + grace))
+    for key, use, req, pct, mx in _m_state.FLAG_RES.findall(line):
+        proposed = float(cpu) if key == "cpu" and cpu else float(mem) / 2**30 if key == "mem" and mem else None
+        band = _m_config.util_policy().get("cpu_band" if key == "cpu" else "memory_band", [.2, 1.5])
+        if proposed and float(use) < band[0] * proposed:
+            details += "; spiky: constant request cannot fit this band; use smaller shards or make the stage resumable"
+    sizes = {cs[0]["name"]: {"cpu": cpu, "memory": mem}}
+    for c in cs[1:]:
+        peak = _m_tier0.thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted", first))
+        if peak is None:
+            peak = _m_sizing.saved_memory_peak(t, s, c["name"], all_attempts=True)
+        oom = max(s.get("oom_limits_gi", []) or [0]) * 2**30
+        rows = _m_cluster.thanos_query('max(max_over_time(rate(container_cpu_usage_seconds_total{namespace=%s,pod=~%s,container=%s}[5m])[%ds:30s]))' % (json.dumps(t["namespace"]), json.dumps(re.escape(s["job"]) + "-.*"), json.dumps(c["name"]), window))
+        cp = float(rows[0]["value"][1]) if rows else None
+        sizes[c["name"]] = {
+            "cpu": str(max(float(small.get("cpu", 1)), math.ceil(cp * 1500) / 1000)) if cp is not None else None,
+            "memory": str(max(int(small.get("memory_bytes", 2000000000)), math.ceil(max(peak or 0, oom) * 1.5 / 2**30) * 2**30)) if peak is not None or oom else None}
+        details += "; container %s peak memory=%s CPU=%s proposed=%s" % (c["name"], peak, cp, sizes[c["name"]])
+    if _m_timeouts.stage_resumable(s) and all(v["cpu"] and v["memory"] for v in sizes.values()):
+        ok, why = utilization_restart(n, sid, cpu, mem) if len(cs) == 1 else utilization_restart(n, sid, container_resources=sizes)
+        if ok: return
+        details += "; restart failed: " + why
+    if not s.get("nrp_woken"):
+        _m_state.task_txn(n, lambda cur: (_m_state.tstage(cur, sid).update(nrp_woken=True), _m_wake.queue_task_webhook(cur, "util_nrp", summary=details), _m_state.tev(cur, details)))
+        _m_notify.digest("util-review", details, n)

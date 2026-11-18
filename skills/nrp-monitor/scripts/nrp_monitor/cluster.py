@@ -163,7 +163,7 @@ def namespace_offenders(ns):
     out = []
     for line in u.stdout.splitlines():
         m = _m_state.FLAG.match(line)
-        if not m or m.group(1) not in ("LOW", "STUCK") or m.group(2) not in running or _m_util.flag_rule(line) == "lab":
+        if not m or m.group(1) not in ("LOW", "HIGH", "STUCK") or m.group(2) not in running or _m_util.flag_rule(line) == "lab":
             continue
         p = running[m.group(2)]
         meta, refs = p["metadata"], p["metadata"].get("ownerReferences") or []
