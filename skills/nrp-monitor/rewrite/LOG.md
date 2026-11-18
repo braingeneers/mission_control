@@ -6,7 +6,7 @@
 - C2 removed overnight code authoring, ignored may_touch, removed authoring prompt instructions; shared plan_gpu_cover restored after targeted checks exposed its accidental removal.
 - Hunter authorized removal/adaptation of cut-specific tests; verbatim clarification appended to PLAN.
 - No package modules yet. C3/C4, mechanical modularization, import/patch-target port, installer packaging, final full validation and push remain.
-- Baseline: default system Python has no pytest; existing Miniconda Python supports pytest. Initial runs overlapped editing and are invalid baselines. An isolated original scripts copy under /tmp/nrp-r3a-baseline is running the clean baseline, output /tmp/nrp-r3a-baseline-result.txt; results pending.
+- Baseline: default system Python has no pytest; existing Miniconda Python supports pytest. Initial runs overlapped editing and are invalid baselines. An isolated original scripts copy under /tmp/nrp-r3a-baseline is running the clean baseline, output /tmp/nrp-r3a-baseline-result.txt; result: 642 passed, 1 skipped, 2 failed solely because the copy omitted sibling nrp-cluster/references/memory_peak.py. Both failed helper tests rerun from the real repository passed (2 passed in 0.11 s); this is a composite baseline of 644 passed / 1 skipped, not a single clean full-suite pass.
 - Targeted C1/C2 checks initially failed due to missing plan_gpu_cover; corrected rerun passed 33 tests in 45.53 s (test_plans, test_origin, test_red_alert); output /tmp/nrp-r3a-cuts-result.txt. Full-suite results remain pending.
 - No install or live-state access; no push. Tests invoke installer only in their existing temporary-HOME fixtures.
 

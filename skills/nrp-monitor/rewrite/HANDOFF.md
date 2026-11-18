@@ -2,12 +2,12 @@
 **Plan:** nrpmon-rewrite, R3a authorized; stop before R4 install. User requested implementation sub-agent relay.
 **Branch:** nrp-monitor-rewrite from 0f38bd1; C1 ce234a2, C2 fc77d32. No push or install.
 **Verified:** script compiles. No package exists yet. Targeted cuts check: 33 passed in 45.53 s; no full-suite result yet.
-**In flight:** clean original baseline copied to /tmp/nrp-r3a-baseline, pytest output /tmp/nrp-r3a-baseline-result.txt (exec session 78641).
+**Baseline completed:** isolated original copy: 642 passed, 1 skipped, 2 failures due solely to omitted sibling memory_peak.py. Both helper tests passed when rerun from real repo (2 passed / 0.11 s). Composite baseline 644 passed / 1 skipped; no single clean full pass. Output /tmp/nrp-r3a-baseline-result.txt.
 Completed targeted corrected cuts check: scripts/tests/test_plans.py test_origin.py test_red_alert.py, output /tmp/nrp-r3a-cuts-result.txt (session 11455).
 Earlier runs against the changing source (sessions 18125, 9973) are invalid; do not report their counts as baseline.
 Existing interpreter /Users/hunterschweiger/miniconda3/bin/python3 has pytest; default tool shell python3 does not.
 **Next:**
-1. Inspect both output files; await running checks, fix retained-behavior regressions before further cuts.
+1. Review baseline copy-path issue recorded in LOG; targeted corrected cuts checks passed 33 tests. Run the final full suite from scripts in the real repo.
 2. Review C2 sidecar s3 cp removal (coupled to may_touch) and stale docstrings/skill docs mentioning night code/chains; keep scope within approved cuts.
 3. Apply C3 local gemini CLI removal (keep agy) and C4 off-by-default ladder.triage_judge; one commit per cut. Update register with each SHA in subsequent commit.
 4. Mechanical module move per DESIGN section 1; no deeper redesign. Use explicit module imports and preserve state/CLI behavior.
