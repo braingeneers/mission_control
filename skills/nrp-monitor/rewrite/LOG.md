@@ -1,5 +1,10 @@
 # Log: nrp-monitor rewrite (newest first)
 
+## 2026-11-18 — memory judged on the stricter of working set and RSS (main session)
+- Hunter (verbatim, on the rss/working-set gap): "ok we should error on the side of caution for this then" = Option A.
+- 875bccd: nrp-util-check also reads container_memory_rss (10m mean); a pod is outside a memory band (and under the lab floor) if either measure is; the flag line adds `rss X.XGi N%`. util.py spiky check uses the lower measure so a cache-heavy pod is not resized to the same size repeatedly. Tests: test_memory_band_uses_the_stricter_of_working_set_and_rss, test_spiky_check_reads_the_lower_rss; suite 669 passed. Installed 13:05; live run OK.
+- Live evidence: 12 of 135 braingeneers pods had RSS < 2/3 of working set (lowest 0.15). First live run: account 5 of 112 running pods outside NRP bands (block threshold 4); the monitor's band action handles them.
+
 ## 2026-11-18 — post-swap fixes (main session)
 - 7944723: launchd now reads the utilization policy (install.sh copies it to the state dir; an unreadable file falls through). Verified: 0 policy warnings in the 12:47 pass (was every pass since 2026-11-10).
 - NRP violations research (Sonnet, read-only): thresholds match NRP's policy page (GPU >40%, CPU 20-200%, RAM 20-150%, 1 CPU/2GB exempt; our local override already has cpu_band [0.2, 2.0]). NRP's per-pod verdicts come from https://portal.nrp.ai/rpc `user.GetUserInfo` (Violations page nrp.ai/userinfo), browser CILogon cookie only; no Thanos metric or k8s label carries them. NRP's namespace recording rules use container_memory_rss; we use working set (higher), so NRP may flag memory LOW where we don't (inference). Options to Hunter: A flag on the stricter of rss/working set (recommended); B ask NRP support for a portal token. Undecided.
