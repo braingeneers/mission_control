@@ -1,19 +1,17 @@
-# Handoff: nrp-monitor modular rewrite  (2026-11-18, spike-tokenizer-scaling session)
-**Plan and active steps:** rewrite/PLAN.md (nrpmon-rewrite); start R1. Approved R1-R2; stop for Hunter
-after R2 with the cut list. Nothing is deleted before he agrees.
-**Where we are:** red-alert fix landed and installed (1c7debc, 645 tests pass). Not yet verified on a live
-scheduled pass: check monitor.log for "probe"/"RED ALERT" lines and that no Traceback appeared.
-**In flight:** nothing from this workstream. The installed monitor runs on its own (launchd plist).
+# Handoff: nrp-monitor modular rewrite  (2026-11-18, R2 session)
+**Plan and active steps:** PLAN.md (nrpmon-rewrite). R1 and R2 done; **stopped for Hunter** on DESIGN.md §4
+(5 decisions). R3 is not approved yet.
+**Where we are:** CENSUS.md (verified counts) and DESIGN.md (layout, cut list C1-C5, t71 problems U1-U9) are written.
+1c7debc red-alert probe verified live. Nothing deleted or changed in code or state.
+**In flight:** nothing.
 **Next:**
-1. Confirm the 1c7debc probe ran cleanly in `~/.local/state/nrp-monitor/monitor.log`.
-2. R1 census: delegate to a Sonnet agent (log + registries + grep of section headers, `grep -n '^# ----'
-   scripts/nrp-monitor`); write rewrite/CENSUS.md.
-3. R2: design the package (behavior as tables / strategies, one Task state machine, one cluster-read layer,
-   one runner interface) and the cut list; give Hunter each cut with evidence, what breaks if wrong, and a
-   recommendation.
-**Gotchas:** never read the 8.7k-line script whole in the main thread; grep sections or delegate.
-Repo rules: push to main, `git pull --ff-only` before committing, no checkout/stash/reset.
-Install is a copy via scripts/install.sh; INSTALLED records the commit.
-**Read first:** PLAN.md, LOG.md top entry, scripts/nrp-monitor section headers (grep above),
-references/operations.md.
-**Open questions for Hunter:** none until the R2 cut list.
+1. Record Hunter's answers verbatim in PLAN.md (decisions 1-5).
+2. If decision 3 = A: patch the current script for U1 (working-set sizing, NRP violation -> resize/restart for
+   resumable stages, else coordinator wake with numbers), U3 (`task resize`/`task restart`), U5 (zero-node check),
+   with tests; install; tell the t71 chat (c38c20f5).
+3. Then R3 module by module per DESIGN.md §1; apply approved cuts first (C5 is state-dir only).
+**Gotchas:** never read the 8.9k-line script whole; grep `^# ----` sections or delegate. Tests live in
+scripts/tests (run from scripts/). Push to main, `git pull --ff-only` before committing. Install = scripts/install.sh.
+gpu-long never logs: check before relying on it for U1.
+**Read first:** PLAN.md, DESIGN.md §2-4, LOG.md top entry.
+**Open questions for Hunter:** DESIGN.md §4, each with a recommendation.

@@ -10,7 +10,7 @@ code that one agent can hold in context?
   else statements basically (not actually but as an analogy)"
 - Approved the order: red-alert fix first (done, 1c7debc), then this cleanup, then the spiky-job check.
 
-**Approval:** steps R1-R2 approved. **Stop for Hunter after R2** (cut list); no deletion before he agrees.
+**Approval:** steps R1-R2 approved; both done 2026-11-18 (`CENSUS.md`, `DESIGN.md`), waiting on Hunter's answers to DESIGN.md §4. **Stop for Hunter after R2** (cut list); no deletion before he agrees.
 
 ## Steps
 - **R1 Usage census.** From `~/.local/state/nrp-monitor/monitor.log` (last 7+ days), task/chain
@@ -26,3 +26,4 @@ code that one agent can hold in context?
   contract. Same CLI, same state file formats (or a one-time migration), same install.sh.
 - **R4 Shadow run** next to the installed script (read-only / dry) for a day; diff decisions; then swap.
 - **R5 Spiky-job check** at profile time (peak vs mean memory) in the new sizing module.
+- **R6 (proposed, not approved) Workflows stage type** (t71 U7): poll Workflows runs as a task stage.
