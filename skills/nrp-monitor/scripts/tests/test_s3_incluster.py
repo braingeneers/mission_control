@@ -160,7 +160,7 @@ class Prepass(unittest.TestCase):
 
     def run_prepass(self, cl, **env):
         jobs = {"j-full": {"state": "ok"}, "j-busy": {"state": "running"}}
-        ps = list(patched(cl, **env)) + [patch.object(WD, "chain_names", return_value=[]), patch.object(WD, "task_names", return_value=["t"]),
+        ps = list(patched(cl, **env)) + [patch.object(WD, "task_names", return_value=["t"]),
                                           patch.object(WD, "task_load", side_effect=lambda n: self.task), patch.object(WD, "fetch_jobs", return_value=jobs)]
         for p in ps:
             p.start()

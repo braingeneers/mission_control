@@ -307,7 +307,7 @@ class LadderTests(Ladder):
 
     def mod_wake_tries(self):
         import re
-        return int(re.search(r"^WAKE_MAX_TRIES = (\d+)", Path(test_tasks.SCRIPT).read_text(), re.M).group(1))
+        return int(re.search(r"^WAKE_MAX_TRIES = (\d+)", (Path(test_tasks.SCRIPT).parent / "nrp_monitor" / "state.py").read_text(), re.M).group(1))
 
     def test_no_webhook_means_the_owner_is_told(self):
         self.add()
