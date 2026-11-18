@@ -168,13 +168,13 @@ def gpu_long_pass(a, st, mine):
     This pass reads long windows directly: a 1 h mean under NRP's floor wakes the owning chat; a 90-min mean under it
     saves the logs and deletes the Job itself, so NRP never has to; a task's stage then fails as class util with rule gpu (the fixer
     must restructure, e.g. run levels in parallel or move CPU phases off the GPU pod, never resubmit unchanged)."""
+    from . import stage_jobs as _m_stage_jobs
     from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import config as _m_config  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import wake as _m_wake  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import pass_ as _m_task_pass_  # Local import breaks orchestration cycle; patches stay on the defining module.
     if not mine:
         return
     def check(window):
@@ -230,7 +230,7 @@ def gpu_long_pass(a, st, mine):
             t = _m_state.task_load(n)
             stg = _m_state.tstage(t, sid)
             try:
-                _m_task_pass_.save_task_logs(t, stg, "deleted by the monitor: " + why)
+                _m_stage_jobs.save_task_logs(t, stg, "deleted by the monitor: " + why)
             except Exception as e:  # noqa: BLE001 - logs are best effort; the GPU must be freed regardless
                 _m_state.log("gpu-long %s: log save failed: %s" % (pod, str(e)[:120]))
             _m_state.task_txn(n, lambda t: _m_state.tstage(t, sid).update(util_deleted="%s (rule gpu, %d-min window): %s" % (why, _m_state.GPU_ENFORCE_WINDOW_MIN, line[:200])))

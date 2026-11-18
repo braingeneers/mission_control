@@ -150,8 +150,8 @@ RULES = (
 def tier0_fix(n, a):
     """True when a Tier 0 rule edited the manifest and resubmitted the failed stage. Never raises, never starts a model; False hands the
     failure to handle_failure unchanged (watch-only tasks, repeats, anything over a cap, no rule matched)."""
+    from . import stage_jobs as _m_stage_jobs
     from . import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import pass_ as _m_task_pass_  # Local import breaks orchestration cycle; patches stay on the defining module.
     try:
         if _m_ladder.terminal_task(n):
             return False
@@ -175,7 +175,7 @@ def tier0_fix(n, a):
             doc, reason, rec = r
             before = Path(s["manifest"]).read_text()
             _m_task_registry.manifest_write(s["manifest"], doc)
-            ok, msg = _m_task_pass_.do_submit(n, s["id"], reason, "tier0")
+            ok, msg = _m_stage_jobs.do_submit(n, s["id"], reason, "tier0")
             if not ok:
                 Path(s["manifest"]).write_text(before)         # nothing was submitted: leave the manifest as it was
                 _m_state.log("task %s: tier0 %s not applied: %s" % (n, rec["rule"], msg[:200]))

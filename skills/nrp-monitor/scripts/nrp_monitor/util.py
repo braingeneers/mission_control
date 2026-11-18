@@ -270,68 +270,17 @@ def check_orphans(a, st):
         _m_notify.write_json(_m_state.ORPHANS, seen)
 
 
-def utilization_restart(n, sid=None, cpu=None, mem=None, container_resources=None):
-    """Explicit replacement, without a failure or retry. Delete only a registered stage Job."""
-    from . import cluster as _m_cluster
-    from . import ladder as _m_ladder
-    from . import notify as _m_notify
-    from . import sizing as _m_sizing
-    from . import state as _m_state
-    from .task import pass_ as _m_task_pass_
-    from .task import registry as _m_task_registry
-    from .task import model as _m_model
-    t = _m_state.task_load(n)
-    if not t or _m_ladder.terminal_task(n):
-        return False, "task missing or terminal"
-    candidates = [s for s in t["stages"] if s["state"] == "running"]
-    s = _m_state.tstage(t, sid) if sid else (candidates[0] if len(candidates) == 1 else None)
-    if not s or s["state"] not in ("running", "pending"):
-        return False, "select a running or pending stage"
-    doc = _m_task_registry.manifest_doc(s["manifest"])
-    import math
-    for value, parse in ((cpu, _m_sizing.cpu_quantity), (mem, _m_sizing.mem_bytes)):
-        if value is None:
-            continue
-        try:
-            parsed = parse(str(value)) or 0
-            if not math.isfinite(parsed) or parsed <= 0:
-                return False, "resources must be positive finite quantities"
-        except (ValueError, TypeError, OverflowError):
-            return False, "invalid resource quantity"
-    for c in doc["spec"]["template"]["spec"]["containers"]:
-        sized = (container_resources or {}).get(c["name"], {})
-        for key, value in (("cpu", sized.get("cpu", cpu)), ("memory", sized.get("memory", mem))):
-            if value is not None:
-                for kind in ("requests", "limits"):
-                    c.setdefault("resources", {}).setdefault(kind, {})[key] = str(value)
-    _m_task_pass_.save_task_logs(t, s, "utilization restart")
-    r = _m_cluster.kubectl("-n", t["namespace"], "delete", "job", s["job"], "--wait=true", "--timeout=180s", timeout=240)
-    if r.returncode and "NotFound" not in r.stderr:
-        return False, "could not delete old Job: " + r.stderr[:150]
-    _m_task_registry.manifest_write(s["manifest"], doc)
-    def reset(cur):
-        stage = _m_state.tstage(cur, s["id"])
-        stage.update(state="pending", attempt=stage.get("attempt", 1) + 1)
-        for key in ("nrp_flag_since", "nrp_woken", "nrp_stopped", "submitted"):
-            stage.pop(key, None)
-        cur.pop("util_event", None)
-        cur["webhook_outbox"] = []
-        _m_model.transition(cur, "release")
-        _m_state.tev(cur, "utilization restart stage %s cpu=%s memory=%s (no retry)" % (s["id"], cpu, mem))
-    _m_state.task_txn(n, reset)
-    _m_notify.digest("util-restart", "stage %s cpu=%s memory=%s" % (s["id"], cpu, mem), n)
-    return True, "restart queued for next pass"
 
 
 def utilization_band_action(n, sid, pod, line):
     """An NRP band flag always has a bounded lifetime, even for watch-only tasks."""
+    from . import stage_jobs as _m_stage_jobs
     from . import cluster as _m_cluster
     from . import config as _m_config
     from . import ladder as _m_ladder
     from . import notify as _m_notify
     from . import sizing as _m_sizing
     from . import state as _m_state
-    from .task import pass_ as _m_task_pass_
     from .task import registry as _m_task_registry
     from . import timeouts as _m_timeouts
     from . import wake as _m_wake
@@ -349,8 +298,7 @@ def utilization_band_action(n, sid, pod, line):
         count = 0
     stop = _m_state.now() - first >= grace or count >= int(_m_config.util_policy().get("account_block_after_violating_pods", 4)) - 1
     if stop:
-        _m_task_pass_.save_task_logs(t, s, "NRP violation safety stop")
-        r = _m_cluster.kubectl("-n", t["namespace"], "delete", "job", s["job"], "--wait=true", "--timeout=180s", timeout=240)
+        r = _m_stage_jobs.delete_stage_job(t, s, "NRP violation safety stop")
         reason = "NRP band violation safety stop: " + line
         if r.returncode and "NotFound" not in r.stderr:
             reason += " DELETE FAILED: " + r.stderr[:150]
@@ -388,7 +336,7 @@ def utilization_band_action(n, sid, pod, line):
             "memory": str(max(int(small.get("memory_bytes", 2000000000)), math.ceil(max(peak or 0, oom) * 1.5 / 2**30) * 2**30)) if peak is not None or oom else None}
         details += "; container %s peak memory=%s CPU=%s proposed=%s" % (c["name"], peak, cp, sizes[c["name"]])
     if _m_timeouts.stage_resumable(s) and all(v["cpu"] and v["memory"] for v in sizes.values()):
-        ok, why = utilization_restart(n, sid, cpu, mem) if len(cs) == 1 else utilization_restart(n, sid, container_resources=sizes)
+        ok, why = _m_stage_jobs.utilization_restart(n, sid, cpu, mem) if len(cs) == 1 else _m_stage_jobs.utilization_restart(n, sid, container_resources=sizes)
         if ok: return
         details += "; restart failed: " + why
     if not s.get("nrp_woken"):

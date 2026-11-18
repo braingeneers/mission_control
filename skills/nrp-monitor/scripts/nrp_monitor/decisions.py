@@ -128,8 +128,8 @@ def _decide_skip_reuse(n, t, f, fp, d, a):
 
 
 def _decide_resubmit(n, t, f, fp, d, a):
-    from .task import pass_ as _m_task_pass_  # Local import breaks orchestration cycle; patches stay on the defining module.
-    return _m_task_pass_.do_submit(n, f["stage"], "coordinator decision %s: %s" % (fp, d["why"]), "decision")[0]
+    from . import stage_jobs as _m_stage_jobs
+    return _m_stage_jobs.do_submit(n, f["stage"], "coordinator decision %s: %s" % (fp, d["why"]), "decision")[0]
 
 
 DECISION_APPLY = {"escalate": _decide_escalate, "skip_reuse": _decide_skip_reuse}   # any other action resubmits the stage

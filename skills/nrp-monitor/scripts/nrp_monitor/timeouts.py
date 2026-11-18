@@ -103,7 +103,7 @@ def stage_resumable(s):
 def tier0_timeout(n, f):
     """A stage died of DeadlineExceeded while running. If it resumes by skipping finished items, resubmit it once with 2x deadline
     (the task's manifest copy is edited); otherwise (or when that was already done) False: the failure enters the ladder at Tier 1."""
-    from .task import pass_ as _m_task_pass_  # Local import breaks orchestration cycle; patches stay on the defining module.
+    from . import stage_jobs as _m_stage_jobs
     t = _m_state.task_load(n)
     s = _m_state.tstage(t, f["stage"])
     done = (s.get("dl") or {}).get("resubmits", 0)
@@ -117,7 +117,7 @@ def tier0_timeout(n, f):
         return False
     doc["spec"]["activeDeadlineSeconds"] = old * 2
     _m_task_registry.manifest_write(s["manifest"], doc)
-    ok, msg = _m_task_pass_.do_submit(n, f["stage"], "Tier 0: deadline %ds passed while running and the stage resumes by skipping finished items; resubmitted with 2x deadline (%d s)" % (old, old * 2), "monitor")
+    ok, msg = _m_stage_jobs.do_submit(n, f["stage"], "Tier 0: deadline %ds passed while running and the stage resumes by skipping finished items; resubmitted with 2x deadline (%d s)" % (old, old * 2), "monitor")
     if not ok:
         Path(s["manifest"]).write_text(text)
         _m_state.log("task %s: Tier 0 resubmit refused: %s" % (n, msg[:200]))

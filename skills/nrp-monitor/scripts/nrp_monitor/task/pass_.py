@@ -1,40 +1,9 @@
 """NRP monitor task/pass_ (mechanical extraction; R3a)."""
 import hashlib
 import json
-import re
 import subprocess
-import tempfile
-from pathlib import Path
 
 # ---- task pass ---------------------------------------------------------------------------------------------------
-def save_task_logs(t, s, reason):
-    from .. import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .. import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .. import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    ns, job = t["namespace"], s["job"]
-    p = _m_state.task_dir(t["name"]) / "logs" / ("%s-a%d.txt" % (job, s.get("attempt", 1)))
-    if reason != "Job succeeded" and p.exists() and p.stat().st_size > 200:
-        return str(p), p.read_text()
-    parts, logtxt = ["# task %s stage %s job %s attempt %d  saved %s\n# reason: %s\n" % (t["name"], s["id"], job, s.get("attempt", 1), _m_state.iso(), reason)], ""
-    for title, args in (("logs (last 300 lines)", ["logs", "job/" + job, "--all-containers", "--tail=300"]),
-                        ("describe job", ["describe", "job", job]),
-                        ("describe pods", ["describe", "pods", "-l", "job-name=" + job])):
-        try:
-            r = _m_cluster.kubectl("-n", ns, *args, timeout=120)
-            body = r.stdout if r.returncode == 0 else "(kubectl failed rc=%d: %s)\n%s" % (r.returncode, r.stderr.strip()[:200], r.stdout)
-        except Exception as e:
-            body = "(kubectl error: %s)" % str(e)[:150]
-        if title.startswith("logs"):
-            logtxt = body
-        parts.append("\n## %s\n%s" % (title, body[-40000:]))
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("".join(parts)[-120000:])
-    if reason == "Job succeeded":
-        outputs = dict(re.findall(r"^([A-Z][A-Z0-9_]{2,40})=(\S+)$", logtxt, re.M))
-        (p.parent / s["id"]).mkdir(exist_ok=True)
-        _m_notify.write_json(p.parent / s["id"] / "outputs.json", outputs)
-        _m_state.task_txn(t["name"], lambda cur: _m_state.tstage(cur, s["id"]).update(outputs=outputs))
-    return str(p), logtxt
 
 
 def run_postcheck(t):
@@ -120,116 +89,6 @@ def classify(t, s, logtxt):
         code, last[:200], "; Job condition %s" % freason if freason else "")
 
 
-def do_submit(n, sid, reason, by):
-    """Submit a stage's manifest. A failed stage = a retry (budgets enforced here, whoever asks). Returns (ok, message)."""
-    from . import model as _m_model  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .. import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .. import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .. import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .. import red_alert as _m_red_alert  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .. import sizing as _m_sizing  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .. import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .. import tier0 as _m_tier0  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from ..task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
-    if _m_ladder.terminal_task(n):
-        return False, "task is terminal"
-    t = _m_state.task_load(n)
-    s, ns, f = _m_state.tstage(t, sid), t["namespace"], t.get("failure")
-    retry = s["state"] == "failed"
-    if s["state"] not in ("pending", "failed"):
-        return False, "stage %s is %s, nothing to submit" % (sid, s["state"])
-    if retry:
-        if not f or f["stage"] != sid:
-            return False, "stage %s has no recorded failure" % sid
-        used = len(t["attempts"][t.get("budget_from", 0):])
-        cls_used = _m_ladder.class_retries(t, f)
-        if used >= t["max_retries"]:
-            return False, "RETRY CAP REACHED (%d of %d). Do not resubmit; report STOPPED with the diagnosis." % (used, t["max_retries"])
-        if cls_used >= _m_state.failure_class(f["cls"])["budget"]:
-            return False, "%s RETRY BUDGET USED (%d). Report STOPPED with the diagnosis." % (f["cls"], cls_used)
-    checkpoint = _m_state.task_dir(n) / "agent-manifests.json"
-    if checkpoint.exists():
-        errors = _m_task_registry.validate_agent_manifests(n)
-        if errors:
-            return False, "manifest edit rejected: " + "; ".join(errors)
-    probs = _m_task_registry.manifest_check(s["manifest"], ns, s["job"])
-    if probs:
-        return False, "manifest refused: " + "; ".join(probs)
-    gx = _m_task_registry.gpu_expired(s)
-    if gx:
-        return False, gx + ". Report STOPPED; do not resubmit."
-    if _m_red_alert.red_alert():                                                       # account RED ALERT: nothing new is created until NRP's dry-run accepts
-        def hold(t):
-            _m_model.transition(t, "block")
-            if "pending" not in t:
-                _m_state.tev(t, "submit of %s HELD: NRP RED ALERT (NRP refuses new pods on the account); sent when NRP's dry-run accepts" % s["job"])
-            t.setdefault("pending", {"stage": sid, "reason": reason, "by": by, "since": _m_state.now(), "refusal": "NRP RED ALERT hold",
-                                     "checked": _m_state.now(), "offenders": [], "hold": "red-alert"})
-        _m_state.task_txn(n, hold)
-        return True, ("HELD: NRP RED ALERT, NRP is refusing new pods on the account. The monitor sends this submit when its dry-run "
-                      "accepts again. Do not retry yourself; resize or delete low pods instead.")
-    from .. import sizing as _m_sizing
-    zero = _m_sizing.zero_node_reason(_m_task_registry.manifest_doc(s["manifest"]))
-    if zero:
-        _m_ladder.task_fail(n, sid, "unschedulable", "zero-nodes", zero)
-        _m_ladder.to_coordinator(n, zero, deputy=False)
-        return False, zero
-    st_ = _m_cluster.job_state(s["job"], ns)
-    if st_ in ("running", "pending", "error"):
-        return False, "Job %s is still %s" % (s["job"], st_)
-    if st_ in ("ok", "FAILED"):
-        save_task_logs(t, s, "before resubmit")
-        d = _m_cluster.kubectl("-n", ns, "delete", "job", s["job"], "--wait=true", "--timeout=180s", timeout=240)
-        if d.returncode and "NotFound" not in d.stderr:
-            return False, "could not delete old Job %s: %s" % (s["job"], d.stderr.strip()[:150])
-    # Shared exclusions live only in the submitted copy: expiry must restore capacity.
-    doc = _m_task_registry.manifest_doc(s["manifest"])
-    for node in _m_cluster.bad_nodes():
-        _m_tier0.exclude_node(doc, node)
-    with tempfile.TemporaryDirectory(prefix="nrp-submit-") as td:
-        path = str(Path(td) / "job.json")
-        _m_task_registry.manifest_write(path, doc)
-        res = _m_cluster.apply_manifest(ns, path)
-    if res == "blocked":
-        def b(t):
-            _m_model.transition(t, "block")
-            if "pending" not in t:
-                _m_state.tev(t, "submit of %s BLOCKED (account utilization or quota); the monitor checks the namespace once, wakes the coordinator, "
-                       "and re-applies when the offenders change" % s["job"])
-            t.setdefault("pending", {"stage": sid, "reason": reason, "by": by, "since": _m_state.now(), "refusal": _m_state.LAST_BLOCK.get("msg", "")[:300]})
-            if _m_red_alert.red_alert():                                           # the RED ALERT wakes the offenders' owners; no per-task episode
-                t["pending"].update(checked=_m_state.now(), offenders=[], hold="red-alert")
-        _m_state.task_txn(n, b)
-        _m_cluster.block_episode(n)
-        return True, ("BLOCKED: NRP refused the submit (utilization block or quota). The monitor checked the namespace once and woke the "
-                      "coordinator; it re-applies only when the offender set changes. Do not retry yourself.")
-    if res != "ok":
-        return False, "kubectl apply failed: %s" % res
-
-    def ok(t):
-        s2, f2 = _m_state.tstage(t, sid), t.get("failure")
-        if retry and f2:
-            t["attempts"].append({"stage": sid, "job": s2["job"], "cls": f2["cls"], "sig": f2["sig"], "detail": f2["detail"][:200],
-                                  "fix": " ".join(reason.split())[:300], "by": by, "ts": _m_state.now(), "fingerprint": f2.get("fingerprint") or _m_decisions.fingerprint(t, f2),
-                                  "resources_changed": f2.get("resource_values") is not None and f2["resource_values"] != _m_sizing.resource_values(doc),
-                                  "resource_template": _m_sizing.resource_template(doc) if f2["cls"] == "resources" else None})
-            s2["attempt"] = s2.get("attempt", 1) + 1
-            t["failure"] = None
-        s2.update(state="running", submitted=_m_state.now())
-        s2.pop("pod_started", None)
-        s2["dl"] = {"resubmits": (s2.get("dl") or {}).get("resubmits", 0)}      # a new Job gets fresh deadline tracking (Tier 0, deadline_watch)
-        for key in ("nrp_flag_since", "nrp_woken", "nrp_stopped"):
-            s2.pop(key, None)
-        s2.pop("util_deleted", None)
-        if (t.get("util_event") or {}).get("stage") == sid:
-            t.pop("util_event", None)
-        t.pop("pending", None)
-        _m_model.transition(t, "resubmit" if retry else "submit",
-                            "submitted %s (attempt %d) by %s: %s" % (s2["job"], s2["attempt"], by, reason[:200]))
-    _m_state.task_txn(n, ok)
-    _m_task_registry.agent_manifest_checkpoint(n)
-    return True, "SUBMITTED %s attempt %d (retries used %d of %d)" % (s["job"], _m_state.tstage(_m_state.task_load(n), sid)["attempt"],
-                                                                       len(_m_state.task_load(n)["attempts"]), t["max_retries"])
 
 
 def s3_gate(s):
@@ -252,6 +111,7 @@ def note_waiting(n, sid, missing):
 
 
 def advance_task(n, jobs, a):
+    from .. import stage_jobs as _m_stage_jobs
     from . import model as _m_model  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import agents as _m_agents  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
@@ -294,7 +154,7 @@ def advance_task(n, jobs, a):
         if p and not _m_cluster.block_should_reapply(n):                                 # pods outside the bands explain it: wait, no retry loop
             ok = True
         else:
-            ok, msg = do_submit(n, p.get("stage"), p.get("reason", "re-apply after block"), "monitor") if p else (False, "no pending submit")
+            ok, msg = _m_stage_jobs.do_submit(n, p.get("stage"), p.get("reason", "re-apply after block"), "monitor") if p else (False, "no pending submit")
         t = _m_state.task_load(n)
         if t["status"] == "blocked":
             if _m_state.now() - p.get("since", _m_state.now()) > _m_state.BLOCK_ESCALATE_S:
@@ -335,7 +195,7 @@ def advance_task(n, jobs, a):
                 s.update(state="done")                                # dependents in this pass see completion too
                 _m_notify.digest("done", message, n)
                 continue
-            ok, msg = do_submit(n, s["id"], "stage ready", "monitor")
+            ok, msg = _m_stage_jobs.do_submit(n, s["id"], "stage ready", "monitor")
             if not ok and msg.startswith("GPU APPROVAL"):
                 _m_ladder.escalate(n, msg.split(". Report STOPPED")[0], a)
                 return
@@ -384,9 +244,9 @@ def advance_task(n, jobs, a):
 
 
 def recover_held_completion(n, jobs):
+    from .. import stage_jobs as _m_stage_jobs
     from . import model as _m_model  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import s3 as _m_s3  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .. import sizing as _m_sizing  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     t = _m_state.task_load(n)
     sid = (t.get("failure") or {}).get("stage")
@@ -402,7 +262,7 @@ def recover_held_completion(n, jobs):
     def recover(t):
         for s in completed:
             _m_state.tstage(t, s["id"]).update(state="done", done_ts=_m_state.now())
-            _m_sizing.propagate_resources(t, _m_state.tstage(t, s["id"]))
+            _m_stage_jobs.propagate_resources(t, _m_state.tstage(t, s["id"]))
         for key in ("reason", "coordinator_since", "util_event"):
             t.pop(key, None)
         _m_model.transition(t, "release", "held stage completed with all success markers; hold cleared", failure=None)

@@ -42,6 +42,7 @@ def reship_dirs(code):
 
 
 def cmd_tool(a):
+    from . import stage_jobs as _m_stage_jobs
     from . import s3 as _m_s3  # Local import avoids orchestration cycles.
     from . import config as _m_config  # Local import avoids orchestration cycles.
     from . import task_commands as _m_task_commands  # Local import breaks orchestration cycle; patches stay on the defining module.
@@ -76,7 +77,6 @@ def cmd_tool(a):
         sys.stderr.write(r.stderr[-2000:])
         return r.returncode
 
-    from . import util as _m_util
     if c in ("resize", "restart"):
         parser = argparse.ArgumentParser()
         parser.add_argument("--stage")
@@ -84,7 +84,7 @@ def cmd_tool(a):
         parser.add_argument("--mem")
         opts = parser.parse_args(rest)
         opts.name = n
-        ok, message = _m_util.utilization_restart(n, opts.stage, opts.cpu, opts.mem)
+        ok, message = _m_stage_jobs.utilization_restart(n, opts.stage, opts.cpu, opts.mem)
         print(message)
         return 0 if ok else 1
     if c == "decide":
@@ -273,7 +273,7 @@ def cmd_tool(a):
         j = need_job()
         if "--reason" not in rest or rest.index("--reason") + 1 >= len(rest):
             sys.exit("nrp-task submit JOB --reason 'cause -> fix'")
-        ok, msg = _m_task_pass_.do_submit(n, jobs[j]["id"], rest[rest.index("--reason") + 1], "agent")
+        ok, msg = _m_stage_jobs.do_submit(n, jobs[j]["id"], rest[rest.index("--reason") + 1], "agent")
         print(msg)
         return 0 if ok else 1
     if c == "delete":
@@ -291,7 +291,7 @@ def cmd_tool(a):
             f = util
         if st_ in ("running", "pending") and not (f.get("job") == j and f.get("cls") in ("util", "infra")):
             sys.exit("Job %s is %s; only a finished Job, or one this task's failure says to stop (util/stuck), may be deleted" % (j, st_))
-        _m_task_pass_.save_task_logs(t, jobs[j], "deleted by the fix agent")
+        _m_stage_jobs.save_task_logs(t, jobs[j], "deleted by the fix agent")
         rc = kc("delete", "job", j, "--wait=true", "--timeout=180s")
         if rc == 0 and util_retry:
             _m_ladder.task_fail(n, jobs[j]["id"], "util", util["sig"], util["detail"], extra={"evidence": util.get("evidence")})

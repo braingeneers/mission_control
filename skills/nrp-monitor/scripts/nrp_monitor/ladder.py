@@ -5,7 +5,7 @@ import re
 import types
 
 from . import agents as _m_agents, cluster as _m_cluster, decisions as _m_decisions, notify as _m_notify, plans as _m_plans
-from . import s3 as _m_s3, sizing as _m_sizing, state as _m_state, task_agents as _m_task_agents, timeouts as _m_timeouts
+from . import s3 as _m_s3, state as _m_state, task_agents as _m_task_agents, timeouts as _m_timeouts
 from . import util as _m_util, wake as _m_wake
 from .task import model as _m_task_model, pass_ as _m_task_pass_, registry as _m_task_registry
 
@@ -74,6 +74,7 @@ def settled_outcome(n, line, a, kind):
 
 
 def task_fail(n, sid, cls, sig, detail, logs=None, extra=None):
+    from . import stage_jobs as _m_stage_jobs
     if terminal_task(n, "stage %s [%s] %s" % (sid, cls, detail[:200])):
         return False
     def f(t):
@@ -83,7 +84,7 @@ def task_fail(n, sid, cls, sig, detail, logs=None, extra=None):
         s["state"] = "failed"
         if cls == "resources":
             try:
-                extra_resources = _m_sizing.resource_values(_m_task_registry.manifest_doc(s["manifest"]))
+                extra_resources = _m_stage_jobs.resource_values(_m_task_registry.manifest_doc(s["manifest"]))
             except (OSError, ValueError, KeyError, TypeError):
                 extra_resources = None
         else:
@@ -263,6 +264,7 @@ def close_failure(n, f, why, kind="Tier 1 triage"):
 
 
 def observe_task(n, jobs):
+    from . import stage_jobs as _m_stage_jobs
     if terminal_task(n):
         return
     t = _m_state.task_load(n)
@@ -286,7 +288,7 @@ def observe_task(n, jobs):
             if _m_state.now() - s.get("submitted", 0) < _m_state.MISSING_GRACE_S:
                 continue
             if all(_m_s3.s3_exists(u, {}) is True for u in s["done_s3"]):
-                _m_state.task_txn(n, lambda t: (_m_state.tstage(t, sid).update(state="done", done_ts=_m_state.now()), _m_sizing.propagate_resources(t, _m_state.tstage(t, sid)), _m_state.tev(t, "stage %s done (Job gone, outputs present)" % sid)))
+                _m_state.task_txn(n, lambda t: (_m_state.tstage(t, sid).update(state="done", done_ts=_m_state.now()), _m_stage_jobs.propagate_resources(t, _m_state.tstage(t, sid)), _m_state.tev(t, "stage %s done (Job gone, outputs present)" % sid)))
                 _m_notify.digest("done", "stage %s done (Job gone before logs were saved; outputs present)" % sid, n)
                 continue
             if s.get("util_deleted"):
@@ -294,7 +296,7 @@ def observe_task(n, jobs):
             else:
                 task_fail(n, sid, "infra", "vanished", "Job %s disappeared before it finished and its outputs are missing" % s["job"])
         elif info["state"] == "ok":
-            p, _ = _m_task_pass_.save_task_logs(t, s, "Job succeeded")
+            p, _ = _m_stage_jobs.save_task_logs(t, s, "Job succeeded")
             res = [_m_s3.s3_exists(u, {}) for u in s["done_s3"]]
             if None in res:
                 n_err = s.get("s3_errors", 0) + 1
@@ -307,11 +309,11 @@ def observe_task(n, jobs):
                 task_fail(n, sid, "outputs", "outputs-missing:" + miss, "Job succeeded but %s does not exist" % miss, p)
                 continue
             _m_cluster.kubectl("-n", ns, "delete", "job", s["job"], "--wait=false")
-            _m_state.task_txn(n, lambda t: (_m_state.tstage(t, sid).update(state="done", done_ts=_m_state.now()), _m_sizing.propagate_resources(t, _m_state.tstage(t, sid)), _m_state.tev(t, "stage %s done, Job deleted" % sid)))
+            _m_state.task_txn(n, lambda t: (_m_state.tstage(t, sid).update(state="done", done_ts=_m_state.now()), _m_stage_jobs.propagate_resources(t, _m_state.tstage(t, sid)), _m_state.tev(t, "stage %s done, Job deleted" % sid)))
             _m_notify.digest("done", "stage %s (%s) succeeded; outputs %s" % (sid, s["job"], ", ".join(s["done_s3"])[:200]), n)
             _m_state.PASS["stage_done"] = _m_state.PASS.get("stage_done", 0) + 1
         elif info["state"] == "FAILED":
-            p, logtxt = _m_task_pass_.save_task_logs(t, s, "Job failed")
+            p, logtxt = _m_stage_jobs.save_task_logs(t, s, "Job failed")
             cls, sig, detail = _m_task_pass_.classify(t, s, logtxt)
             task_fail(n, sid, cls, sig, detail, p)
 

@@ -341,8 +341,8 @@ def cmd_origin(a):
 
 
 def cmd_util_restart(a):
+    from . import stage_jobs as _m_stage_jobs
     from . import state as _m_state
-    from . import util as _m_util
     _m_state.STATE.mkdir(parents=True, exist_ok=True)
     with open(_m_state.LOCK, "a") as lock:
         try:
@@ -350,6 +350,6 @@ def cmd_util_restart(a):
         except OSError:
             print("monitor pass in progress; retry after it finishes")
             return 1
-        ok, message = _m_util.utilization_restart(a.name, a.stage, getattr(a, "cpu", None), getattr(a, "mem", None))
+        ok, message = _m_stage_jobs.utilization_restart(a.name, a.stage, getattr(a, "cpu", None), getattr(a, "mem", None))
     print(message)
     return 0 if ok else 1
