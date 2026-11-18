@@ -1,5 +1,9 @@
 # Log: nrp-monitor rewrite (newest first)
 
+## 2026-11-18 — account summary counts just-started pods apart (660cd6c)
+- Hunter asked to confirm the "5 of 112 outside NRP bands" were being handled. Checked at 13:14 and 13:24: all but 0-1 were pods under 1 min old (no CPU series, memory not loaded); the one real case (ft-disease-resume-u384-2-dk28q, 20.0% mem) rose to 21% by the next pass. Real violations today (ft-official-units-region) were stopped and its coordinator chat resized and resumed it (13:14). nf-* pods belong to the Workflows service account, not Hunter.
+- Hunter: "ok sounds good go ahead". Summary now reads `account: N of M ... , +K started under 5 min ago (not judged yet)`; `state.ACCT` group 3 parses K and `acct_alarm` still adds it (unchanged alert). Tests: 673 passed. Installed 13:41; live run printed "account: 0 of 95".
+
 ## 2026-11-18 — memory judged on the stricter of working set and RSS (main session)
 - Hunter (verbatim, on the rss/working-set gap): "ok we should error on the side of caution for this then" = Option A.
 - 875bccd: nrp-util-check also reads container_memory_rss (10m mean); a pod is outside a memory band (and under the lab floor) if either measure is; the flag line adds `rss X.XGi N%`. util.py spiky check uses the lower measure so a cache-heavy pod is not resized to the same size repeatedly. Tests: test_memory_band_uses_the_stricter_of_working_set_and_rss, test_spiky_check_reads_the_lower_rss; suite 669 passed. Installed 13:05; live run OK.
