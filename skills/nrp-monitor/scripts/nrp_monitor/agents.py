@@ -1,26 +1,19 @@
 """NRP monitor agents (mechanical extraction; R3a)."""
-import argparse
 import collections
 import contextlib
-import fcntl
-import getpass
-import hashlib
+import functools
 import json
 import os
 import re
 import shlex
 import shutil
-import stat
 import subprocess
 import sys
 import tempfile
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
+
+from . import notify as _m_notify, state as _m_state
 
 # ---- headless agents -----------------------------------------------------------------------------------------
 def clean_env():
@@ -31,7 +24,6 @@ def clean_env():
 
 
 def default_agent_cfg():
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     return {"runners": ["claude"],
             "models": {"pod": {"claude": _m_state.POD_MODEL}, "triage": {"claude": _m_state.TRIAGE_MODEL}, "repair": {"claude": _m_state.JOB_MODEL},
                        "repair_auth": {"claude": _m_state.JOB_MODEL}, "task": {"claude": _m_state.TASK_MODEL}, "deputy": {"claude": "sonnet", "codex": "gpt-6.1-sol"}},
@@ -47,7 +39,6 @@ def default_agent_cfg():
 
 def check_backend(tier, i, b):
     """One validated `tiers.<tier>[i]` entry: {runner, model?} -> normalised dict. Raises ValueError."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     w = "tiers.%s[%d]" % (tier, i)
     if not isinstance(b, dict) or set(b) - {"runner", "model"}:
         raise ValueError("%s: an object {runner, model}" % w)
@@ -66,7 +57,6 @@ def check_backend(tier, i, b):
 
 def parse_agent_cfg(raw):
     """The effective config for a parsed agents.json object (defaults + overrides). Raises ValueError naming the first problem."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     cfg = default_agent_cfg()
     if not isinstance(raw, dict):
         raise ValueError("top level must be an object")
@@ -115,7 +105,6 @@ def parse_agent_cfg(raw):
 
 def load_agent_cfg():
     """(config, problem). A missing file is the defaults; an invalid one is the defaults plus a problem text (never a crash)."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     if not _m_state.AGENTS_CFG.exists():
         return default_agent_cfg(), None
     try:
@@ -125,8 +114,6 @@ def load_agent_cfg():
 
 
 def agent_cfg():
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     cfg, problem = load_agent_cfg()
     if problem and _m_state.PASS.get("cfg_problem") != problem:
         _m_state.PASS["cfg_problem"] = problem
@@ -145,7 +132,6 @@ def tier_settings(tier, runner):
 def tier_backends(tier):
     """The ordered backends a tier may use: `tiers.<tier>` when configured, else the old `runners` x `models` form (the agy runner only for
     the tiers it is limited to)."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     cfg = agent_cfg()
     if tier == "deputy" and not cfg["tiers"].get(tier):
         return [{"runner": "claude", "model": cfg["models"]["deputy"]["claude"]}]
@@ -186,28 +172,9 @@ def agent_cmd(tier, allowed, json_out=False, deny=()):
     return cmd
 
 
-def limit_hit(rc, out, err):
-    """True when a finished agent process answered with a usage limit instead of doing the work."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    out = (out or "").strip()
-    text = out
-    if out.startswith("{"):                                               # claude --output-format json; agy --output-format json has `error`
-        try:
-            j = json.loads(out)
-            text = str(j.get("result") or j.get("error") or "")
-            rc = rc or (1 if j.get("is_error") or j.get("error") else 0)
-        except ValueError:
-            pass
-    if rc:
-        return bool(_m_state.LIMIT_ANY.search(text[-600:] + "\n" + (err or "")[-600:]))
-    return bool(_m_state.LIMIT_START.search(text[:200]))
-
-
-def auth_hit(rc, out, err):
-    """True when a finished agent process failed because the CLI is not signed in / its credentials are invalid (not a bad answer)."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    out = (out or "").strip()
-    text = out
+def _answer(rc, out):
+    """(rc, text) of a finished agent: a JSON answer (claude/agy --output-format json) gives its result or error, and its error flag."""
+    text = out = (out or "").strip()
     if out.startswith("{"):
         try:
             j = json.loads(out)
@@ -215,8 +182,22 @@ def auth_hit(rc, out, err):
             rc = rc or (1 if j.get("is_error") or j.get("error") else 0)
         except ValueError:
             pass
+    return rc, text
+
+
+def limit_hit(rc, out, err):
+    """True when a finished agent process answered with a usage limit instead of doing the work."""
+    rc, text = _answer(rc, out)
+    if rc:
+        return bool(_m_state.LIMIT_ANY.search(text[-600:] + "\n" + (err or "")[-600:]))
+    return bool(_m_state.LIMIT_START.search(text[:200]))
+
+
+def auth_hit(rc, out, err):
+    """True when a finished agent process failed because the CLI is not signed in / its credentials are invalid (not a bad answer)."""
+    rc, text = _answer(rc, out)
     return bool(rc) and bool(_m_state.AUTH_ANY.search(text + "\n" + (err or "")) or re.search(
-        r"IneligibleTierError|UNSUPPORTED_CLIENT|no longer supported for Gemini Code Assist", out + "\n" + (err or ""), re.I))
+        r"IneligibleTierError|UNSUPPORTED_CLIENT|no longer supported for Gemini Code Assist", (out or "").strip() + "\n" + (err or ""), re.I))
 
 
 def reset_time(text):
@@ -242,8 +223,6 @@ def runner_ready(name):
 
 
 def runner_blocked(name):
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     return float((_m_notify.read_json(_m_state.RUNNER_STATE, {}).get(name) or {}).get("until", 0)) > _m_state.now()
 
 
@@ -256,13 +235,10 @@ def agents_available():
 
 
 def is_unavailable(text):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     return str(text).startswith(_m_state.UNAVAILABLE)
 
 
 def unavailable_text():
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     st, bits = _m_notify.read_json(_m_state.RUNNER_STATE, {}), []
     for r in agent_cfg()["runners"]:
         u = float((st.get(r) or {}).get("until", 0))
@@ -274,8 +250,6 @@ def unavailable_text():
 
 def block_runner(runner, out, err, kind="limit"):
     """Set a runner aside: `limit` until its reset time (usage / rate limit), `auth` for AUTH_BLOCK_S (not signed in)."""
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     text = " ".join(((out or "") + " " + (err or "")).split())
     if kind == "auth":
         m = _m_state.AUTH_ANY.search(text)
@@ -298,16 +272,6 @@ def block_runner(runner, out, err, kind="limit"):
         _m_notify.push("agents unavailable: %s. Fix agents and follow-ups wait (no retry is used up) and resume by themselves; "
              "`nrp-monitor agents` shows the state, or add a runner in agents.json." % unavailable_text().split(": ", 1)[1],
              "agents:unavailable")
-
-
-def exec_claude(spec, prompt, cwd, timeout, env):
-    try:
-        r = subprocess.run(claude_argv(spec), input=prompt, capture_output=True, text=True, cwd=str(cwd), env=env, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        return "timeout", "", "", None
-    if limit_hit(r.returncode, r.stdout, r.stderr):
-        return "limit", r.stdout, r.stderr, r.returncode
-    return ("auth" if auth_hit(r.returncode, r.stdout, r.stderr) else "ok"), r.stdout, r.stderr, r.returncode
 
 
 def codex_rules(allowed):
@@ -337,90 +301,107 @@ def codex_writable(allowed):
     return out
 
 
-def exec_codex(spec, prompt, cwd, timeout, env):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    auth = Path(os.environ.get("NRP_MONITOR_CODEX_AUTH") or Path.home() / ".codex" / "auth.json")   # env: tests
-    if not auth.exists():
-        return "auth", "", "codex is not signed in (no %s)" % auth, 1
-    s = tier_settings(spec["tier"], "codex")
-    s["model"] = spec_model(spec, "codex")
-    _m_state.WORK.mkdir(parents=True, exist_ok=True)
-    home = Path(tempfile.mkdtemp(prefix="codex-home-", dir=str(_m_state.WORK)))
-    try:
-        (home / "rules").mkdir()
-        os.symlink(str(auth), str(home / "auth.json"))
-        (home / "rules" / "monitor.rules").write_text(codex_rules(spec["allowed"]))
-        last = home / "last.txt"
-        argv = ["codex", "exec", "-s", "read-only" if spec["tier"] == "triage" else "workspace-write", "-c", 'approval_policy="never"',
-                "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true", "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
-                "--skip-git-repo-check", "--ephemeral", "-C", str(cwd), "-o", str(last)]
-        for d in codex_writable(spec["allowed"]):
-            argv += ["--add-dir", d]
-        if s["model"]:
-            argv += ["-m", s["model"]]
-        argv.append("-")
-        try:
-            r = subprocess.run(argv, input=prompt, capture_output=True, text=True, cwd=str(cwd), env=dict(env, CODEX_HOME=str(home)),
-                               timeout=timeout)
-        except subprocess.TimeoutExpired:
-            return "timeout", "", "", None
-        text = last.read_text().strip() if last.exists() else ""
-        if limit_hit(r.returncode, text or r.stdout, r.stderr):
-            return "limit", text or r.stdout, r.stderr, r.returncode
-        if auth_hit(r.returncode, text or r.stdout, r.stderr):
-            return "auth", text or r.stdout, r.stderr, r.returncode
-        if spec["json"]:
-            text = json.dumps({"result": text or (r.stderr.strip() or r.stdout.strip())[-300:], "is_error": bool(r.returncode),
-                               "total_cost_usd": None, "num_turns": None, "permission_denials": [], "runner": "codex",
-                               "usage": {"total_tokens": int(re.search(r"tokens used\s+([\d,]+)", r.stderr).group(1).replace(",", ""))} if re.search(r"tokens used\s+([\d,]+)", r.stderr) else None})
-        return "ok", text or (r.stdout if r.returncode else ""), r.stderr, r.returncode
-    finally:
-        shutil.rmtree(str(home), ignore_errors=True)
-
-
 def agy_workspace(home, allowed):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     hooks = home / ".agents"
     hooks.mkdir(parents=True)
     (hooks / "allow.json").write_text(json.dumps(allowed))
     (hooks / "gate.py").write_text(_m_state.AGY_GATE)
-    import shlex
     command = " ".join(shlex.quote(x) for x in (sys.executable, str(hooks / "gate.py"), str(hooks / "allow.json")))
     (hooks / "hooks.json").write_text(json.dumps({"nrp-monitor": {"PreToolUse": [
         {"matcher": "*", "hooks": [{"type": "command", "command": command, "timeout": 10}]}]}}))
 
 
-def exec_agy(spec, prompt, cwd, timeout, env):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    if spec["tier"] != "triage":
-        return "error", "", "agy is read-only triage only", 1
+def codex_auth():
+    return Path(os.environ.get("NRP_MONITOR_CODEX_AUTH") or Path.home() / ".codex" / "auth.json")   # env: tests
+
+
+def codex_command(spec, prompt, cwd, home, env):
+    (home / "rules").mkdir()
+    os.symlink(str(codex_auth()), str(home / "auth.json"))
+    (home / "rules" / "monitor.rules").write_text(codex_rules(spec["allowed"]))
+    argv = ["codex", "exec", "-s", "read-only" if spec["tier"] == "triage" else "workspace-write", "-c", 'approval_policy="never"',
+            "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true", "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
+            "--skip-git-repo-check", "--ephemeral", "-C", str(cwd), "-o", str(home / "last.txt")]
+    for d in codex_writable(spec["allowed"]):
+        argv += ["--add-dir", d]
+    model = spec_model(spec, "codex")
+    return argv + (["-m", model] if model else []) + ["-"], prompt, cwd, dict(env, CODEX_HOME=str(home))
+
+
+def codex_parse(spec, r, text):
+    if spec["json"]:
+        used = re.search(r"tokens used\s+([\d,]+)", r.stderr)
+        text = json.dumps({"result": text or (r.stderr.strip() or r.stdout.strip())[-300:], "is_error": bool(r.returncode),
+                           "total_cost_usd": None, "num_turns": None, "permission_denials": [], "runner": "codex",
+                           "usage": {"total_tokens": int(used.group(1).replace(",", ""))} if used else None})
+    return text or (r.stdout if r.returncode else "")
+
+
+def agy_command(spec, prompt, cwd, home, env):
+    agy_workspace(home, spec["allowed"])
+    return (["agy", "--print", prompt, "--mode", "plan", "--effort", "low", "--output-format", "json",
+             "--model", (spec.get("backend") or {}).get("model") or "gemini-3.8-flash-low"], None, home, env)
+
+
+def agy_parse(spec, r, text):
+    text, failed = text.strip(), bool(r.returncode)
+    try:
+        j = json.loads(text)
+        text = str(j.get("result") or j.get("response") or j.get("error") or "")
+        failed = failed or bool(j.get("is_error") or j.get("error"))
+    except ValueError:
+        pass
+    return json.dumps({"result": text, "is_error": failed, "runner": "agy"}) if spec["json"] else text
+
+
+# Agent backends. refuse(spec): an answer without running; home: prefix of a scratch home (None: none); command(spec, prompt, cwd,
+# home, env) -> (argv, stdin, cwd, env); output(r, home): the answer text, checked for usage limits and sign-in failures; parse: the answer.
+BACKENDS = {
+    "claude": {"refuse": lambda spec: None, "home": None, "command": lambda spec, prompt, cwd, home, env: (claude_argv(spec), prompt, cwd, env),
+               "output": lambda r, home: r.stdout, "parse": lambda spec, r, text: r.stdout},
+    "codex": {"refuse": lambda spec: None if codex_auth().exists() else ("auth", "", "codex is not signed in (no %s)" % codex_auth(), 1),
+              "home": "codex-home-", "command": codex_command, "parse": codex_parse,
+              "output": lambda r, home: ((home / "last.txt").read_text().strip() if (home / "last.txt").exists() else "") or r.stdout},
+    "agy": {"refuse": lambda spec: None if spec["tier"] == "triage" else ("error", "", "agy is read-only triage only", 1),
+            "home": "agy-run-", "command": agy_command, "output": lambda r, home: r.stdout, "parse": agy_parse},
+}
+
+
+@contextlib.contextmanager
+def scratch_home(prefix):
+    if not prefix:
+        yield None
+        return
     _m_state.WORK.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="agy-run-", dir=str(_m_state.WORK)) as td:
-        home = Path(td)
-        agy_workspace(home, spec["allowed"])
-        argv = ["agy", "--print", prompt, "--mode", "plan", "--effort", "low",
-                "--output-format", "json", "--model", (spec.get("backend") or {}).get("model") or "gemini-3.8-flash-low"]
+    home = Path(tempfile.mkdtemp(prefix=prefix, dir=str(_m_state.WORK)))
+    try:
+        yield home
+    finally:
+        shutil.rmtree(str(home), ignore_errors=True)
+
+
+def exec_backend(runner, spec, prompt, cwd, timeout, env):
+    """(status, out, err, rc) of one backend run. status: ok | timeout | limit | auth (the last two set the runner aside) | error."""
+    b = BACKENDS[runner]
+    refused = b["refuse"](spec)
+    if refused:
+        return refused
+    with scratch_home(b["home"]) as home:
+        argv, stdin, run_cwd, run_env = b["command"](spec, prompt, cwd, home, env)
         try:
-            r = subprocess.run(argv, cwd=str(home), env=env, capture_output=True, text=True, timeout=timeout)
+            r = subprocess.run(argv, input=stdin, capture_output=True, text=True, cwd=str(run_cwd), env=run_env, timeout=timeout)
         except subprocess.TimeoutExpired:
             return "timeout", "", "", None
-        if limit_hit(r.returncode, r.stdout, r.stderr):
-            return "limit", r.stdout, r.stderr, r.returncode
-        if auth_hit(r.returncode, r.stdout, r.stderr):
-            return "auth", r.stdout, r.stderr, r.returncode
-        text, failed = r.stdout.strip(), bool(r.returncode)
-        try:
-            j = json.loads(text)
-            text = str(j.get("result") or j.get("response") or j.get("error") or "")
-            failed = failed or bool(j.get("is_error") or j.get("error"))
-        except ValueError:
-            pass
-        if spec["json"]:
-            text = json.dumps({"result": text, "is_error": failed, "runner": "agy"})
-        return "ok", text, r.stderr, r.returncode
+        out = b["output"](r, home)
+        for status, hit in (("limit", limit_hit), ("auth", auth_hit)):
+            if hit(r.returncode, out, r.stderr):
+                return status, out, r.stderr, r.returncode
+        return "ok", b["parse"](spec, r, out), r.stderr, r.returncode
 
 
-RUNNER_EXEC = {"claude": exec_claude, "codex": exec_codex, "agy": exec_agy}
+RUNNER_EXEC = {name: functools.partial(exec_backend, name) for name in BACKENDS}
+exec_claude, exec_codex, exec_agy = RUNNER_EXEC["claude"], RUNNER_EXEC["codex"], RUNNER_EXEC["agy"]
+Result = collections.namedtuple("Result", "runner status out err rc")
 
 
 def backend_name(b):
@@ -429,8 +410,6 @@ def backend_name(b):
 
 def note_failover(spec, backends, i, why, on_failover):
     """One line per failover (log, digest, and the task's events through `on_failover`): which backend was unavailable, why, who takes over."""
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     nxt = next((x for x in backends[i + 1:] if not runner_blocked(x["runner"]) and runner_ready(x["runner"])), None)
     msg = "backend failover (tier %s): %s unavailable (%s); %s" % (spec["tier"], backend_name(backends[i]), why[:120],
                                                                      "using " + backend_name(nxt) if nxt else "no backend left for this tier")
@@ -441,10 +420,8 @@ def note_failover(spec, backends, i, why, on_failover):
 
 
 def dispatch_agent(spec, prompt, cwd, timeout=None, env=None, on_failover=None):
-    """(runner, status, out, err, rc). status: ok | timeout | unavailable (every backend of the tier is out of usage, not signed in or missing).
+    """The one agent-runner interface: Result(runner, status, out, err, rc) for `prompt` at `spec["tier"]`. status: ok | timeout | unavailable (every backend of the tier is out of usage, not signed in or missing).
     Backends are tried in the tier's order; the next one is used ONLY when one is unavailable. A timeout or a bad answer is returned as is."""
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     cwd.mkdir(parents=True, exist_ok=True)
     env = env or clean_env()
     backends = tier_backends(spec["tier"])
@@ -471,8 +448,8 @@ def dispatch_agent(spec, prompt, cwd, timeout=None, env=None, on_failover=None):
                 pass
         if status == "ok":
             _m_notify.push_clear("agents:unavailable")
-        return runner, status, out, err, rc
-    return None, "unavailable", unavailable_text(), "", None
+        return Result(runner, status, out, err, rc)
+    return Result(None, "unavailable", unavailable_text(), "", None)
 
 
 def run_agent(cmd, prompt, cwd, timeout=None):
@@ -517,7 +494,6 @@ def auth_allowed(k, job, ns, adir):
     agent may debug and resubmit it without asking: apply Job files, create a ConfigMap, delete THIS task's finished Jobs, edit the
     task's own files under approved/<task>/, and register the replacement (the script enforces the attempt cap and the
     same-failure rule there). It cannot touch secrets, other namespaces or other people's Jobs."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     a = str(_m_state.APPROVED).rstrip("/")                    # all task dirs: a next-stage task needs its own manifest dir
     pats = [k + " apply:*", k + " create configmap:*", k + " delete job %s:*" % job,
             "kubectl apply:*", "kubectl create configmap:*", "kubectl delete job %s:*" % job,
@@ -528,7 +504,6 @@ def auth_allowed(k, job, ns, adir):
 
 
 def pod_allowed(pod, owner_job):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     k = "kubectl -n %s" % _m_state.NS
     a = ["Bash(%s get pod %s:*)" % (k, pod), "Bash(%s logs %s:*)" % (k, pod), "Bash(%s describe pod %s:*)" % (k, pod),
          "Bash(%s exec %s -- nvidia-smi:*)" % (k, pod), "Bash(%s delete pod %s)" % (k, pod),
@@ -539,7 +514,6 @@ def pod_allowed(pod, owner_job):
 
 
 def pod_prompt(pod, flag_line, owner_job, strike=1):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     t = (_m_state.TPL / "pod_check.md").read_text()
     text = ("first flag" if strike < 2 else
             "flagged again on the pass after an OVERSIZED warning")
@@ -548,7 +522,6 @@ def pod_prompt(pod, flag_line, owner_job, strike=1):
 
 
 def job_prompt(job, rec, status, resume_text):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import wake as _m_wake  # Local import breaks orchestration cycle; patches stay on the defining module.
     t = (_m_state.TPL / "job_followup.md").read_text()
     out = (t.replace("{job}", job).replace("{ns}", rec.get("ns", _m_state.NS)).replace("{status}", status)
