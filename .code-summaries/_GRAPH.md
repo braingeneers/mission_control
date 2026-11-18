@@ -1,6 +1,6 @@
 # Connections graph
 
-Generated: 2026-11-18 | commit: 751fc5d994672592099496cedf2036c1e2f5053d | mode: path
+Generated: 2026-11-18 | commit: 846566c0e307e65457d43b9f8f51c7174453472b | mode: path
 
 Edges below are source-backed **imports** resolved against the repo root and the importing script's directory (sys.path style), not runtime calls. Dynamic dispatch, `sys.path` hacks to unusual locations, wildcard imports and re-exports can be incomplete. Configured external library imports appear under `**Library:**` in summaries.
 
@@ -12,22 +12,27 @@ Project scripts; see per-file summaries.
 - `skills.nrp-monitor.scripts.nrp_monitor.agents` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
 - `skills.nrp-monitor.scripts.nrp_monitor.agents` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.wake`
 - `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.agents`
+- `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.cli_args`
 - `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.cluster`
-- `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.decisions`
 - `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.legacy`
 - `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
-- `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.nrp_task`
-- `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.plan_commands`
 - `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.plan_wakes`
 - `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.red_alert`
 - `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.s3`
-- `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.setup`
 - `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
 - `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.pass_`
-- `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.registry`
-- `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task_commands`
 - `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.util`
 - `skills.nrp-monitor.scripts.nrp_monitor.cli` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.wake`
+- `skills.nrp-monitor.scripts.nrp_monitor.cli_args` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.cli`
+- `skills.nrp-monitor.scripts.nrp_monitor.cli_args` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.decisions`
+- `skills.nrp-monitor.scripts.nrp_monitor.cli_args` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
+- `skills.nrp-monitor.scripts.nrp_monitor.cli_args` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.nrp_task`
+- `skills.nrp-monitor.scripts.nrp_monitor.cli_args` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.plan_commands`
+- `skills.nrp-monitor.scripts.nrp_monitor.cli_args` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.setup`
+- `skills.nrp-monitor.scripts.nrp_monitor.cli_args` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
+- `skills.nrp-monitor.scripts.nrp_monitor.cli_args` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.registry`
+- `skills.nrp-monitor.scripts.nrp_monitor.cli_args` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task_commands`
+- `skills.nrp-monitor.scripts.nrp_monitor.cli_args` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.wake`
 - `skills.nrp-monitor.scripts.nrp_monitor.cluster` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
 - `skills.nrp-monitor.scripts.nrp_monitor.cluster` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.red_alert`
 - `skills.nrp-monitor.scripts.nrp_monitor.cluster` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
@@ -47,8 +52,8 @@ Project scripts; see per-file summaries.
 - `skills.nrp-monitor.scripts.nrp_monitor.decisions` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.ladder`
 - `skills.nrp-monitor.scripts.nrp_monitor.decisions` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
 - `skills.nrp-monitor.scripts.nrp_monitor.decisions` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.s3`
+- `skills.nrp-monitor.scripts.nrp_monitor.decisions` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs`
 - `skills.nrp-monitor.scripts.nrp_monitor.decisions` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
-- `skills.nrp-monitor.scripts.nrp_monitor.decisions` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.pass_`
 - `skills.nrp-monitor.scripts.nrp_monitor.decisions` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.registry`
 - `skills.nrp-monitor.scripts.nrp_monitor.ladder` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.agents`
 - `skills.nrp-monitor.scripts.nrp_monitor.ladder` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.cluster`
@@ -56,7 +61,7 @@ Project scripts; see per-file summaries.
 - `skills.nrp-monitor.scripts.nrp_monitor.ladder` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
 - `skills.nrp-monitor.scripts.nrp_monitor.ladder` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.plans`
 - `skills.nrp-monitor.scripts.nrp_monitor.ladder` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.s3`
-- `skills.nrp-monitor.scripts.nrp_monitor.ladder` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.sizing`
+- `skills.nrp-monitor.scripts.nrp_monitor.ladder` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs`
 - `skills.nrp-monitor.scripts.nrp_monitor.ladder` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
 - `skills.nrp-monitor.scripts.nrp_monitor.ladder` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.model`
 - `skills.nrp-monitor.scripts.nrp_monitor.ladder` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.pass_`
@@ -70,9 +75,9 @@ Project scripts; see per-file summaries.
 - `skills.nrp-monitor.scripts.nrp_monitor.legacy` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.config`
 - `skills.nrp-monitor.scripts.nrp_monitor.legacy` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.ladder`
 - `skills.nrp-monitor.scripts.nrp_monitor.legacy` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
+- `skills.nrp-monitor.scripts.nrp_monitor.legacy` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs`
 - `skills.nrp-monitor.scripts.nrp_monitor.legacy` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
 - `skills.nrp-monitor.scripts.nrp_monitor.legacy` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.model`
-- `skills.nrp-monitor.scripts.nrp_monitor.legacy` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.pass_`
 - `skills.nrp-monitor.scripts.nrp_monitor.legacy` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.util`
 - `skills.nrp-monitor.scripts.nrp_monitor.legacy` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.wake`
 - `skills.nrp-monitor.scripts.nrp_monitor.notify` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.agents`
@@ -83,18 +88,19 @@ Project scripts; see per-file summaries.
 - `skills.nrp-monitor.scripts.nrp_monitor.notify` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
 - `skills.nrp-monitor.scripts.nrp_monitor.notify` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.wake`
 - `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.agents`
+- `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.cli_args`
 - `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.cluster`
 - `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.config`
 - `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.decisions`
 - `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.ladder`
 - `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.plans`
 - `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.s3`
+- `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs`
 - `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
 - `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.pass_`
 - `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.registry`
 - `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task_commands`
 - `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.timeouts`
-- `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.util`
 - `skills.nrp-monitor.scripts.nrp_monitor.plan_commands` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
 - `skills.nrp-monitor.scripts.nrp_monitor.plan_commands` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.plan_wakes`
 - `skills.nrp-monitor.scripts.nrp_monitor.plan_commands` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.plans`
@@ -124,18 +130,27 @@ Project scripts; see per-file summaries.
 - `skills.nrp-monitor.scripts.nrp_monitor.sizing` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.cluster`
 - `skills.nrp-monitor.scripts.nrp_monitor.sizing` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
 - `skills.nrp-monitor.scripts.nrp_monitor.sizing` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.registry`
+- `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.cluster`
+- `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.decisions`
+- `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.ladder`
+- `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
+- `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.red_alert`
+- `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.sizing`
+- `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
+- `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.model`
+- `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.registry`
+- `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.tier0`
 - `skills.nrp-monitor.scripts.nrp_monitor.state` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
 - `skills.nrp-monitor.scripts.nrp_monitor.state` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.plan_wakes`
 - `skills.nrp-monitor.scripts.nrp_monitor.task.model` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
 - `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.agents`
 - `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.cluster`
 - `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.continuation`
-- `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.decisions`
 - `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.ladder`
 - `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
 - `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.red_alert`
 - `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.s3`
-- `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.sizing`
+- `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs`
 - `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
 - `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.model`
 - `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.registry`
@@ -167,6 +182,7 @@ Project scripts; see per-file summaries.
 - `skills.nrp-monitor.scripts.nrp_monitor.task_commands` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.ladder`
 - `skills.nrp-monitor.scripts.nrp_monitor.task_commands` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.nrp_task`
 - `skills.nrp-monitor.scripts.nrp_monitor.task_commands` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.plan_commands`
+- `skills.nrp-monitor.scripts.nrp_monitor.task_commands` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs`
 - `skills.nrp-monitor.scripts.nrp_monitor.task_commands` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
 - `skills.nrp-monitor.scripts.nrp_monitor.task_commands` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.model`
 - `skills.nrp-monitor.scripts.nrp_monitor.task_commands` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.registry`
@@ -179,15 +195,15 @@ Project scripts; see per-file summaries.
 - `skills.nrp-monitor.scripts.nrp_monitor.tier0` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.ladder`
 - `skills.nrp-monitor.scripts.nrp_monitor.tier0` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
 - `skills.nrp-monitor.scripts.nrp_monitor.tier0` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.sizing`
+- `skills.nrp-monitor.scripts.nrp_monitor.tier0` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs`
 - `skills.nrp-monitor.scripts.nrp_monitor.tier0` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
 - `skills.nrp-monitor.scripts.nrp_monitor.tier0` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.model`
-- `skills.nrp-monitor.scripts.nrp_monitor.tier0` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.pass_`
 - `skills.nrp-monitor.scripts.nrp_monitor.tier0` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.registry`
 - `skills.nrp-monitor.scripts.nrp_monitor.timeouts` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.cluster`
 - `skills.nrp-monitor.scripts.nrp_monitor.timeouts` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.decisions`
 - `skills.nrp-monitor.scripts.nrp_monitor.timeouts` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
+- `skills.nrp-monitor.scripts.nrp_monitor.timeouts` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs`
 - `skills.nrp-monitor.scripts.nrp_monitor.timeouts` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
-- `skills.nrp-monitor.scripts.nrp_monitor.timeouts` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.pass_`
 - `skills.nrp-monitor.scripts.nrp_monitor.timeouts` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.registry`
 - `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.agents`
 - `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.cluster`
@@ -196,12 +212,10 @@ Project scripts; see per-file summaries.
 - `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.ladder`
 - `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.notify`
 - `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.sizing`
+- `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs`
 - `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.state`
-- `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.model`
-- `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.pass_`
 - `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task.registry`
 - `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.task_agents`
-- `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.tier0`
 - `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.timeouts`
 - `skills.nrp-monitor.scripts.nrp_monitor.util` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.wake`
 - `skills.nrp-monitor.scripts.nrp_monitor.wake` --imports--> `skills.nrp-monitor.scripts.nrp_monitor.agents`

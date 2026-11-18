@@ -1,6 +1,6 @@
 # Summary backlog
 
-Generated: 2026-11-18 | commit: 751fc5d994672592099496cedf2036c1e2f5053d | mode: path
+Generated: 2026-11-18 | commit: 846566c0e307e65457d43b9f8f51c7174453472b | mode: path
 
 87 source files have missing or stale summaries. Clear a folder with
 `.agents/skills/summarize-codebase/scripts/refresh.sh '<folder>'`, or everything with `refresh.sh`.

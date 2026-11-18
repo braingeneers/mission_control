@@ -7,26 +7,20 @@
 **Entry point:** no — library or imported component
 
 ## Overview
-Implements core task pass execution loop (`process_tasks`, `process_task`, `advance_task`, `do_submit`), orchestrating stage submissions, dependency tracking, failure classification, postchecks, and completion handling.
+Orchestrates each task pass: stage dependencies and S3 gates, failure classification, completion and postcheck handling, held completion recovery and repeated exception escalation. Submissions and diagnostics delegate to stage_jobs; snapshots are used for observation while action guards stay fresh.
 
 ## Connections
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.cli` — import consumer hint; not a proven runtime call.
-- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.decisions` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.ladder` — import consumer hint; not a proven runtime call.
-- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.legacy` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` — import consumer hint; not a proven runtime call.
-- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.tier0` — import consumer hint; not a proven runtime call.
-- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.timeouts` — import consumer hint; not a proven runtime call.
-- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.util` — import consumer hint; not a proven runtime call.
 - **Uses:** `agents` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `cluster` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `continuation` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
-- **Uses:** `decisions` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `ladder` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `notify` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `red_alert` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `s3` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
-- **Uses:** `sizing` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
+- **Uses:** `stage_jobs` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `state` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `model` from `skills.nrp-monitor.scripts.nrp_monitor.task` — imports (static evidence).
 - **Uses:** `registry` from `skills.nrp-monitor.scripts.nrp_monitor.task` — imports (static evidence).
@@ -34,7 +28,7 @@ Implements core task pass execution loop (`process_tasks`, `process_task`, `adva
 - **Uses:** `tier0` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `util` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `wake` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
-- **Shared data:** Central coordinator for tasks: calls `nrp_monitor.cluster` for Kubernetes operations, `nrp_monitor.s3` for existence checks, `nrp_monitor.tier0` for heuristic fixes, `nrp_monitor.ladder` for failure escalation, and `nrp_monitor.task_agents` for LLM fixer/followup agents.
+- **Shared data:** **Shared data:** Central coordinator for tasks: calls `nrp_monitor.cluster` for Kubernetes operations, `nrp_monitor.s3` for existence checks, `nrp_monitor.tier0` for heuristic fixes, `nrp_monitor.ladder` for failure escalation, and `nrp_monitor.task_agents` for LLM fixer/followup agents.
 
 ## Dependencies
 None
@@ -43,57 +37,45 @@ None
 None
 
 ## Functions
-### `save_task_logs(t, s, reason)`
-> Fetches and saves container logs and Kubernetes describe outputs to task log files, extracting key-value outputs on success.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:181 (named-call hint). **Side effects:** write call (static hint).
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:10`
 ### `run_postcheck(t)`
 > Executes optional local validation command after all stages complete to verify outputs.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:350 (named-call hint). **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:40`
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:210 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:9`
 ### `pod_started(ns, job)`
-> Queries Kubernetes pods to find earliest container start timestamp for a Job.
+> Earliest container start of the Job's pods (None if no container ever ran).
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:55`
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:24`
 ### `classify(t, s, logtxt)`
-> Classifies Job failures into failure classes (`resources`, `infra`, `code`, `timeout`) and signatures using pod conditions, exit codes, and log inspection.
+> (class, signature, detail) from Job conditions, pod status, exit code and the log tail. No model.
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:73`
-### `do_submit(n, sid, reason, by)`
-> Validates manifest and retry budgets, excludes bad nodes, applies Job via kubectl, and updates stage status.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:297 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:338 (named-call hint). **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:123`
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:42`
 ### `s3_gate(s)`
-> Checks stage `after_s3` dependencies, returning any S3 URIs that do not yet exist.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:276 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:323 (named-call hint). **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:235`
+> URIs in the stage's `after_s3` that do not (yet) exist. An unreadable answer counts as missing: the stage just waits.
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:136 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:183 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:94`
 ### `note_waiting(n, sid, missing)`
-> Records list of missing S3 dependencies on stage object and logs state event if changed.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:324 (named-call hint). **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:241`
+> Record what a pending stage waits on (shown by `task show`); only writes when it changes.
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:184 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:100`
 ### `advance_task(n, jobs, a)`
 > Evaluates task stage progression, submits ready stages, invokes Tier 0/ladder failure handling, and processes completion.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:464 (named-call hint). **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:254`
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:324 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:113`
 ### `recover_held_completion(n, jobs)`
 > Checks if a held or failed task's Job actually completed successfully with valid S3 outputs and recovers it.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:462 (named-call hint). **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:386`
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:322 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:246`
 ### `process_tasks(a, st)`
 > Iterates over all active and held tasks, executing task monitoring passes within a cluster pass snapshot.
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:413`
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:273`
 ### `process_task(n, a)`
 > Wraps single task pass execution with manifest validation, exception tracking, and coordinator escalation.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:424 (named-call hint). **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:431`
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:284 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py:291`
 
 ## Config / CLI
-| Configuration / CLI and meaning |
-| --- |
-| Env `NRP_MONITOR_S3_ENDPOINT`: endpoint URL for S3 operations. |
-| Constant `_m_state.BLOCK_ESCALATE_S`: duration threshold before escalating blocked submits to coordinator/owner. |
-| Constant `_m_state.TASK_EXCEPTION_LIMIT`: consecutive exception threshold before escalating unhandled task pass crashes. |
+None
 
 ## Data Shapes
 - Manifest JSON/YAML documents: Kubernetes Job objects.

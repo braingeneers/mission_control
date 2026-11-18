@@ -18,6 +18,7 @@ Kubernetes cluster query interface, kubectl subprocess wrapper, node health trac
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.red_alert` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.s3` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.sizing` — import consumer hint; not a proven runtime call.
+- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.task.registry` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.tier0` — import consumer hint; not a proven runtime call.
@@ -29,9 +30,9 @@ Kubernetes cluster query interface, kubectl subprocess wrapper, node health trac
 - **Uses:** `registry` from `skills.nrp-monitor.scripts.nrp_monitor.task` — imports (static evidence).
 - **Uses:** `util` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `wake` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
-- **Shared data:** Calls kubectl CLI binary and nrp-util-check subprocess.
-- **Shared data:** Queries Thanos API over HTTP for cluster metrics.
-- **Shared data:** Imports state, notify, red_alert, util, wake, task.registry.
+- **Shared data:** **Shared data:** Calls kubectl CLI binary and nrp-util-check subprocess.
+- **Shared data:** **Shared data:** Queries Thanos API over HTTP for cluster metrics.
+- **Shared data:** **Shared data:** Imports state, notify, red_alert, util, wake, task.registry.
 
 ## Dependencies
 None
@@ -49,15 +50,15 @@ None
 > **Called by:** skills/nrp-monitor/scripts/nrp_monitor/cluster.py:314 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/cluster.py:66 (named-call hint). **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:29`
 ### `kubectl(*args, timeout=120)`
-> Executes kubectl subprocess with pass snapshot cache invalidation on namespace mutations.
+> The only way the monitor runs kubectl. A call that changes a namespace drops that namespace from the pass snapshot.
 > **Called by:** skills/nrp-monitor/scripts/nrp_monitor/cluster.py:107 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/cluster.py:123 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/cluster.py:150 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/cluster.py:309 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/cluster.py:49 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/cluster.py:71 (named-call hint). **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:37`
 ### `my_pods()`
-> Retrieves active pods owned by the configured user annotation in the monitored namespace.
+> {name: owner_job_or_None} for the owner's pods that are Running, Pending or Failed (by annotation).
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:45`
 ### `jobs_in(ns)`
-> Fetches and classifies all jobs in a namespace with pass caching.
+> {job: {state, start, deadline, ours}} for namespace `ns` (fetch_jobs), read once per pass. Raises RuntimeError like fetch_jobs.
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:64`
 ### `job_state(name, ns)`
@@ -77,7 +78,7 @@ None
 > **Called by:** skills/nrp-monitor/scripts/nrp_monitor/cluster.py:66 (named-call hint). **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:106`
 ### `apply_manifest(ns, path)`
-> Performs server dry-run then applies a Job manifest, catching and handling admission refusal blocks.
+> 'ok' \| 'blocked' \| error text. Server dry-run first.
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:119`
 ### `pod_gpu_request(p)`
@@ -85,7 +86,7 @@ None
 > **Called by:** skills/nrp-monitor/scripts/nrp_monitor/cluster.py:174 (named-call hint). **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:134`
 ### `namespace_offenders(ns)`
-> Runs nrp-util-check across all running pods in namespace to identify utilization violations.
+> Every Running pod in `ns`, whoever launched it (no annotation filter), through nrp-util-check: the pods outside NRP's bands (rule nrp or gpu; a lab-floor-only flag is not counted by NRP's webhook) or stuck. Returns a list of dicts: pod, owner (Job or other ownerReference), username (nrp.ai/username annotation, may be ""), service_account, ours (annotation == our owner annotation), usage ({cpu\|mem\|gpu: use/request/pct}) and line (nrp-util-check…
 > **Called by:** skills/nrp-monitor/scripts/nrp_monitor/cluster.py:221 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/cluster.py:260 (named-call hint). **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:144`
 ### `offender_text(o)`
@@ -97,11 +98,11 @@ None
 > **Called by:** skills/nrp-monitor/scripts/nrp_monitor/cluster.py:226 (named-call hint). **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:189`
 ### `block_episode(n)`
-> Records first submit refusal block, inspects namespace offenders, and notifies coordinator/owner.
+> First block of a pending submit: run the namespace-wide check once, save it on t["pending"], write a digest line and wake the coordinator chat once (the task stays `blocked`, so the monitor goes on re-applying when the offenders clear). Later calls in the same episode do nothing. A failed check is logged and still produces the one wake, carrying the raw refusal.
 > **Called by:** skills/nrp-monitor/scripts/nrp_monitor/cluster.py:253 (named-call hint). **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:209`
 ### `block_should_reapply(n)`
-> Determines whether to retry a blocked submit based on elapsed time and changes in namespace offenders.
+> True when the pending submit should be applied again this pass. Pods outside the bands explain the block: no re-apply until a re-check (at most every BLOCK_RECHECK_S) finds the set changed (or empty). No offenders or a failed check: the block is unexplained, so it goes on being applied each pass, as before, with the 6 h escalation as the fallback.
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:247`
 ### `thanos_query(expr)`
@@ -125,16 +126,12 @@ None
 > **Called by:** skills/nrp-monitor/scripts/nrp_monitor/cluster.py:321 (named-call hint). **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:307`
 ### `pending_reason(t, s)`
-> Extracts scheduler failure conditions and manifest affinity constraints for pending Jobs.
+> One line saying why the scheduler has not started a Pending Job: its PodScheduled message, plus the node restrictions in our own manifest (for example a GPU allow-list) when it reports nodes excluded by affinity/selector.
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cluster.py:317`
 
 ## Config / CLI
-| Configuration / CLI and meaning |
-| --- |
-| Env NRP_MONITOR_USER_ANNOTATION: required user annotation on pods (defaults to state.USER_ANN). |
-| Env NRP_MONITOR_THANOS_URL: Thanos Prometheus metrics query URL. |
-| Constant BLOCK_RECHECK_S (600s): minimum interval between namespace offender re-checks during submit refusal. |
+None
 
 ## Data Shapes
 - my_pods return: {pod_name: owner_job_name_or_None} for Running/Pending/Failed user pods.

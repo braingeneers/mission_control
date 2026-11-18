@@ -7,26 +7,27 @@
 **Entry point:** no — library or imported component
 
 ## Overview
-Implementation of the scoped helper CLI tool nrp-task used by fix, triage, deputy, and continue sub-agents to inspect task state, examine logs, reship code, commit fixes, and submit jobs within authorized boundaries. Run via CLI nrp-task <subcommand> or nrp-monitor tool <subcommand>.
+Scoped nrp-task command handler for task agents: validates task identity and role before inspect, reship, commit, submit, delete, plan and report actions. Argparse options come from cli_args; submit/replacement and saved diagnostics delegate to stage_jobs. Existing positional command dispatch stays here.
 
 ## Connections
-- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.cli` — import consumer hint; not a proven runtime call.
+- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.cli_args` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.task_commands` — import consumer hint; not a proven runtime call.
 - **Uses:** `agents` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
+- **Uses:** `cli_args` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `cluster` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `config` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `decisions` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `ladder` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `plans` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `s3` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
+- **Uses:** `stage_jobs` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `state` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `pass_` from `skills.nrp-monitor.scripts.nrp_monitor.task` — imports (static evidence).
 - **Uses:** `registry` from `skills.nrp-monitor.scripts.nrp_monitor.task` — imports (static evidence).
 - **Uses:** `task_commands` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `timeouts` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
-- **Uses:** `util` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
-- **Shared data:** Imports s3, config, task_commands, util, cluster, decisions, task_pass, task_registry, plans, timeouts, ladder.
-- **Shared data:** Invoked directly by sub-agent shells as nrp-task.
+- **Shared data:** **Shared data:** Imports s3, config, task_commands, util, cluster, decisions, task_pass, task_registry, plans, timeouts, ladder.
+- **Shared data:** **Shared data:** Invoked directly by sub-agent shells as nrp-task.
 
 ## Dependencies
 None
@@ -37,7 +38,7 @@ None
 ## Functions
 ### `reship_dirs(code)`
 > (primary package dir, [extra package dirs]) that `nrp-task reship` packs: everything the task's code declares. Primary = code.pkg_dir, else code.subdir when it is the predictor_v3 folder, else <clone>/predictor_v3. Extras = code.extra_pkg_dirs (relative = inside the clone, absolute = another checkout read in place). Raises ChainError when something declared is missing.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/nrp_task.py:212 (named-call hint). **Side effects:** unclear — see source.
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/nrp_task.py:204 (named-call hint). **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/nrp_task.py:21`
 ### `cmd_tool(a)`
 > Primary command dispatcher for all nrp-task operations (show, logs, describe, util, s3, reship, commit, submit, delete, plan, next-add, report).
@@ -45,11 +46,7 @@ None
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/nrp_task.py:44`
 
 ## Config / CLI
-| Configuration / CLI and meaning |
-| --- |
-| Env NRP_TASK: required task identifier specifying which task the sub-agent is inspecting or modifying. |
-| Env NRP_MONITOR_AGENT_ROLE: role of caller (triage, fix, deputy, continue); enforces tool restrictions (e.g., triage is read-only). |
-| Env NRP_TASK_PYTHON: python interpreter path used for code packing (defaults to state.CODE_PYTHON or sys.executable). |
+None
 
 ## Data Shapes
 - Code tarball: generated .tgz archive containing package files and extra package directories.

@@ -24,8 +24,8 @@ Prompt builder and execution harness for task-level sub-agents (Tier 1 triage ju
 - **Uses:** `registry` from `skills.nrp-monitor.scripts.nrp_monitor.task` — imports (static evidence).
 - **Uses:** `util` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `wake` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
-- **Shared data:** Imports config, decisions, ladder, state, wake, agents, notify, plans, util, task.registry.
-- **Shared data:** Dispatches agent calls through agents.dispatch_agent.
+- **Shared data:** **Shared data:** Imports config, decisions, ladder, state, wake, agents, notify, plans, util, task.registry.
+- **Shared data:** **Shared data:** Dispatches agent calls through agents.dispatch_agent.
 
 ## Dependencies
 None
@@ -44,11 +44,7 @@ None
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/task_agents.py:34`
 
 ## Config / CLI
-| Configuration / CLI and meaning |
-| --- |
-| Env NRP_TASK: sets active task context for sub-agent environment. |
-| Env NRP_MONITOR_AGENT_ROLE: identifies agent role (fix, deputy, triage, continue) for permission gating. |
-| Templates used: task_agent.md, continue_agent.md, task_triage.md from state.TPL. |
+None
 
 ## Data Shapes
 - Agent run record dict: {ts: float, kind: str, runner: str, model: str, usage: dict?, cost: float?, turns: int?, result: str, denials: int, verdict: str?, ...}.

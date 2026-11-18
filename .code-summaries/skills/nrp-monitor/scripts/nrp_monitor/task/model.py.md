@@ -12,10 +12,10 @@ Defines task lifecycle state transition rules and machine (`transition`, `can`, 
 ## Connections
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.ladder` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.legacy` — import consumer hint; not a proven runtime call.
+- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.task_commands` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.tier0` — import consumer hint; not a proven runtime call.
-- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.util` — import consumer hint; not a proven runtime call.
 - **Uses:** `state` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Shared data:** Imported and invoked by `task_commands.py`, `pass_.py`, `util.py`, and `tier0.py` to perform all task state mutations.
 

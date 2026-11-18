@@ -7,18 +7,17 @@
 **Entry point:** no — library or imported component
 
 ## Overview
-Resource sizing calculator, true cgroup memory peak extractor, resource propagation engine, and node affinity/selector feasibility validator. Imported by ladder, state, task_pass, task_commands; not run as a CLI directly.
+Owns memory/CPU evidence and sizing primitives: Thanos working-set and CPU-rate peaks, saved cgroup peak extraction and single-container legacy fallback, memory-low evidence with OOM floors, quantity parsing and CPU request sizing. Also checks whether required node restrictions match any schedulable node. Manifest resource snapshots and propagation now live in stage_jobs.
 
 ## Connections
-- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.ladder` — import consumer hint; not a proven runtime call.
-- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` — import consumer hint; not a proven runtime call.
+- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.tier0` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.util` — import consumer hint; not a proven runtime call.
 - **Uses:** `cluster` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `state` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `registry` from `skills.nrp-monitor.scripts.nrp_monitor.task` — imports (static evidence).
-- **Shared data:** Imports cluster, state, task.registry.
-- **Shared data:** Reads saved logs in <task>/logs/.
+- **Shared data:** util calls memory_low_evidence, thanos_peak_mem, thanos_peak_cpu and cpu_request. tier0 calls memory quantity, saved-peak fallback and Thanos helpers. stage_jobs uses quantity parsing and zero_node_reason.
+- **Shared data:** Reads task logs through state.task_dir and cluster Thanos/pod/node reads; memory_low_evidence updates stage memory evidence through task_txn.
 
 ## Dependencies
 None
@@ -30,45 +29,50 @@ None
 ### `cpu_quantity(value)`
 > Parses Kubernetes CPU strings (e.g. 500m, 2) into float core counts.
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:6`
-### `resource_values(doc)`
-> Extracts container CPU and memory requests and limits from a pod/Job manifest.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/sizing.py:20 (named-call hint). **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:12`
-### `resource_template(doc)`
-> Constructs normalized list of container resource specs and images from manifest.
-> **Called by:** unclear — see source. **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:19`
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:8`
 ### `true_memory_peak(text, container=None)`
-> Parses true cgroup memory peak bytes from container stdout log lines.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/sizing.py:52 (named-call hint). **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:27`
+> Read the helper's JSON lines. RSS fallback is evidence, not a cgroup true peak.
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/sizing.py:43 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:18`
 ### `saved_memory_peak(t, s, container=None, all_attempts=False)`
 > Finds maximum true memory peak recorded across historical attempt log files for a stage.
-> **Called by:** unclear — see source. **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:45`
-### `propagate_resources(t, source)`
-> Updates resource requests/limits in unfinished sibling stage manifests within a resource group.
-> **Called by:** unclear — see source. **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:59`
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/sizing.py:205 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/sizing.py:207 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:36`
 ### `mem_bytes(q)`
-> Converts Kubernetes memory quantity string into integer bytes.
-> **Called by:** unclear — see source. **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:100`
+> Bytes of a Kubernetes memory quantity ('512Mi', '4Gi', '2G', '123456'); None when not understood.
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/sizing.py:149 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/sizing.py:150 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/sizing.py:167 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/sizing.py:173 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:52`
 ### `mem_text(b)`
 > Formats integer byte count as clean Gi or Mi Kubernetes memory string.
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:112`
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:64`
 ### `zero_node_reason(doc)`
-> Verifies whether any active cluster node can satisfy the pod nodeSelector and affinity requirements.
+> Required selectors are AND; affinity terms are OR. Read errors fail open.
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:117`
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:69`
+### `thanos_peak_mem(ns, job, container, since_ts, per_pod=False)`
+> Peak working-set bytes of the Job's pods (one container) since `since_ts`, from NRP's Prometheus; None when unavailable.
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/sizing.py:158 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:118`
+### `memory_low_evidence(t, s, flagged_pod, working_set_only=False)`
+> Aggregates memory usage evidence from Thanos metrics, pod status, and OOM history to calculate right-sized memory requirements.
+> **Called by:** unclear — see source. **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:140`
+### `thanos_peak_cpu(ns, job, container, since_ts)`
+> Whole-life peak CPU rate for one Job container; None without samples.
+> **Called by:** unclear — see source. **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:190`
+### `cpu_request(peak, small)`
+> Utilization sizing: 1.5 times peak, rounded up to millicores, with policy floor.
+> **Called by:** unclear — see source. **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:197`
+### `container_memory_peak(t, s, container, single=False, all_attempts=False)`
+> Saved cgroup peak, allowing unnamed legacy evidence only for a single container.
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/sizing.py:159 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/sizing.py:203`
 
 ## Config / CLI
-| Configuration / CLI and meaning |
-| --- |
-| Memory units supported: Ki, Mi, Gi, Ti, k, K, M, G, T, or plain bytes. |
-| Peak memory regex: parses NRP_MEMORY_PEAK <json> lines output by workload containers. |
+None
 
 ## Data Shapes
 - resource_values return: list of {name: container_name, requests: {cpu: str, memory: str}, limits: {cpu: str, memory: str}}.

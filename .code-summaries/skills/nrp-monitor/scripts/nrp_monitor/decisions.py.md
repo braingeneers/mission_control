@@ -11,13 +11,13 @@ Manages deterministic failure fingerprinting, coordinator/deputy decision record
 
 ## Connections
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.agents` — import consumer hint; not a proven runtime call.
-- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.cli` — import consumer hint; not a proven runtime call.
+- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.cli_args` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.continuation` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.ladder` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.notify` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.nrp_task` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.plan_wakes` — import consumer hint; not a proven runtime call.
-- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.task.pass_` — import consumer hint; not a proven runtime call.
+- **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.stage_jobs` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.task.registry` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.task_agents` — import consumer hint; not a proven runtime call.
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.task_commands` — import consumer hint; not a proven runtime call.
@@ -28,11 +28,12 @@ Manages deterministic failure fingerprinting, coordinator/deputy decision record
 - **Uses:** `ladder` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `notify` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `s3` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
+- **Uses:** `stage_jobs` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `state` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
-- **Uses:** `pass_` from `skills.nrp-monitor.scripts.nrp_monitor.task` — imports (static evidence).
 - **Uses:** `registry` from `skills.nrp-monitor.scripts.nrp_monitor.task` — imports (static evidence).
-- **Shared data:** Imports notify, s3, state, ladder, task.registry, task.pass_.
-- **Shared data:** Writes to <task_dir>/decisions.json and <state>/costs.jsonl.
+- **Shared data:** **Shared data:** Imports notify, s3, state, ladder, task.registry, task.pass_.
+- **Shared data:** **Shared data:** Writes to <task_dir>/decisions.json and <state>/costs.jsonl.
+- **Shared data:** Stage submission, resource snapshots/propagation or saved task diagnostics now resolve through stage_jobs; see call sites for the applicable operation.
 
 ## Dependencies
 None
@@ -103,11 +104,7 @@ None
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/decisions.py:195`
 
 ## Config / CLI
-| Configuration / CLI and meaning |
-| --- |
-| Constant DECISION_ACTIONS ('resubmit', 'resubmit_with_manifest', 'escalate', 'skip_reuse'). |
-| Constant DECISION_NO_PROGRESS_LIMIT (3): maximum repeat applications of a decision without forward stage progress. |
-| File <state>/costs.jsonl: append-only cost tracking and wake event ledger. |
+None
 
 ## Data Shapes
 - Decision entry in decisions.json: {'fingerprint': str, 'action': str, 'scope': 'stage'|'task', 'stage': str?, 'max_uses': int?, 'uses': int, 'who': str, 'why': str, 'ts': float}.

@@ -1,8 +1,8 @@
 {
-  "commit": "751fc5d994672592099496cedf2036c1e2f5053d",
+  "commit": "846566c0e307e65457d43b9f8f51c7174453472b",
   "generated": "2026-11-18",
   "mode": "path",
-  "files_refreshed": 27,
+  "files_refreshed": 16,
   "source_roots": [
     "<all project directories>"
   ],
@@ -70,7 +70,7 @@
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/cli.py": {
-      "sha256": "44dd2cfd089faa7dd090e489d5e31f27a9813ac6e5dc8194a51e3d879df2dc43",
+      "sha256": "df89c822345d1b767c6e476b6612e6a1b2b8855f31342c5eca3bbb696681ac7e",
       "tier": "full",
       "symbols": [
         "cmd_add",
@@ -86,21 +86,38 @@
       ],
       "uses": [
         "skills.nrp-monitor.scripts.nrp_monitor.agents",
+        "skills.nrp-monitor.scripts.nrp_monitor.cli_args",
         "skills.nrp-monitor.scripts.nrp_monitor.cluster",
-        "skills.nrp-monitor.scripts.nrp_monitor.decisions",
         "skills.nrp-monitor.scripts.nrp_monitor.legacy",
         "skills.nrp-monitor.scripts.nrp_monitor.notify",
-        "skills.nrp-monitor.scripts.nrp_monitor.nrp_task",
-        "skills.nrp-monitor.scripts.nrp_monitor.plan_commands",
         "skills.nrp-monitor.scripts.nrp_monitor.plan_wakes",
         "skills.nrp-monitor.scripts.nrp_monitor.red_alert",
         "skills.nrp-monitor.scripts.nrp_monitor.s3",
-        "skills.nrp-monitor.scripts.nrp_monitor.setup",
         "skills.nrp-monitor.scripts.nrp_monitor.state",
         "skills.nrp-monitor.scripts.nrp_monitor.task.pass_",
+        "skills.nrp-monitor.scripts.nrp_monitor.util",
+        "skills.nrp-monitor.scripts.nrp_monitor.wake"
+      ]
+    },
+    "skills/nrp-monitor/scripts/nrp_monitor/cli_args.py": {
+      "sha256": "ccf6f8a2181832e111abf1a56f1a528fc52eb43f67eeaa75d99f761aec0ae3cb",
+      "tier": "full",
+      "symbols": [
+        "monitor_parser",
+        "origin_edit_args",
+        "resource_args",
+        "tool_parser"
+      ],
+      "uses": [
+        "skills.nrp-monitor.scripts.nrp_monitor.cli",
+        "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+        "skills.nrp-monitor.scripts.nrp_monitor.notify",
+        "skills.nrp-monitor.scripts.nrp_monitor.nrp_task",
+        "skills.nrp-monitor.scripts.nrp_monitor.plan_commands",
+        "skills.nrp-monitor.scripts.nrp_monitor.setup",
+        "skills.nrp-monitor.scripts.nrp_monitor.state",
         "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
         "skills.nrp-monitor.scripts.nrp_monitor.task_commands",
-        "skills.nrp-monitor.scripts.nrp_monitor.util",
         "skills.nrp-monitor.scripts.nrp_monitor.wake"
       ]
     },
@@ -182,7 +199,7 @@
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/decisions.py": {
-      "sha256": "8aebe181e12657c7fe6413ace85a452ff23e1d6d6da5e891a3bc6f6f54eb1b7c",
+      "sha256": "48816c32e0fde7cf4e86589763eab2f4fcb659d9f1a6631f9dba37fcc4e6b4d5",
       "tier": "full",
       "symbols": [
         "DECISION_APPLY",
@@ -206,13 +223,13 @@
         "skills.nrp-monitor.scripts.nrp_monitor.ladder",
         "skills.nrp-monitor.scripts.nrp_monitor.notify",
         "skills.nrp-monitor.scripts.nrp_monitor.s3",
+        "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
         "skills.nrp-monitor.scripts.nrp_monitor.state",
-        "skills.nrp-monitor.scripts.nrp_monitor.task.pass_",
         "skills.nrp-monitor.scripts.nrp_monitor.task.registry"
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/ladder.py": {
-      "sha256": "58e7dac3f0ab70e301741f259e0bf49c8ac0c80315deb522491fcd5d79d26517",
+      "sha256": "a7b2535e2a629ee8ccc68abc4c4be88cde042576350951139553190ef8158507",
       "tier": "full",
       "symbols": [
         "Decision",
@@ -257,7 +274,7 @@
         "skills.nrp-monitor.scripts.nrp_monitor.notify",
         "skills.nrp-monitor.scripts.nrp_monitor.plans",
         "skills.nrp-monitor.scripts.nrp_monitor.s3",
-        "skills.nrp-monitor.scripts.nrp_monitor.sizing",
+        "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
         "skills.nrp-monitor.scripts.nrp_monitor.state",
         "skills.nrp-monitor.scripts.nrp_monitor.task.model",
         "skills.nrp-monitor.scripts.nrp_monitor.task.pass_",
@@ -269,7 +286,7 @@
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/legacy.py": {
-      "sha256": "3e39c9a22f859229c5348c0cf279cb49f8fa53c146caa2ae4644684d9050dc9f",
+      "sha256": "f556537ee2a63ef05b7f7b1c6907f93432f98a17c0959a720d8efb0aeb029e90",
       "tier": "full",
       "symbols": [
         "_gpu_low",
@@ -288,15 +305,15 @@
         "skills.nrp-monitor.scripts.nrp_monitor.config",
         "skills.nrp-monitor.scripts.nrp_monitor.ladder",
         "skills.nrp-monitor.scripts.nrp_monitor.notify",
+        "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
         "skills.nrp-monitor.scripts.nrp_monitor.state",
         "skills.nrp-monitor.scripts.nrp_monitor.task.model",
-        "skills.nrp-monitor.scripts.nrp_monitor.task.pass_",
         "skills.nrp-monitor.scripts.nrp_monitor.util",
         "skills.nrp-monitor.scripts.nrp_monitor.wake"
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/notify.py": {
-      "sha256": "5b7ea320e021ce37ff5fb661ce262aa519595dbf263c892bd22074288d79e18a",
+      "sha256": "9b856e105a23d4322eb06561f917d217fa7d9385126e2f3b7c7bd3c3c96ec099",
       "tier": "full",
       "symbols": [
         "banner",
@@ -327,7 +344,7 @@
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/nrp_task.py": {
-      "sha256": "371955e7a613e7c1045ebe0aa8cd5c36f88c097e28649a0d8b06be1c320846e0",
+      "sha256": "ca47b47b7ff52660e201c93c50f72c5b31a83b52459b762ddc940a8a25e88c66",
       "tier": "full",
       "symbols": [
         "cmd_tool",
@@ -335,18 +352,19 @@
       ],
       "uses": [
         "skills.nrp-monitor.scripts.nrp_monitor.agents",
+        "skills.nrp-monitor.scripts.nrp_monitor.cli_args",
         "skills.nrp-monitor.scripts.nrp_monitor.cluster",
         "skills.nrp-monitor.scripts.nrp_monitor.config",
         "skills.nrp-monitor.scripts.nrp_monitor.decisions",
         "skills.nrp-monitor.scripts.nrp_monitor.ladder",
         "skills.nrp-monitor.scripts.nrp_monitor.plans",
         "skills.nrp-monitor.scripts.nrp_monitor.s3",
+        "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
         "skills.nrp-monitor.scripts.nrp_monitor.state",
         "skills.nrp-monitor.scripts.nrp_monitor.task.pass_",
         "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
         "skills.nrp-monitor.scripts.nrp_monitor.task_commands",
-        "skills.nrp-monitor.scripts.nrp_monitor.timeouts",
-        "skills.nrp-monitor.scripts.nrp_monitor.util"
+        "skills.nrp-monitor.scripts.nrp_monitor.timeouts"
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/plan_commands.py": {
@@ -399,7 +417,7 @@
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/plans.py": {
-      "sha256": "37b1736bc91be9300917d2e5943a3c5e070a2a978e4fca210c88414d8cf57993",
+      "sha256": "b3b72550817d709019bf91aadbe9dd02476aa993a6367a327565ea7cac0d7b72",
       "tier": "full",
       "symbols": [
         "approved_pos",
@@ -490,17 +508,19 @@
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/sizing.py": {
-      "sha256": "22adae7865d8122a52f151af2d11d52a6cccfd75f8b0113ade7be5e03a231781",
+      "sha256": "278e818ee86ad110dc6c14b0825b48862bb2ff379198037c3e087deb367f0ee7",
       "tier": "full",
       "symbols": [
         "UTIL_NODE_CACHE",
+        "container_memory_peak",
         "cpu_quantity",
+        "cpu_request",
         "mem_bytes",
         "mem_text",
-        "propagate_resources",
-        "resource_template",
-        "resource_values",
+        "memory_low_evidence",
         "saved_memory_peak",
+        "thanos_peak_cpu",
+        "thanos_peak_mem",
         "true_memory_peak",
         "zero_node_reason"
       ],
@@ -510,8 +530,33 @@
         "skills.nrp-monitor.scripts.nrp_monitor.task.registry"
       ]
     },
+    "skills/nrp-monitor/scripts/nrp_monitor/stage_jobs.py": {
+      "sha256": "1e2ddae549ba4c1422d948212094e78fe1af0eeae920f02901f3f6f396f25478",
+      "tier": "full",
+      "symbols": [
+        "delete_stage_job",
+        "do_submit",
+        "propagate_resources",
+        "resource_template",
+        "resource_values",
+        "save_task_logs",
+        "utilization_restart"
+      ],
+      "uses": [
+        "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+        "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+        "skills.nrp-monitor.scripts.nrp_monitor.ladder",
+        "skills.nrp-monitor.scripts.nrp_monitor.notify",
+        "skills.nrp-monitor.scripts.nrp_monitor.red_alert",
+        "skills.nrp-monitor.scripts.nrp_monitor.sizing",
+        "skills.nrp-monitor.scripts.nrp_monitor.state",
+        "skills.nrp-monitor.scripts.nrp_monitor.task.model",
+        "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
+        "skills.nrp-monitor.scripts.nrp_monitor.tier0"
+      ]
+    },
     "skills/nrp-monitor/scripts/nrp_monitor/state.py": {
-      "sha256": "acfb385ef65e137f955629efb8581e9d320c220be1089738b503d345398597e0",
+      "sha256": "6254c4b4902900e38177a5f455d6759ded2f4cc6a0acda4868b9c6044da32426",
       "tier": "full",
       "symbols": [
         "ACCT",
@@ -692,6 +737,7 @@
         "heartbeat_age",
         "iso",
         "iso_at",
+        "json_txn",
         "load",
         "log",
         "norm_sig",
@@ -736,31 +782,28 @@
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py": {
-      "sha256": "f7f62a2bbf9bccb8d34072e1778c28b986678e53f14da015b2efe0fdedc377e9",
+      "sha256": "566cf351abf750b38db5966573b57ba9995552ff18b04d3d6ec8e8d7fa88724d",
       "tier": "full",
       "symbols": [
         "advance_task",
         "classify",
-        "do_submit",
         "note_waiting",
         "pod_started",
         "process_task",
         "process_tasks",
         "recover_held_completion",
         "run_postcheck",
-        "s3_gate",
-        "save_task_logs"
+        "s3_gate"
       ],
       "uses": [
         "skills.nrp-monitor.scripts.nrp_monitor.agents",
         "skills.nrp-monitor.scripts.nrp_monitor.cluster",
         "skills.nrp-monitor.scripts.nrp_monitor.continuation",
-        "skills.nrp-monitor.scripts.nrp_monitor.decisions",
         "skills.nrp-monitor.scripts.nrp_monitor.ladder",
         "skills.nrp-monitor.scripts.nrp_monitor.notify",
         "skills.nrp-monitor.scripts.nrp_monitor.red_alert",
         "skills.nrp-monitor.scripts.nrp_monitor.s3",
-        "skills.nrp-monitor.scripts.nrp_monitor.sizing",
+        "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
         "skills.nrp-monitor.scripts.nrp_monitor.state",
         "skills.nrp-monitor.scripts.nrp_monitor.task.model",
         "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
@@ -831,7 +874,7 @@
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/task_commands.py": {
-      "sha256": "efaf87a07f9d5918d8254f84833db832278c2d0897901f7253320f5bf0a3d8aa",
+      "sha256": "5e70ca4b6674d8efd45a11df92ffb9b2ba6544e94fe427e147ae4edf6ffad6f1",
       "tier": "full",
       "symbols": [
         "cmd_origin",
@@ -852,6 +895,7 @@
         "skills.nrp-monitor.scripts.nrp_monitor.ladder",
         "skills.nrp-monitor.scripts.nrp_monitor.nrp_task",
         "skills.nrp-monitor.scripts.nrp_monitor.plan_commands",
+        "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
         "skills.nrp-monitor.scripts.nrp_monitor.state",
         "skills.nrp-monitor.scripts.nrp_monitor.task.model",
         "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
@@ -861,7 +905,7 @@
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/tier0.py": {
-      "sha256": "32b8bcc7d9f9be29c29b8b7187f65c2a520089cbc6b171de73b2e387f0b38fbb",
+      "sha256": "3dbb6556150e3fcd92ded3b3d74f9c606409d1faea0a7389c3e53db34d1d5bbb",
       "tier": "full",
       "symbols": [
         "RULES",
@@ -871,7 +915,6 @@
         "node_fault_of",
         "queue_ceiling_seconds",
         "report_long_pending",
-        "thanos_peak_mem",
         "tier0_fix",
         "tier0_lost",
         "tier0_node",
@@ -885,14 +928,14 @@
         "skills.nrp-monitor.scripts.nrp_monitor.ladder",
         "skills.nrp-monitor.scripts.nrp_monitor.notify",
         "skills.nrp-monitor.scripts.nrp_monitor.sizing",
+        "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
         "skills.nrp-monitor.scripts.nrp_monitor.state",
         "skills.nrp-monitor.scripts.nrp_monitor.task.model",
-        "skills.nrp-monitor.scripts.nrp_monitor.task.pass_",
         "skills.nrp-monitor.scripts.nrp_monitor.task.registry"
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/timeouts.py": {
-      "sha256": "d7d882fcecc5e131d1d3a764be6d0ea35e4c8ce135aa823a83d5369d48780a5b",
+      "sha256": "3dde9343899ee569ebd56ccd3487f4d61a9c4408b7dfecdade516a52fd0e2882",
       "tier": "full",
       "symbols": [
         "deadline_watch",
@@ -906,19 +949,18 @@
         "skills.nrp-monitor.scripts.nrp_monitor.cluster",
         "skills.nrp-monitor.scripts.nrp_monitor.decisions",
         "skills.nrp-monitor.scripts.nrp_monitor.notify",
+        "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
         "skills.nrp-monitor.scripts.nrp_monitor.state",
-        "skills.nrp-monitor.scripts.nrp_monitor.task.pass_",
         "skills.nrp-monitor.scripts.nrp_monitor.task.registry"
       ]
     },
     "skills/nrp-monitor/scripts/nrp_monitor/util.py": {
-      "sha256": "cc76bf3acfba99746a386aed24d784a94d46ddad014de2fc8bbb79a382ccf39d",
+      "sha256": "dad7dab3ab443a08f92c68e718f14418b9e93383f473f977f475cb188191ccf8",
       "tier": "full",
       "symbols": [
         "active_waiver",
         "check_orphans",
         "flag_rule",
-        "memory_low_evidence",
         "process_util_event",
         "task_pod_flag",
         "util_nrp_review",
@@ -926,7 +968,6 @@
         "util_waive",
         "util_waiver_check",
         "utilization_band_action",
-        "utilization_restart",
         "waiver_active",
         "waiver_stage"
       ],
@@ -938,12 +979,10 @@
         "skills.nrp-monitor.scripts.nrp_monitor.ladder",
         "skills.nrp-monitor.scripts.nrp_monitor.notify",
         "skills.nrp-monitor.scripts.nrp_monitor.sizing",
+        "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
         "skills.nrp-monitor.scripts.nrp_monitor.state",
-        "skills.nrp-monitor.scripts.nrp_monitor.task.model",
-        "skills.nrp-monitor.scripts.nrp_monitor.task.pass_",
         "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
         "skills.nrp-monitor.scripts.nrp_monitor.task_agents",
-        "skills.nrp-monitor.scripts.nrp_monitor.tier0",
         "skills.nrp-monitor.scripts.nrp_monitor.timeouts",
         "skills.nrp-monitor.scripts.nrp_monitor.wake"
       ]
