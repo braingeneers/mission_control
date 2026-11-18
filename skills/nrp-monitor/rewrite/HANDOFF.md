@@ -5,12 +5,15 @@
 stage_jobs.py (submit/restart/logs/resources), sizing.py (all evidence), cli_args.py, state.py locked-JSON helper. Main session
 re-ran the suite: 604 passed (225.9s). Code 6,790 -> 6,800 (findability, not size, per Hunter). Repo code map merged to main (655966f).
 NRP resource-use changes (a8bbd60, 1c7debc, bdb03a4) confirmed present in the rewrite.
-**In flight:** T3 delegate "nrp-monitor R4 shadow prep" (codex gpt-6.1-sol, branch worktree): adds one shadow switch that records-and-skips
-every side effect (kubectl allowlist get/describe/logs/top), tests, isolated state copy under /private/tmp/claude-501/nrp-shadow/,
-ONE comparison pass vs installed monitor's logs, report + unscheduled runner in rewrite/shadow/. Check: `git -C <worktree> log --oneline 6071cce..HEAD`.
+**Shadow so far:** prep 55b96da (14 gated routes, 643 tests). Main session 25f821d: read-only S3 allowed, skipped kubectl -> rc 125
+(650 passed). First-pass "unexplained" rows were checked against installed state: installed monitor saw the same failures and
+resubmitted -> they match. Remaining artifacts: timing (shadow sees newer cluster events) and ladder cascade after skipped actions.
+**In flight:** T3 delegate "nrp-monitor shadow comparator" (codex gpt-6.1-sol, branch worktree): decision-level matching with lagged
+installed window + pending rows, find the 4 "filesystem write outside isolated state" routes, --day-summary mode, tests.
+Check: `git -C <worktree> log --oneline 25f821d..HEAD`.
 **Next:**
-1. When it returns: review the gating diff yourself (every mutation route gated? allowlist raises?), re-run the suite, read the comparison.
-2. Run the shadow runner every ~15 min for a day (one run_in_background Bash loop, or an nrp-monitor-independent schedule; not the installed monitor).
+1. When it returns: review its diff and the filesystem-write finding, re-run the suite, read the last run.
+2. Run the shadow every ~15 min for a day: detached nohup loop (96 iterations) of rewrite/shadow/run.py with reports in rewrite/shadow/runs/; then --day-summary.
 3. Report the day's comparison to Hunter with a recommendation; stop before install.
 4. At branch merge: regenerate .code-summaries aggregates (both branches have maps).
 **Read first:** branch rewrite/HANDOFF.md + top LOG entry; PLAN.md R4 + cut register.
