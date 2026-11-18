@@ -77,23 +77,15 @@ def cmd_tool(a):
         sys.stderr.write(r.stderr[-2000:])
         return r.returncode
 
+    from . import cli_args
     if c in ("resize", "restart"):
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--stage")
-        parser.add_argument("--cpu")
-        parser.add_argument("--mem")
-        opts = parser.parse_args(rest)
+        opts = cli_args.tool_parser(c).parse_args(rest)
         opts.name = n
         ok, message = _m_stage_jobs.utilization_restart(n, opts.stage, opts.cpu, opts.mem)
         print(message)
         return 0 if ok else 1
     if c == "decide":
-        parser = argparse.ArgumentParser(prog="nrp-task decide")
-        parser.add_argument("fingerprint")
-        parser.add_argument("--action", choices=_m_state.DECISION_ACTIONS, required=True)
-        parser.add_argument("--why", required=True)
-        parser.add_argument("--max-uses", type=int)
-        args = parser.parse_args(rest)
+        args = cli_args.tool_parser(c).parse_args(rest)
         _m_state.task_txn(n, lambda task: _m_decisions.record_decision(task, args.fingerprint, args.action, args.why, "task", args.max_uses, os.environ.get("NRP_MONITOR_AGENT_ROLE", "agent")))
         return 0
     if c == "apply-decision":
