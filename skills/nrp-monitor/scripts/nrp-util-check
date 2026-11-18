@@ -61,7 +61,8 @@ USER = _user_annotation()
 # a shared number is ignored with a warning. `nrp-util-check --policy` prints what is in force and where each key came from.
 POLICY_BUILTIN = {"gpu_floor": 0.40, "limit_to_request_tolerance": 0.20, "max_concurrent_jobs": 400, "smoke_max_jobs": 3}
 POLICY_FILES = [os.environ.get("NRP_UTIL_POLICY")] + [f"~/{d}/skills/nrp-cluster/references/utilization-policy.json"
-                                                       for d in (".claude", ".agents", ".codex")]
+                                                       for d in (".claude", ".agents", ".codex")] + [str(STATE / "utilization-policy.json")]
+# The last entry is install.sh's copy: launchd cannot read ~/.claude/skills when it links into ~/Desktop (macOS privacy).
 POLICY_LOCAL_FILE = os.environ.get("NRP_UTIL_POLICY_LOCAL") or str(STATE / "utilization-policy.local.json")
 SHARED_KEYS = ("gpu_floor", "limit_to_request_tolerance", "max_concurrent_jobs", "smoke_max_jobs")
 LOCAL_ONLY_KEYS = ("lab_floor", "cpu_band", "memory_band", "small_pod_exempt", "account_block_after_violating_pods")
@@ -108,11 +109,17 @@ def load_policy():
     replaced; an invalid or loosening local value is ignored with a warning."""
     warnings, info = [], {"shared": "built-in", "local": None}
     shared, sfile = dict(POLICY_BUILTIN), "built-in"
+    unreadable = []
     for f in POLICY_FILES:
         if not f or not Path(f).expanduser().is_file():
             continue
         try:
-            p = json.loads(Path(f).expanduser().read_text())
+            text = Path(f).expanduser().read_text()
+        except OSError as e:
+            unreadable.append(f"{f} ({e.strerror or e})")
+            continue  # an unreadable copy falls through to the next one (normally install.sh's copy in the state dir)
+        try:
+            p = json.loads(text)
             if not valid_policy(p):
                 raise ValueError("missing or out-of-range field")
             shared, sfile = {k: p[k] for k in SHARED_KEYS if k in p}, str(Path(f).expanduser())
@@ -122,6 +129,8 @@ def load_policy():
         except (ValueError, OSError) as e:
             warnings.append(f"WARNING: {f} is not a valid utilization policy ({e}); using the built-in numbers")
         break
+    if sfile == "built-in" and unreadable:
+        warnings.append("WARNING: no readable utilization policy (%s); using the built-in numbers" % "; ".join(unreadable))
     info["shared"] = sfile
     policy, sources = dict(shared), {k: ("shared file" if sfile != "built-in" else "built-in") for k in shared}
     lf = Path(POLICY_LOCAL_FILE).expanduser()

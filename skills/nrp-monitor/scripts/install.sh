@@ -179,6 +179,9 @@ chmod 755 "$HOME/.local/bin/nrp-watchdog.new" && mv "$HOME/.local/bin/nrp-watchd
 install -m 755 "$here/nrp-s3-read" "$HOME/.local/bin/nrp-s3-read.new" && mv "$HOME/.local/bin/nrp-s3-read.new" "$HOME/.local/bin/nrp-s3-read"
 install -m 755 "$here/nrp-task" "$HOME/.local/bin/nrp-task.new" && mv "$HOME/.local/bin/nrp-task.new" "$HOME/.local/bin/nrp-task"
 install -m 755 "$here/nrp-util-check" "$HOME/.local/bin/nrp-util-check.new" && mv "$HOME/.local/bin/nrp-util-check.new" "$HOME/.local/bin/nrp-util-check"
+# launchd cannot read ~/.claude/skills when it links into ~/Desktop, so keep a copy of the shared policy in the state dir.
+policy="$here/../../nrp-cluster/references/utilization-policy.json"
+[ -f "$policy" ] && cp "$policy" "$state/utilization-policy.json"
 for t in "$here"/templates/*.md; do
   b=$(basename "$t")
   if [ -f "$state/templates/$b" ] && ! cmp -s "$t" "$state/templates/$b"; then cp "$state/templates/$b" "$state/templates/$b.bak"; fi

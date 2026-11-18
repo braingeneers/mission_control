@@ -201,6 +201,25 @@ class Policy(unittest.TestCase):
             self.assertIn('not a valid utilization policy', m.POLICY_WARNINGS[0])
             self.assertEqual(m.POLICY, m.POLICY_BUILTIN)
 
+    def test_unreadable_shared_file_falls_through_to_the_state_dir_copy(self):
+        # launchd cannot read ~/.claude/skills when it links into ~/Desktop; install.sh copies the policy into the state dir.
+        state, home = self.tmp / 'state', self.tmp / 'home'
+        state.mkdir(); home.mkdir()
+        blocked = self.write('blocked.json', SHARED)
+        os.chmod(blocked, 0)
+        try:
+            env = dict(os.environ, HOME=str(home), NRP_MONITOR_STATE=str(state), NRP_UTIL_POLICY=str(blocked))
+            env.update(wake_env(self.tmp)); env.pop('NRP_UTIL_POLICY_LOCAL', None)
+            (state / 'utilization-policy.json').write_text(json.dumps(dict(SHARED, gpu_floor=0.5)))
+            r = subprocess.run([sys.executable, str(SOURCE), '--policy'], capture_output=True, text=True, env=env)
+            self.assertIn(str(state / 'utilization-policy.json'), r.stdout)
+            self.assertNotIn('WARNING', r.stderr)
+            (state / 'utilization-policy.json').unlink()
+            r = subprocess.run([sys.executable, str(SOURCE), '--policy'], capture_output=True, text=True, env=env)
+            self.assertIn('no readable utilization policy', r.stderr)
+        finally:
+            os.chmod(blocked, 0o644)
+
     def test_extra_keys_in_the_shared_file_are_not_shared_numbers(self):
         m = self.load(shared=dict(SHARED, cpu_band=[0.2, 2.0], lab_floor=0.4, version='x', description='y'))
         self.assertEqual(m.POLICY, SHARED)
