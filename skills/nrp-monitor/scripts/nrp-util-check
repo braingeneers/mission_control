@@ -243,17 +243,25 @@ def nrp_bad(m):
     return bad
 
 
-def account_violations(ns, window):
-    """(violating, running) over the account's running pods in `ns` (only called when the policy has a block threshold)."""
+def account_violations(ns, window, ages, min_age):
+    """(settled, starting, running) over the account's running pods in `ns` (only called when the policy has a block threshold).
+    settled: pods at least `min_age` s old outside NRP's bands; starting: younger pods that read outside them, usually because they
+    have not loaded their data yet (Hunter 2026-11-18: count them apart so a reader does not take startup for violations).
+    `ages` maps pod name to seconds since start; a pod missing from it counts as settled."""
     if not USER:
         raise RuntimeError("nrp_user_annotation not set")
     mine = set(by_pod(f'max by (pod) (kube_pod_annotations{{namespace="{ns}",annotation_nrp_ai_username="{USER}"}})'))
     run = set(by_pod(f'max by (pod) (kube_pod_status_phase{{namespace="{ns}",phase="Running"}} == 1)'))
     pods = sorted(mine & run)
-    n = 0
+    settled = starting = 0
     for i in range(0, len(pods), 150):
-        n += sum(bool(nrp_bad(m)) for m in metrics(ns, pods[i:i + 150], window).values())
-    return n, len(pods)
+        for p, m in metrics(ns, pods[i:i + 150], window).items():
+            if nrp_bad(m):
+                if ages.get(p, min_age) < min_age:
+                    starting += 1
+                else:
+                    settled += 1
+    return settled, starting, len(pods)
 
 
 def smi(ns, name):
@@ -302,9 +310,11 @@ def pod_lines(a, n, age, m, w):
 def check(a):
     pods = json.loads(q(["kubectl", "-n", a.n, "get", "pods", "-o", "json"]))["items"]
     now = datetime.now(timezone.utc)
-    sel, stuck, pending = [], [], 0
+    sel, stuck, pending, ages = [], [], 0, {}
     for p in pods:
         name = p["metadata"]["name"]
+        if p["status"].get("startTime"):
+            ages[name] = (now - datetime.fromisoformat(p["status"]["startTime"].replace("Z", "+00:00"))).total_seconds()
         if not any(name.startswith(x) for x in a.prefix) or p["metadata"].get("deletionTimestamp"):
             continue
         phase = p["status"].get("phase")
@@ -358,8 +368,10 @@ def check(a):
     acct = ""
     if ACCT_MAX:
         try:
-            nv, nrun = account_violations(a.n, a.window)
-            acct = f"; account: {nv} of {nrun} running pods outside NRP bands" + (f" (NRP blocks submits past {ACCT_MAX})" if nv > ACCT_MAX else "")
+            nv, ny, nrun = account_violations(a.n, a.window, ages, a.min_age)
+            acct = (f"; account: {nv} of {nrun} running pods outside NRP bands"
+                    + (f", +{ny} started under {a.min_age / 60:g} min ago (not judged yet)" if ny else "")
+                    + (f" (NRP blocks submits past {ACCT_MAX})" if nv > ACCT_MAX else ""))
         except Exception as e:
             acct = f"; account check skipped ({str(e)[:60]})"
     summ = (f"{'LOW' if low else 'OK'} checked {ok + len(low)} pods ({len(low)} low/stuck/failed, "

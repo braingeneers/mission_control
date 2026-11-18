@@ -118,7 +118,7 @@ CODE_SKIP_EXT = (".pt", ".npz", ".npy", ".pth", ".safetensors", ".h5", ".nwb", "
 
 FLAG = re.compile(r"^(LOW|HIGH|STUCK|FAILED) (?!checked \d+ pods)(\S+?):?(?:\s|$)")
 
-ACCT = re.compile(r"account: (\d+) of (\d+) running pods outside NRP bands")
+ACCT = re.compile(r"account: (\d+) of (\d+) running pods outside NRP bands(?:, \+(\d+) started)?")  # 3: pods still starting
 
 
 def now():

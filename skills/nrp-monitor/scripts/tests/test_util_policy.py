@@ -68,6 +68,17 @@ class Policy(unittest.TestCase):
     cpu_idle = {"req": {"cpu": 4, "memory": 8e9}, "cpu": 0.5, "mem": 4e9, "gpus": []}      # CPU at 12.5 % of the request
     gpu_idle = {"req": {"nvidia_com_gpu": 1}, "gpus": [("0", "A100", 30.0)]}
 
+    def test_account_count_separates_pods_still_starting(self):
+        # Hunter 2026-11-18: a pod a minute old has not loaded its data yet; the summary counts it apart from settled violators
+        m = self.load(local=OWNER_LOCAL)
+        m.USER = "me"
+        idle = {"req": {"cpu": 4, "memory": 8e9}, "cpu": 0.1, "mem": 0.1e9, "rss": 0.1e9, "gpus": []}
+        fine = {"req": {"cpu": 1, "memory": 4e9}, "cpu": 0.9, "mem": 2e9, "rss": 2e9, "gpus": []}
+        m.by_pod = lambda expr: {"old-bad": 1, "new-bad": 1, "old-ok": 1}
+        m.metrics = lambda ns, pods, w: {"old-bad": idle, "new-bad": idle, "old-ok": fine}
+        self.assertEqual(m.account_violations("ns", 10, {"old-bad": 900, "new-bad": 40, "old-ok": 900}, 300), (1, 1, 3))
+        self.assertEqual(m.account_violations("ns", 10, {}, 300), (2, 0, 3))   # unknown start time: counted as settled
+
     # ---- shared numbers only
     def test_shared_only_policy_raises_no_cpu_or_memory_flags(self):
         m = self.load()

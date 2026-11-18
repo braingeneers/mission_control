@@ -10,7 +10,7 @@ def acct_alarm(st, lines, bad, dry, mine=None):
     from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import wake as _m_wake  # Local import breaks orchestration cycle; patches stay on the defining module.
-    acct = max([int(m.group(1)) for l in lines for m in [_m_state.ACCT.search(l)] if m] or [0])
+    acct = max([int(m.group(1)) + int(m.group(3) or 0) for l in lines for m in [_m_state.ACCT.search(l)] if m] or [0])   # starting pods included, as before
     nrp = [f[1] for f in bad if f[0] == "STUCK" or "[NRP violation]" in f[2]]
     hi = acct >= 3 or len(nrp) >= 3
     if not dry:

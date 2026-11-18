@@ -20,7 +20,7 @@ A key that is in neither file means that check is off, so with no local file onl
 | `lab_floor` | flag CPU, memory or GPU used under this fraction of the request |
 | `cpu_band`, `memory_band` | flag use outside `[low, high]` times the request |
 | `small_pod_exempt` (`cpu`, `memory_bytes`) | pods at or below both skip the two bands (the floor still applies) |
-| `account_block_after_violating_pods` | the summary counts the account's pods outside the bands and says when it passes this |
+| `account_block_after_violating_pods` | the summary counts the account's pods outside the bands and says when it passes this; pods younger than `--min-age` are listed apart (`+N started under 5 min ago`), since they read low until they load their data (Hunter 2026-11-18). The account alarm still adds them in |
 | `max_concurrent_jobs`, `gpu_floor`, `limit_to_request_tolerance` | may only be stricter than the shared value: a lower job cap or tolerance, a higher GPU floor |
 
 A value that would loosen a shared number is ignored with a one-line warning. Example (the owner of the original machine uses

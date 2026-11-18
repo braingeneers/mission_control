@@ -169,3 +169,14 @@ def test_multicontainer_restart_uses_each_containers_measurements(monitor):
         sizes = restart.call_args.kwargs['container_resources']
         assert sizes['worker']['memory'] == str(10*2**30)
         assert sizes['helper']['memory'] == str(3*2**30)
+
+
+@pytest.mark.parametrize('line,hi', [
+    ('LOW checked 3 pods; account: 1 of 90 running pods outside NRP bands, +2 started under 5 min ago (not judged yet)', True),
+    ('LOW checked 3 pods; account: 1 of 90 running pods outside NRP bands', False),
+    ('LOW checked 3 pods; account: 5 of 90 running pods outside NRP bands (NRP blocks submits past 4)', True)])
+def test_account_alarm_still_counts_starting_pods(monitor, line, hi):
+    st = {'acct_hi': 1}
+    with patch.object(monitor, 'push') as push:
+        monitor.acct_alarm(st, [line], [], False)
+    assert push.called == hi and st['acct_hi'] == (2 if hi else 0)
