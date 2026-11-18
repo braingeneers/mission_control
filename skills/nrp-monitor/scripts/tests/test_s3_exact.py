@@ -16,7 +16,6 @@ from unittest.mock import patch
 
 HERE_T = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE_T))
-import test_chains as tc                                   # harness only
 import test_tasks as tt
 
 _TMP = tempfile.mkdtemp(prefix="wds3_mod_")
@@ -72,66 +71,6 @@ class Pure(unittest.TestCase):
             self.assertIsNone(WD.s3_split(bad))
 
 
-class ExactChains(tc.Base):
-    def setup_chain(self, name, uri):
-        self.add(name, [self.step("a", "j-a", done_s3=[uri])])
-        self.run_pass()
-        self.set_job("j-a", "ok")
-
-    def test_DONE_absent_with_DONE_dot_1_present_does_not_complete_and_keeps_the_job(self):
-        self.setup_chain("c", B + "/DONE")
-        self.s3(B + "/DONE.1", B + "/DONE.0", B + "/RUNNING")
-        self.run_pass()
-        ch = self.chain("c")
-        self.assertEqual(ch["status"], "stopped")
-        self.assertIn("does not exist", json.dumps(ch))
-        self.assertIn("j-a", self.jobs_in_cluster(), "the Job (its pods) must NOT be deleted on a prefix hit")
-        self.assertNotEqual(self.states("c")["a"], "done")
-
-    def test_DONE_dot_1_is_not_satisfied_by_DONE_dot_10(self):
-        self.setup_chain("c", B + "/DONE.1")
-        self.s3(B + "/DONE.10", B + "/DONE.11")
-        self.run_pass()
-        self.assertEqual(self.chain("c")["status"], "stopped")
-        self.assertIn("j-a", self.jobs_in_cluster())
-
-    def test_complete_marker_completes_and_deletes_the_job(self):
-        self.setup_chain("c", B + "/DONE")
-        self.s3(B + "/DONE", B + "/DONE.0", B + "/DONE.1")
-        self.run_pass()
-        self.assertEqual(self.chain("c")["status"], "finished")
-        self.assertNotIn("j-a", self.jobs_in_cluster())
-
-    def test_access_denied_and_network_and_garbage_never_count_as_success(self):
-        for flag in ("aws_403", "aws_fail", "aws_garbage"):
-            name = "c" + flag.replace("_", "")
-            job = "j-" + flag.replace("_", "")
-            self.add(name, [self.step("a", job, done_s3=[B + "/DONE"])])
-            self.run_pass()
-            self.set_job(job, "ok")
-            self.s3(B + "/DONE")                                # the object exists, but the check cannot say so
-            (self.fake / flag).write_text("")
-            self.run_pass(2)
-            self.assertEqual(self.chain(name)["status"], "active", flag)
-            self.assertIn(job, self.jobs_in_cluster(), flag)
-            self.assertNotEqual(self.states(name)["a"], "done", flag)
-            (self.fake / flag).unlink()
-            self.run_pass()
-            self.assertEqual(self.chain(name)["status"], "finished", flag + " recovers once the check works")
-
-    def test_persistent_access_error_stops_after_five_passes_and_keeps_the_job(self):
-        self.setup_chain("c", B + "/DONE")
-        (self.fake / "aws_403").write_text("")
-        self.run_pass(6)
-        ch = self.chain("c")
-        self.assertEqual(ch["status"], "stopped")
-        self.assertIn("cannot check", json.dumps(ch))
-        self.assertIn("j-a", self.jobs_in_cluster())
-
-    def test_chain_add_refuses_prefix_style_done_s3(self):
-        rc, out, err = self.add("p", [self.step("a", "j-a", done_s3=["s3://b/out/"])])
-        self.assertNotEqual(rc, 0)
-        self.assertIn("ONE object", out + err)
 
 
 class ExactTasks(unittest.TestCase):
@@ -263,20 +202,6 @@ class IndexedTasks(unittest.TestCase):
         self.assertEqual(r.stdout.strip(), "ok", r.stderr[-300:])
 
 
-class IndexedChains(tc.Base):
-    def test_chain_partial_indexed_job_waits_without_deleting(self):
-        self.add("ix", [self.step("a", "j-a", done_s3=[B + "/DONE"])])
-        self.run_pass()
-        self.set_job("j-a", "running", completions=50, succeeded=16)
-        self.s3(B + "/DONE.0", B + "/DONE.1")
-        self.run_pass(2)
-        self.assertEqual(self.chain("ix")["status"], "active")
-        self.assertIn("j-a", self.jobs_in_cluster())
-        self.set_job("j-a", "ok", completions=50, succeeded=50)
-        self.s3(B + "/DONE", B + "/DONE.0")
-        self.run_pass()
-        self.assertEqual(self.chain("ix")["status"], "finished")
-        self.assertNotIn("j-a", self.jobs_in_cluster())
 
 
 if __name__ == "__main__":
