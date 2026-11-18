@@ -131,7 +131,7 @@ When the user has already specified per-tier backends/models, the agent applies 
 `nrp-monitor setup --non-interactive --triage ... --fixer ...`; do not ask the user to run setup.
 Example configuration: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.1-sol then Claude Sonnet for the fixer:
 ```sh
-nrp-monitor setup --non-interactive --triage gemini:gemini-3.8-flash:lowest,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
+nrp-monitor setup --non-interactive --triage agy:gemini-3.8-flash-low,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
 ```
 
 ## Coordinator commands
@@ -198,8 +198,7 @@ and do not trigger this fallback. The ledger and digest record `plan-fallback`.
 Optional task `postcheck: {"cmd": ["python", "/path/checker.py"], "expect": "PASS"}` declares a trusted read-only local
 checker, executed with exact argv and a 120 s timeout before success; failure wakes the coordinator (or the owner if the
 coordinator cannot be woken). This is a declared contract, not an OS sandbox. Continue/followup agents can rerun it with `nrp-task postcheck`, read their task state folder,
-and use `nrp-task s3 cp URI DEST` for exact objects up to 256 KiB within plan `may_touch` (local downloads only under the
-task's `downloads/`). Success logs capture container stdout before deletion and store `logs/<stage>/outputs.json`; task show
+and inspect S3 objects with `nrp-task s3 ls` or `nrp-task s3 cat`. Success logs capture container stdout before deletion and store `logs/<stage>/outputs.json`; task show
 and continue prompts include the extracted KEY=VALUE lines. Group summaries include checks, outputs and resolution tiers.
 
 skip_reuse fixes a failed stage whose success markers exist, never a failing postcheck; a broken postcheck/acceptance script is the coordinator's problem.

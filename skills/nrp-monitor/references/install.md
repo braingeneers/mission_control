@@ -15,7 +15,7 @@ lab S3, and, for the background repair agents, at least one agent CLI: `claude` 
 Two different things use an assistant. The **session** is the assistant you type to: it follows this skill, writes
 `TASK.json` and runs `nrp-monitor task add`. That needs only a shell, so any assistant that loads skills can do it
 (Codex, Claude Code, GitHub Copilot, Gemini CLI, Cursor). The **background agents** are started by the scheduler, not by
-a chat, and today there are three runners: `claude`, `codex` and (read-only triage tier only) `gemini` (agents.md). Neither depends on which assistant started
+a chat, and today there are three runners: `claude`, `codex` and (read-only triage tier only) `agy` (agents.md). Neither depends on which assistant started
 the task, so a Cursor or Gemini session can register work that Claude or Codex repairs overnight.
 
 | Assistant | Loads the skill from | Registers tasks | Reminder hook |
@@ -64,7 +64,7 @@ When the user has already specified per-tier backends/models, the agent applies 
 `nrp-monitor setup --non-interactive --triage ... --fixer ...`; do not ask the user to run setup.
 Current live choice: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.1-sol then Claude Sonnet for the fixer:
 ```sh
-nrp-monitor setup --non-interactive --triage gemini:gemini-3.8-flash:lowest,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
+nrp-monitor setup --non-interactive --triage agy:gemini-3.8-flash-low,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
 ```
 
 Migration unloads the old scheduler, then waits up to 300 seconds for the pass lock (`NRP_MONITOR_MIGRATE_WAIT`).

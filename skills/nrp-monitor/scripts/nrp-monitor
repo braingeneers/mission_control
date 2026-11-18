@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""nrp-monitor: agent-free NRP monitoring, approved tasks and Job chains (no model runs unless something needs a decision).
+"""nrp-monitor: agent-free NRP monitoring, approved tasks (no model runs unless something needs a decision).
 (Former name nrp-watchdog: the old command is a quiet shim, NRP_WATCHDOG_* variables are honored as a fallback, and install.sh migrates the
 old state dir, which stays reachable through a symlink.)
 
@@ -7,14 +7,13 @@ v2 (owner decision 2026-11-05, design docs/design.md): approved work is a TASK.
   nrp-monitor task add TASK.json | list | show NAME | resume NAME [--skip STAGE] [--retries N] [--note TEXT] [--gpu-ok-until DATE] | cancel NAME
   nrp-monitor task handoff NAME FILE                  attach a handoff to a task that was registered without one (written once; see Task field handoff)
   nrp-monitor task stage NAME STAGE --resumable        mark a stage of a registered task as resumable (re-run skips finished items; one 2x deadline resubmit)
-  nrp-monitor setup [--non-interactive ...]          choose which assistant (claude / codex / gemini) runs Tier 1 and Tier 2; writes agents.json
+  nrp-monitor setup [--non-interactive ...]          choose which assistant (claude / codex / agy) runs Tier 1 and Tier 2; writes agents.json
   task add ... --origin-harness t3|claude|codex [--origin-session ID --origin-cwd DIR]   where the coordinator chat runs: the monitor wakes THAT chat
   nrp-monitor digest [--hours 24]                    silent events + what needs the owner
   nrp-task ...                                        (wrapper for `nrp-monitor tool`) the fix agent's only shell tool
   nrp-monitor plan sync PATH#ID [--reopen] | close ID --why TEXT [--force] | list | show ID      plan-run plans (on_done continuation; OFF unless <state>/on_done.enabled exists)
   Task field on_done {plan: PATH#ID, from_step: STEP}: when the task is done, ONE Sonnet continue agent checks the step's "done when"
   and may register the next step (nrp-task next-add) only inside approved_through, never a stop_for_owner step, each step once;
-  for that step it may also write + test code on a monitor/<task> branch (nrp-task code-begin|code-test|code-commit|code-ship), inside may_touch.
   Task field handoff: path to a markdown file (absolute, ~, or relative to the TASK.json's folder) written by the registering agent from
   templates/handoff.md once the monitor is started. `task add` checks it (warns when missing, empty or without a substantial `## Registrar`
   section of 200+ characters; NRP_MONITOR_REQUIRE_HANDOFF=1 refuses instead, like NRP_MONITOR_REQUIRE_CONTINUATION) and COPIES it to
@@ -534,16 +533,15 @@ def clean_env():
 # user has. The next entry is used ONLY when the one before it is unavailable (usage/rate limit, not signed in, CLI missing); a bad
 # answer never fails over. Every failover is a line in the task's events and the digest. Without "tiers" the old `runners` x `models`
 # form still loads and means the same ordered list per tier.
-#   "tiers": {"triage": [{"runner": "gemini", "model": "gemini-3.8-flash", "thinking": "lowest"}, {"runner": "claude", "model": "haiku"}],
+#   "tiers": {"triage": [{"runner": "agy", "model": "gemini-3.8-flash-low"}, {"runner": "claude", "model": "haiku"}],
 #             "task":   [{"runner": "claude", "model": "sonnet"}]}
 # Tier 3 is always the task's coordinator chat (no entry); there is no separate Opus tier.
 # Codex runs `codex exec` with approvals off, a workspace-write sandbox (no network, writes only to the agent's own
 # directories) and an execpolicy rules file generated from the same allowlist: a matching command may use the network,
 # anything else stays in the sandbox. Unlike Claude's dontAsk, a Codex agent can still READ any file the user can.
 AGENTS_CFG, RUNNER_STATE = STATE / "agents.json", STATE / "runners.json"
-KNOWN_RUNNERS = ("claude", "codex", "gemini", "agy")
-GEMINI_TIERS = ("triage",)             # the gemini runner only runs the read-only verdict tier (see exec_gemini); config naming it elsewhere is refused
-THINKING_LEVELS = ("lowest", "low", "medium", "high")
+KNOWN_RUNNERS = ("claude", "codex", "agy")
+READ_ONLY_TIERS = ("triage",)             # the agy runner only runs the read-only verdict tier; config naming it elsewhere is refused
 TIERS = ("pod", "triage", "repair", "repair_auth", "task", "deputy")
 LADDER_STEPS = ("triage", "repair")
 UNAVAILABLE = "AGENT UNAVAILABLE"
@@ -571,27 +569,20 @@ def default_agent_cfg():
 
 
 def check_backend(tier, i, b):
-    """One validated `tiers.<tier>[i]` entry: {runner, model?, thinking?} -> normalised dict. Raises ValueError."""
+    """One validated `tiers.<tier>[i]` entry: {runner, model?} -> normalised dict. Raises ValueError."""
     w = "tiers.%s[%d]" % (tier, i)
-    if not isinstance(b, dict) or set(b) - {"runner", "model", "thinking"}:
-        raise ValueError("%s: an object {runner, model, thinking}" % w)
+    if not isinstance(b, dict) or set(b) - {"runner", "model"}:
+        raise ValueError("%s: an object {runner, model}" % w)
     r = b.get("runner")
     if r not in KNOWN_RUNNERS:
         raise ValueError("%s.runner: one of %s" % (w, "/".join(KNOWN_RUNNERS)))
-    if r in ("gemini", "agy") and tier not in GEMINI_TIERS:
-        raise ValueError("%s: this runner is limited to the %s tier (a read-only verdict); use claude or codex for %s" % (w, "/".join(GEMINI_TIERS), tier))
+    if r == "agy" and tier not in READ_ONLY_TIERS:
+        raise ValueError("%s: this runner is limited to the %s tier (a read-only verdict); use claude or codex for %s" % (w, "/".join(READ_ONLY_TIERS), tier))
     out = {"runner": r}
     if b.get("model") is not None:
         if not isinstance(b["model"], str) or not re.fullmatch(r"[A-Za-z0-9._:/-]{1,64}", b["model"]):
             raise ValueError("%s.model: a model name" % w)
         out["model"] = b["model"]
-    th = b.get("thinking")
-    if th is not None:
-        if r != "gemini":
-            raise ValueError("%s.thinking: only the gemini runner takes a thinking setting" % w)
-        if not ((isinstance(th, str) and th in THINKING_LEVELS) or (isinstance(th, int) and not isinstance(th, bool) and 0 <= th <= 32768)):
-            raise ValueError("%s.thinking: one of %s, or a token budget (integer)" % (w, ", ".join(THINKING_LEVELS)))
-        out["thinking"] = th
     return out
 
 
@@ -670,7 +661,7 @@ def tier_settings(tier, runner):
 
 
 def tier_backends(tier):
-    """The ordered backends a tier may use: `tiers.<tier>` when configured, else the old `runners` x `models` form (the gemini runner only for
+    """The ordered backends a tier may use: `tiers.<tier>` when configured, else the old `runners` x `models` form (the agy runner only for
     the tiers it is limited to)."""
     cfg = agent_cfg()
     if tier == "deputy" and not cfg["tiers"].get(tier):
@@ -678,7 +669,7 @@ def tier_backends(tier):
     if cfg["tiers"].get(tier):
         return [dict(b) for b in cfg["tiers"][tier]]
     return [dict({"runner": r}, **({"model": cfg["models"][tier][r]} if cfg["models"].get(tier, {}).get(r) else {}))
-            for r in cfg["runners"] if r not in ("gemini", "agy") or tier in GEMINI_TIERS]
+            for r in cfg["runners"] if r != "agy" or tier in READ_ONLY_TIERS]
 
 
 def spec_model(spec, runner):
@@ -716,7 +707,7 @@ def limit_hit(rc, out, err):
     """True when a finished agent process answered with a usage limit instead of doing the work."""
     out = (out or "").strip()
     text = out
-    if out.startswith("{"):                                               # claude --output-format json; gemini -o json has `error`
+    if out.startswith("{"):                                               # claude --output-format json; agy --output-format json has `error`
         try:
             j = json.loads(out)
             text = str(j.get("result") or j.get("error") or "")
@@ -898,96 +889,6 @@ def exec_codex(spec, prompt, cwd, timeout, env):
         shutil.rmtree(str(home), ignore_errors=True)
 
 
-# ---- gemini runner (v3): the local `gemini` CLI, read-only verdict tiers only (GEMINI_TIERS) ----------------------
-# Non-interactive (`-p`, prompt on stdin), JSON output, approval mode `default` (anything not allowed is denied: there is nobody to ask).
-# The allowlist is enforced by Gemini CLI's policy engine through an ADMIN policy file written per run (highest priority tier): every tool is
-# denied, then only the same `Bash(prefix:*)` commands and `Read(/dir/**)` paths the Claude runner gets are allowed; edit/write rules are never
-# translated, so a gemini agent cannot change a file. Thinking depth is set through a per-run system settings file
-# (GEMINI_CLI_SYSTEM_SETTINGS_PATH) that defines a model alias with a thinkingConfig; the user's own ~/.gemini is not touched. Documented in the CLI's
-# own docs; the policy enforcement itself has not been exercised against the live model (references/agents.md).
-GEMINI_THINKING = {"lowest": "MINIMAL", "low": "LOW", "medium": "MEDIUM", "high": "HIGH"}
-
-
-def gemini_policy(allowed):
-    """TOML for Gemini CLI's policy engine from a Claude-style allowlist: deny everything, allow the listed commands and read paths."""
-    prefixes, reads = [], []
-    for a in allowed:
-        m = re.fullmatch(r"Bash\((.*?)(?::\*)?\)", a)
-        if m and m.group(1).strip() and '"' not in m.group(1) and "\\" not in m.group(1):
-            prefixes.append(m.group(1).strip())
-            continue
-        m = re.fullmatch(r"Read\(/(/.*?)/\*\*\)", a)
-        if m and "'" not in m.group(1) and ".." not in m.group(1).split("/"):
-            reads.append(m.group(1))
-    out = ['# generated per run by nrp-monitor: deny everything, then allow only what the tier is allowed',
-           '[[rule]]', 'toolName = "*"', 'decision = "deny"', 'priority = 1', '']
-    if prefixes:
-        out += ['[[rule]]', 'toolName = "run_shell_command"', 'commandPrefix = [%s]' % ", ".join(json.dumps(x) for x in prefixes),
-                'decision = "allow"', 'priority = 100', '']
-    for d in reads:                                                      # TOML literal strings ('...') keep the backslashes of the regex as they are
-        rx = re.sub(r"([.^$*+?()\[\]{}|\\])", r"\\\1", d)
-        out += ['[[rule]]', 'toolName = "read_file"', "argsPattern = '.*\"file_path\":\"%s/[^\"]*\".*'" % rx, 'decision = "allow"', 'priority = 100', '']
-    if reads:
-        out += ['[[rule]]', 'toolName = "read_file"', "argsPattern = '\\.\\./'", 'decision = "deny"', 'priority = 900', '']
-    return "\n".join(out) + "\n"
-
-
-def gemini_settings(tier, backend):
-    """(alias or None, settings dict) for the system settings file: the model alias carries the thinking setting; MCP servers, auto-update and
-    usage statistics are off for the unattended run."""
-    st = {"privacy": {"usageStatisticsEnabled": False}, "general": {"disableAutoUpdate": True}, "mcp": {"allowed": []}}
-    th, model = backend.get("thinking"), backend.get("model")
-    if th is None or not model:
-        return model, st
-    cfgc = {"thinkingConfig": ({"thinkingLevel": GEMINI_THINKING[th]} if isinstance(th, str) else {"thinkingBudget": int(th)})}
-    alias = "nrp-monitor-%s" % tier
-    st["modelConfigs"] = {"customAliases": {alias: {"extends": "base", "modelConfig": {"model": model, "generateContentConfig": cfgc}}}}
-    return alias, st
-
-
-def gemini_argv(spec, policy_path, alias):
-    argv = ["gemini", "-p", "Answer now, following the instructions above. Reply with the final answer only.",
-            "--approval-mode", "default", "--skip-trust", "-o", "json", "--admin-policy", str(policy_path)]
-    if alias:
-        argv += ["-m", alias]
-    return argv
-
-
-def exec_gemini(spec, prompt, cwd, timeout, env):
-    if spec["tier"] not in GEMINI_TIERS:                                   # also enforced in the config; never run gemini with write power
-        return "error", "", "the gemini runner only runs the %s tier" % "/".join(GEMINI_TIERS), 1
-    b = spec.get("backend") or {}
-    WORK.mkdir(parents=True, exist_ok=True)
-    home = Path(tempfile.mkdtemp(prefix="gemini-run-", dir=str(WORK)))
-    try:
-        (home / "policy.toml").write_text(gemini_policy(spec["allowed"]))
-        alias, settings = gemini_settings(spec["tier"], b)
-        (home / "settings.json").write_text(json.dumps(settings))
-        argv = gemini_argv(spec, home / "policy.toml", alias)
-        try:
-            r = subprocess.run(argv, input=prompt, capture_output=True, text=True, cwd=str(cwd), timeout=timeout,
-                               env=dict(env, GEMINI_CLI_SYSTEM_SETTINGS_PATH=str(home / "settings.json")))
-        except subprocess.TimeoutExpired:
-            return "timeout", "", "", None
-        if limit_hit(r.returncode, r.stdout, r.stderr):
-            return "limit", r.stdout, r.stderr, r.returncode
-        if auth_hit(r.returncode, r.stdout, r.stderr):
-            return "auth", r.stdout, r.stderr, r.returncode
-        text, err = (r.stdout or "").strip(), False
-        j = {}
-        try:
-            j = json.loads(text)
-            text, err = str(j.get("response") or "").strip(), bool(j.get("error"))
-        except ValueError:
-            pass
-        if spec["json"]:
-            text = json.dumps({"result": text or (r.stderr.strip() or r.stdout.strip())[-300:], "is_error": bool(r.returncode or err),
-                               "total_cost_usd": None, "num_turns": None, "permission_denials": [], "runner": "gemini", "usage": j.get("usage") or j.get("stats")})
-        return "ok", text, r.stderr, r.returncode
-    finally:
-        shutil.rmtree(str(home), ignore_errors=True)
-
-
 # Antigravity hooks use camelCase toolCall payloads, unlike Claude hooks.
 # The gate is a separate immutable copy in the per-run workspace, never agent-authored.
 AGY_GATE = r'''import json, re, shlex, sys
@@ -1059,7 +960,7 @@ def exec_agy(spec, prompt, cwd, timeout, env):
         return "ok", text, r.stderr, r.returncode
 
 
-RUNNER_EXEC = {"claude": exec_claude, "codex": exec_codex, "gemini": exec_gemini, "agy": exec_agy}
+RUNNER_EXEC = {"claude": exec_claude, "codex": exec_codex, "agy": exec_agy}
 
 
 def backend_name(b):
@@ -6099,8 +6000,7 @@ def continue_prompt(t, h, go, held):
             + "\nFollowup (do this in this same agent): " + t.get("followup", "")
             + "\nPostcheck: " + json.dumps(t.get("postcheck_result"))
             + "\nStage outputs: " + json.dumps({s["id"]: s.get("outputs", {}) for s in t["stages"]})
-            + "\nScoped helpers: nrp-task s3 cp URI DEST (small text sidecar, URI under may_touch, DEST under task downloads); "
-              "nrp-task postcheck (rerun the exact declared read-only checker). Read saved logs and notes in the task directory.")
+            + "\nScoped helpers: nrp-task postcheck (rerun the exact declared read-only checker). Read saved logs and notes in the task directory.")
 
 
 def close_continuation(n, status, line):
@@ -7120,7 +7020,6 @@ def cmd_tool(a):
     jobs = {s["job"]: s for s in t["stages"]}
     usage = ("nrp-task show | logs JOB [--tail N] | describe JOB | util JOB | s3 ls URI | s3 cat URI | configmap NAME [--from SUBDIR] | "
              "reship JOB | commit MESSAGE | submit JOB --reason TEXT | delete JOB | plan | next-add FILE | "
-             "code-begin STEP NAME | code-test [-k EXPR] [PATH ...] | code-commit MESSAGE | code-ship | "
              "report RESUBMITTED|STOPPED|DONE|CONTINUED|WAITING|NOT-DONE TEXT")
     if not argv:
         sys.exit(usage)
@@ -7372,11 +7271,10 @@ def write_heartbeat(text):
 
 # ---- setup: choose each tier's backend from the subscriptions the user has (writes agents.json) ----------------------
 # Tier 1 (triage) and Tier 2 (fixer) are configurable; Tier 3 is always the coordinator chat and there is no separate Opus tier.
-SUBSCRIPTIONS = ("claude", "codex", "gemini", "agy", "t3")          # t3 only changes what is explained: it is a harness for the coordinator chat, not a runner
+SUBSCRIPTIONS = ("claude", "codex", "agy", "t3")          # t3 only changes what is explained: it is a harness for the coordinator chat, not a runner
 SETUP_TIERS = (("triage", "Tier 1 triage judge (reads one event, answers CLOSE / ESCALATE)"),
                ("task", "Tier 2 fixer (edits manifests and code, resubmits)"))
-SETUP_DEFAULT_MODEL = {("claude", "triage"): "haiku", ("claude", "task"): "sonnet", ("codex", "triage"): "gpt-6.1-sol", ("codex", "task"): "gpt-6.1-sol",
-                       ("gemini", "triage"): "gemini-3.8-flash"}
+SETUP_DEFAULT_MODEL = {("claude", "triage"): "haiku", ("claude", "task"): "sonnet", ("codex", "triage"): "gpt-6.1-sol", ("codex", "task"): "gpt-6.1-sol"}
 
 
 def installed_runners():
@@ -7390,8 +7288,6 @@ def suggest_tiers(have):
     tri = []
     if "agy" in have:
         tri.append({"runner": "agy", "model": "gemini-3.8-flash-low"})
-    if "gemini" in have:
-        tri.append({"runner": "gemini", "model": SETUP_DEFAULT_MODEL[("gemini", "triage")], "thinking": "lowest"})
     for r in ("claude", "codex"):
         if r in have:
             tri.append({"runner": r, "model": SETUP_DEFAULT_MODEL[(r, "triage")]})
@@ -7404,15 +7300,13 @@ def suggest_tiers(have):
 
 
 def parse_backend_spec(tier, text, i=0):
-    """'runner[:model[:thinking]]' -> a validated backend dict (ValueError names the problem)."""
+    """'runner[:model]' -> a validated backend dict (ValueError names the problem)."""
     parts = [x.strip() for x in text.split(":")]
-    if not parts[0] or len(parts) > 3:
-        raise ValueError("backend %r: runner[:model[:thinking]]" % text)
+    if not parts[0] or len(parts) > 2:
+        raise ValueError("backend %r: runner[:model]" % text)
     b = {"runner": parts[0]}
     if len(parts) > 1 and parts[1]:
         b["model"] = parts[1]
-    if len(parts) > 2 and parts[2]:
-        b["thinking"] = int(parts[2]) if parts[2].isdigit() else parts[2]
     return check_backend(tier, i, b)
 
 
@@ -7469,7 +7363,7 @@ def cmd_setup(a):
     interactive = not a.non_interactive
     if interactive and not sys.stdin.isatty() and not os.environ.get("NRP_MONITOR_SETUP_ANYSTDIN"):
         sys.exit("setup is interactive and stdin is not a terminal. Run it in a terminal, or pass --non-interactive "
-                 "[--subscriptions claude,gemini] [--triage RUNNER:MODEL[:THINKING],...] [--fixer RUNNER:MODEL,...] [--dry-run].")
+                 "[--subscriptions claude,agy] [--triage RUNNER:MODEL[:THINKING],...] [--fixer RUNNER:MODEL,...] [--dry-run].")
     print("NRP monitor setup: which assistants run its background agents (Tier 1 triage, Tier 2 fixer).")
     print("Tier 3 is always the chat that owns the work (woken once per finished step, or as a last resort); there is no separate Opus tier.\n")
     print("Installed CLIs: %s" % (", ".join("%s (%s)" % (r, shutil.which(r)) for r in installed) or "none found on PATH"))
@@ -7508,7 +7402,7 @@ def cmd_setup(a):
             print("\n%s\n  suggested, in order (the next is used only when the one before is unavailable):" % title)
             for i, b in enumerate(default, 1):
                 print("   %d. %s" % (i, backend_label(b)))
-            print("  Enter to accept, or type backends as runner[:model[:thinking]],... (e.g. gemini:gemini-3.8-flash:lowest,claude:haiku).")
+            print("  Enter to accept, or type backends as runner[:model],... (e.g. agy:gemini-3.8-flash-low,claude:haiku).")
             while True:
                 ans = setup_ask("%s backends" % ("Tier 1" if tier == "triage" else "Tier 2"), "")
                 try:
@@ -7954,8 +7848,8 @@ def main():
     t.set_defaults(f=cmd_status)
     x = sub.add_parser("setup", help="choose which assistant runs each tier (Claude Code / Codex / Gemini CLI) from the subscriptions you have; writes agents.json after showing a diff")
     x.add_argument("--non-interactive", action="store_true", help="no prompts: use the flags, else the suggestions for the installed CLIs, and write")
-    x.add_argument("--subscriptions", help="comma list of what you have: claude,codex,gemini,t3 (default: the installed CLIs)")
-    x.add_argument("--triage", help="Tier 1 backends in order, RUNNER[:MODEL[:THINKING]],... (gemini thinking: lowest|low|medium|high or a token budget)")
+    x.add_argument("--subscriptions", help="comma list of what you have: claude,codex,agy,t3 (default: the installed CLIs)")
+    x.add_argument("--triage", help="Tier 1 backends in order, RUNNER[:MODEL],...")
     x.add_argument("--deputy", help="Deputy backends, RUNNER[:MODEL],...; default Claude Sonnet; preserves existing choice when omitted")
     x.add_argument("--fixer", help="Tier 2 backends in order, RUNNER[:MODEL],... (claude or codex)")
     x.add_argument("--dry-run", action="store_true", help="show the diff, write nothing")
