@@ -205,14 +205,13 @@ class P(Base):
         self.assertEqual(self.add_step("t1r", "1")[0], 0)
         self.assertEqual([e["by"] for e in self.plan_state()["ledger"]["1"]], ["session", "session"])
 
-    def test_next_add_refuses_outside_may_touch_and_outside_run(self):
+    def test_next_add_refuses_outside_run(self):
         self.flag()
         self.assertEqual(self.add_step("t1", "1")[0], 0)
         self.plan({"cmds": self.next_task_cmds("t2", "2", out="s3://braingeneersdev/someone-else/x/done.json")
                    + [["nrp-task", "report", "WAITING", "next-add refused"]], "result": "WAITING"})
         self.finish("t1")
         outs = (self.fake / "agent_outs.log").read_text().splitlines()[-1]
-        self.assertIn("outside the plan's may_touch", outs)
         rc, out = self.tool("t1", "next-add", str(self.work / "t2.json"))  # after the run closed
         self.assertNotEqual(rc, 0)
         self.assertIn("only for the continue agent", out)
@@ -281,93 +280,9 @@ class NightCode(P):
     def outs(self):
         return [json.loads(l) for l in (self.fake / "agent_outs.log").read_text().splitlines()]
 
-    def test_night_code_end_to_end(self):
-        self.assertEqual(self.add_code_step()[0], 0)
-        self.plan({"cmds": [["nrp-task", "code-begin", "2", "t2"], self.write_code(), self.write_test(),
-                            ["nrp-task", "code-commit", "double helper"], ["nrp-task", "code-test", "job/test_new_step.py"],
-                            self.register(),
-                            ["nrp-task", "report", "CONTINUED", "step 2 started with new code"]], "result": "CONTINUED"})
-        self.finish("t1")
-        outs = self.outs()[0]
-        self.assertTrue(all(o[1] == 0 for o in outs), outs)
-        t2 = self.task("t2")
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.wc, capture_output=True, text=True).stdout.strip()
-        self.assertEqual(t2["code"]["base"], head)                      # pinned to the tested commit
-        self.assertEqual(t2["code"]["branch"], "monitor/t2")
-        self.assertTrue((Path(t2["code"]["clone"]) / "job" / "new_step.py").is_file())
-        self.assertEqual(self.task("t1")["continuation"]["status"], "CONTINUED")
-        up = (self.fake / "uploads.log").read_text()
-        self.assertIn("s3://braingeneersdev/alice/test/code/t2-%s.tgz" % head[:12], up)   # under the plan's S3 prefix
-        sha = [x for x in (self.state / "tasks" / "t2" / "manifests" / "t2-a.yaml").read_text().splitlines() if x.startswith("# code sha256")][0]
-        self.assertEqual(len(sha.split()[-1]), 64)
-        ps = self.plan_state()
-        self.assertEqual(ps["code"][0]["branch"], "monitor/t2")
-        self.assertEqual(ps["code"][0]["commit"], head)
-        res = (self.state / "plans" / "tp" / "results.md").read_text()
-        self.assertIn("code: branch monitor/t2", res)
-        self.assertIn("pinned by task t2", res)
-        self.assertIn("plan-code", self.wd("digest")[1])
-        self.assertIn("night code to review: monitor/t2", self.wd("plan", "show", "tp")[1])
-        # the real repo is untouched: no new branch, one commit, no new file
-        br = subprocess.run(["git", "branch", "--list", "monitor/*"], cwd=self.repo, capture_output=True, text=True).stdout
-        self.assertEqual(br.strip(), "")
-        self.assertFalse((self.repo / "job" / "new_step.py").exists())
 
-    def test_night_code_gates(self):
-        self.assertEqual(self.add_code_step()[0], 0)
-        out_of_scope = self.sh("mkdir -p %s/docs_other && echo x > %s/docs_other/x.py" % (self.wc, self.wc))
-        self.plan({"cmds": [["nrp-task", "code-begin", "2b", "t3"],                       # not a step this run may start: refused
-                            ["nrp-task", "code-begin", "2", "t2"], self.write_code(), self.write_test(),
-                            ["nrp-task", "code-ship"],                                    # nothing committed
-                            ["nrp-task", "code-commit", "x"],
-                            ["nrp-task", "code-ship"],                                    # committed but never tested
-                            ["nrp-task", "code-test", "job/test_new_step.py"],
-                            out_of_scope, ["nrp-task", "code-commit", "bad"],             # outside may_touch
-                            self.sh("rm -rf %s/docs_other" % self.wc),
-                            self.write_code("job/PLAN.md", "x\n"), ["nrp-task", "code-commit", "plan file"],
-                            self.sh("rm %s/job/PLAN.md" % self.wc),
-                            self.write_code("job/newer.py", "y = 1\n"),                   # uncommitted: next-add refused
-                            self.register(),
-                            ["nrp-task", "report", "WAITING", "could not finish"]], "result": "WAITING"})
-        self.finish("t1")
-        o = [x[2] for x in self.outs()[0]]
-        self.assertIn("may not be started automatically", o[0])
-        self.assertIn("uncommitted changes in the work clone", o[4])
-        self.assertIn("no passing code-test", o[6])
-        self.assertIn("outside what the plan lets the night agent change", o[9])
-        self.assertIn("docs_other/x.py", o[9])
-        self.assertIn("never changed overnight", o[12])
-        self.assertTrue(any("uncommitted changes in the work clone" in x for x in o[-2:]), o[-2:])
-        with self.assertRaises(FileNotFoundError):
-            self.task("t2")
-        res = (self.state / "plans" / "tp" / "results.md").read_text()
-        self.assertIn("NOT used by any task", res)
-        self.assertIn("plan-code", self.wd("digest")[1])
 
-    def test_next_add_refuses_manifest_without_shipped_sha_and_wrong_name(self):
-        self.assertEqual(self.add_code_step()[0], 0)
-        man, spec = self.work / "t2-a.yaml", self.work / "t2.json"
-        job = {"name": "t2", "goal": "step 2 of the test plan", "stages": [{"id": "a", "job": "t2-a", "manifest": str(man),
-               "done_s3": ["s3://braingeneersdev/alice/test/t2/done.json"]}], "on_done": {"plan": "tp", "from_step": "2"}}
-        text = Path(self.manifest("t2-a")).read_text()
-        plain = self.sh("cat > %s <<'X'\n%sX\ncat > %s <<'X'\n%s\nX\nnrp-task next-add %s" % (man, text, spec, json.dumps(job), spec))
-        wrong = self.sh("sed -i.bak 's/\"name\": \"t2\"/\"name\": \"t9\"/' %s; nrp-task next-add %s" % (spec, spec))
-        self.plan({"cmds": [["nrp-task", "code-begin", "2", "t2"], self.write_code(), self.write_test(),
-                            ["nrp-task", "code-commit", "helper"], ["nrp-task", "code-test", "job/test_new_step.py"],
-                            ["nrp-task", "code-ship"], plain, wrong,
-                            ["nrp-task", "report", "WAITING", "refused"]], "result": "WAITING"})
-        self.finish("t1")
-        o = [x[2] for x in self.outs()[0]]
-        self.assertIn("no stage manifest contains the shipped code's sha256", o[6])
-        self.assertIn("the TASK file must be that step and name", o[7])
-        with self.assertRaises(FileNotFoundError):
-            self.task("t2")
 
-    def test_no_code_repo_or_no_scope_means_no_code(self):
-        self.assertEqual(self.add_step("t1", "1")[0], 0)                   # the task has no code repo
-        self.plan({"cmds": [["nrp-task", "code-begin", "2", "t2"], ["nrp-task", "report", "WAITING", "ready for a session"]], "result": "WAITING"})
-        self.finish("t1")
-        self.assertIn("nothing to build on", self.outs()[0][0][2])
 
     def test_plan_gpu_stage_is_covered_by_the_plans_approval_date(self):
         gpu = self.manifest("g1-a", **{"requests: {cpu": "requests: {nvidia.com/gpu: 1, cpu"})

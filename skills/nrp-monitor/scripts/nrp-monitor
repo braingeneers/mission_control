@@ -5820,7 +5820,7 @@ def parse_run_block(section):
         raw[k.strip()] = v.strip()
     h = {"plan": raw.get("plan", ""), "approval": raw.get("approval", ""), "steps": split_list(raw.get("steps")),
          "approved_through": raw.get("approved_through", "none").strip() or "none",
-         "stops": split_list(raw.get("stop_for_owner") or raw.get("stop_for_hunter")), "may_touch": split_list(raw.get("may_touch")),
+         "stops": split_list(raw.get("stop_for_owner") or raw.get("stop_for_hunter")), "may_touch": [],
          "templates": split_list(raw.get("templates")), "next": {}}
     h["fallback"] = raw.get("fallback", "on").lower()
     try:
@@ -5884,9 +5884,6 @@ def parse_run_block(section):
         bad += ["%s: unknown step %s" % (k, s) for s in h[k] if s not in known]
     for a, bs in h["next"].items():
         bad += ["next: unknown step %s" % s for s in [a] + bs if s not in known]
-    for u in h["may_touch"]:
-        if u.startswith("s3://") and not re.match(r"^s3://[^/]+/.+", u):
-            bad.append("may_touch: %s must be a full s3://bucket/prefix/" % u)
     if bad:
         raise ChainError("run block: " + "; ".join(bad))
     return h
@@ -6092,7 +6089,6 @@ def continue_prompt(t, h, go, held):
            "may_touch": ", ".join(h["may_touch"]) or "(not set: only the outputs this plan names)",
            "go": ", ".join(go) or "NONE (do not register anything)",
            "held": "\n".join("  - step %s: %s" % x for x in held) or "  (none)",
-           "code_scope": ", ".join(code_scope_dirs(h)) or "NONE (the plan names no repo folder: write no code)",
            "plan_file": str(d / "plan.md"), "files": str(d / "files"), "work": str(d / "work"), "dir": str(task_dir(t["name"])),
            "stages": "\n".join("  - %s job=%s outputs=%s" % (s["id"], s["job"], ", ".join(s["done_s3"])) for s in t["stages"]),
            "notes": t.get("notes") or "(none)", "clone": (t.get("code") or {}).get("clone", "(no code clone)")}
@@ -6171,16 +6167,7 @@ def close_continuation(n, status, line):
                     if event:
                         cur["stop_event_id"] = event
             task_txn(n, stop_wake)
-    cc = (task_load(n).get("continuation") or {}).get("code")
     extra = ""
-    if cc:                                                              # night code: always say where it is, used or not
-        used = cc["name"] in reg
-        extra = " | code: branch %s in %s @ %s, %d commit(s), tests %s, %s" % (
-            cc["branch"], cc["dir"], code_head(cc["dir"])[:10] if os.path.isdir(cc["dir"]) else "?", len(cc.get("commits") or []),
-            "green" if any(x["rc"] == 0 and not x["dirty"] for x in cc.get("tests") or []) else "not green",
-            "pinned by task %s" % cc["name"] if used else "NOT used by any task (review before reuse)")
-        if not used:
-            digest("plan-code", "plan %s step %s: night code left unused on branch %s in %s" % (od["plan"], cc["step"], cc["branch"], cc["dir"]), n)
     with open(plan_dir(od["plan"]) / "results.md", "a") as f:
         f.write("- %s step %s, task %s: %s %s%s\n" % (iso(), od["from_step"], n, status, line, extra))
 
@@ -6497,18 +6484,6 @@ def process_continuations(a, st=None):
     process_plan_fallbacks(a)
 
 
-# ---- plans: code written overnight by the continue agent (design: docs/agents/plan-run/WATCHDOG_ON_DONE.md "Night code") ----
-# For a step it MAY start (approved, not a stop, never started), the continue agent can write and test new code on a branch
-# `monitor/<new-task>` of the plan task's code repo, in a work clone under plans/<id>/work/code-<step>/. Never main, never the real
-# repo: the next session reviews the branch and merges it. Every gate is enforced here: only repo folders named in the plan's
-# `may_touch` may change, the commit passes py_compile, tests ran green on exactly that commit, the code tarball shipped to NRP is
-# built from that commit, and the registered task pins it (code.commit) with a manifest that names the tarball's sha256.
-CODE_TEST_TIMEOUT = 1800
-CODE_MAX_FILES, CODE_MAX_FILE_BYTES, CODE_SHIP_MAX = 200, 1 << 20, 20 << 20
-CODE_NO_TOUCH_TOP = (".git", ".claude", ".agents", ".github")
-CODE_NO_TOUCH_NAMES = ("PLAN.md",)           # the plan's own file: only a session changes what the owner approved
-
-
 def plan_gpu_cover(od):
     """Why a GPU stage of this plan task needs no gpu_ok_until: the plan's approval (with its date) covers GPU stages of its
     approved steps (owner decision 2026-11-06). None when the task is not a plan step or the approval line has no ISO date."""
@@ -6517,185 +6492,6 @@ def plan_gpu_cover(od):
     h = plan_header(od["plan"]) or {}
     m = re.search(r"\d{4}-\d{2}-\d{2}", h.get("approval", ""))
     return "plan %s approved %s" % (od["plan"], m.group(0)) if m else None
-
-
-def cgit(*args, cwd):
-    """git for night-code work clones: no hooks (the agent can write into .git), fixed identity."""
-    return subprocess.run(["git", *GIT_ID, "-c", "core.hooksPath=/dev/null", *args], cwd=cwd, capture_output=True, text=True, timeout=600)
-
-
-def code_scope_dirs(h):
-    return [u.strip("/") + "/" for u in h["may_touch"] if not u.startswith("s3://") and u.strip("/")]
-
-
-def code_changes(d):
-    """Repo-relative paths that differ from HEAD in work clone `d` (compiled caches ignored); renames list both ends."""
-    out, items = [], git("status", "--porcelain", "-z", "--untracked-files=all", cwd=d).stdout.split("\0")
-    i = 0
-    while i < len(items):
-        e = items[i]
-        i += 1
-        if len(e) < 4:
-            continue
-        paths = [e[3:]]
-        if e[0] in "RC" and i < len(items):
-            paths.append(items[i])
-            i += 1
-        out += [x for x in paths if "__pycache__" not in x.split("/") and not x.endswith(".pyc")]
-    return sorted(set(out))
-
-
-def code_scope_problems(h, files):
-    dirs, bad = code_scope_dirs(h), []
-    for f in files:
-        norm = os.path.normpath(f)
-        top = norm.split("/")[0]
-        if norm.startswith("..") or os.path.isabs(norm):
-            bad.append("%s (outside the repo)" % f)
-        elif top in CODE_NO_TOUCH_TOP or os.path.basename(norm) in CODE_NO_TOUCH_NAMES:
-            bad.append("%s (never changed overnight)" % f)
-        elif not any(norm.startswith(x) for x in dirs):
-            bad.append("%s (not under the plan's may_touch repo folders: %s)" % (f, ", ".join(dirs) or "none named"))
-    return bad
-
-
-def code_head(d):
-    return cgit("rev-parse", "HEAD", cwd=d).stdout.strip()
-
-
-def code_need(t):
-    cont, od = t.get("continuation") or {}, t.get("on_done") or {}
-    if cont.get("state") != "running" or not od:
-        sys.exit("code tools are only for the continue agent of a finished plan task")
-    cc = cont.get("code")
-    return cont, od, cc
-
-
-def tool_code(n, t, c, rest):
-    """nrp-task code-begin STEP NAME | code-test [-k EXPR] [PATH ...] | code-commit MESSAGE | code-ship  (continue agent only)."""
-    cont, od, cc = code_need(t)
-    h = plan_header(od["plan"])
-    if c == "code-begin":
-        if len(rest) != 2:
-            sys.exit("nrp-task code-begin STEP NEW-TASK-NAME   (STEP = the step you will register; NAME = lowercase, digits, -)")
-        step, name = rest
-        go, held = next_steps(h, od["from_step"])
-        if step not in go:
-            sys.exit("code-begin refused: step %r may not be started automatically (%s). Report WAITING instead." %
-                     (step, dict(held).get(step, "not a next step of %s" % od["from_step"])))
-        if cc:
-            sys.exit("code-begin refused: this run already began code for step %s (%s); one code workspace per run" % (cc["step"], cc["name"]))
-        if not TASK_RE.match(name) or task_load(name):
-            sys.exit("code-begin refused: NAME must match %s and not be an existing task" % TASK_RE.pattern)
-        if not t.get("code"):
-            sys.exit("code-begin refused: the finished task has no code repo, so there is nothing to build on. Report WAITING (ready for a session).")
-        if not code_scope_dirs(h):
-            sys.exit("code-begin refused: the plan's may_touch names no repo folder, so no code may be written. Report WAITING.")
-        pc = t["code"]
-        d = plan_dir(od["plan"]) / "work" / ("code-%s" % step)
-        shutil.rmtree(d, ignore_errors=True)
-        base = code_head(pc["clone"])
-        r = git("clone", "-q", "--no-checkout", pc["clone"], str(d))
-        if r.returncode:
-            sys.exit("code-begin: clone failed: %s" % r.stderr.strip()[:200])
-        folders = sorted({x.strip("/") for x in [pc.get("subdir") or ""] + code_scope_dirs(h) if x.strip("/")})
-        if folders:
-            cgit("sparse-checkout", "set", "--cone", *folders, cwd=str(d))
-        r = cgit("checkout", "-q", "-b", "monitor/" + name, base, cwd=str(d))
-        if r.returncode:
-            sys.exit("code-begin: checkout failed: %s" % r.stderr.strip()[:200])
-        rec = {"step": step, "name": name, "dir": str(d), "branch": "monitor/" + name, "base": base, "subdir": pc.get("subdir") or "",
-               "tests": [], "commits": [], "shipped": None}
-        task_txn(n, lambda t: (t["continuation"].update(code=rec), tev(t, "night code begun for step %s: branch monitor/%s in %s" % (step, name, d))))
-        plan_txn(od["plan"], lambda st: pev(st, "night code begun for step %s by the continue agent of %s: branch monitor/%s (base %s)" % (step, n, name, base[:10])))
-        print("work clone: %s   (branch %s at %s, a copy of the task's code, never the real repo)\nYou may change only: %s\n"
-              "Write/Edit files there, then: code-test, code-commit MESSAGE, code-ship." % (d, rec["branch"], base[:10], ", ".join(code_scope_dirs(h))))
-        return 0
-    if not cc:
-        sys.exit("%s: run `nrp-task code-begin STEP NAME` first" % c)
-    d = cc["dir"]
-    sub = Path(d) / cc["subdir"]
-    if c == "code-test":
-        args, paths, i = [], [], 0
-        while i < len(rest):
-            if rest[i] == "-k" and i + 1 < len(rest):
-                args += ["-k", rest[i + 1]]
-                i += 2
-                continue
-            p = (Path(d) / rest[i]).resolve()
-            if rest[i].startswith("-") or not p.exists() or not p.is_relative_to(Path(d).resolve()):
-                sys.exit("code-test [-k EXPR] [PATH ...]: PATH = a test file or folder in the work clone, relative to the repo root")
-            paths.append(str(p))
-            i += 1
-        py = os.environ.get("NRP_TASK_PYTHON") or (str(CODE_PYTHON) if CODE_PYTHON and CODE_PYTHON.exists() else sys.executable)
-        env = dict(clean_env(), PYTHONPATH=str(sub), PYTHONDONTWRITEBYTECODE="1")
-        try:
-            r = subprocess.run([py, "-m", "pytest", "-q", "-x", "--no-header", "-p", "no:cacheprovider", *args, *paths], cwd=str(sub), env=env,
-                               capture_output=True, text=True, timeout=CODE_TEST_TIMEOUT)
-            rc, out = r.returncode, r.stdout + r.stderr
-        except subprocess.TimeoutExpired:
-            rc, out = 124, "tests timed out after %d s" % CODE_TEST_TIMEOUT
-        head, dirty = code_head(d), bool(code_changes(d))
-        rec = {"sha": head, "dirty": dirty, "args": " ".join(args + [os.path.relpath(x, d) for x in paths]) or "(all)", "rc": rc, "t": now()}
-        task_txn(n, lambda t: (t["continuation"]["code"]["tests"].append(rec), tev(t, "night code test rc=%d on %s%s: %s" % (rc, head[:10], "+uncommitted" if dirty else "", rec["args"][:80]))))
-        sys.stdout.write(out[-6000:] + "\n")
-        print("code-test: exit %d on commit %s%s" % (rc, head[:10], " (+ uncommitted changes: tests only count once they are committed and re-run)" if dirty else ""))
-        return rc
-    if c == "code-commit":
-        if not rest:
-            sys.exit("nrp-task code-commit MESSAGE")
-        files = code_changes(d)
-        if not files:
-            sys.exit("nothing to commit")
-        bad = code_scope_problems(h, files)
-        if bad:
-            sys.exit("code-commit refused: %d file(s) outside what the plan lets the night agent change:\n  - %s\nUndo those edits first." % (len(bad), "\n  - ".join(bad[:10])))
-        big = [f for f in files if (Path(d) / f).is_file() and (Path(d) / f).stat().st_size > CODE_MAX_FILE_BYTES]
-        if len(files) > CODE_MAX_FILES or big:
-            sys.exit("code-commit refused: %d files (limit %d)%s" % (len(files), CODE_MAX_FILES, ", over 1 MiB: " + ", ".join(big[:3]) if big else ""))
-        for f in [x for x in files if x.endswith(".py") and (Path(d) / x).is_file()]:
-            r = subprocess.run([sys.executable, "-m", "py_compile", str(Path(d) / f)], capture_output=True, text=True)
-            if r.returncode:
-                sys.exit("py_compile failed for %s: %s" % (f, r.stderr.strip()[-300:]))
-        cgit("add", "-A", "--", *files, cwd=d)
-        r = cgit("commit", "-qm", "monitor night code (%s, plan %s step %s): %s" % (n, od["plan"], cc["step"], " ".join(rest)[:200]), cwd=d)
-        if r.returncode:
-            sys.exit("commit failed: %s" % (r.stderr.strip() or r.stdout.strip())[:300])
-        sha = code_head(d)
-        task_txn(n, lambda t: (t["continuation"]["code"]["commits"].append({"sha": sha, "files": len(files), "msg": " ".join(rest)[:150]}),
-                               tev(t, "night code commit %s on %s (%d file(s)): %s" % (sha[:10], cc["branch"], len(files), " ".join(rest)[:120]))))
-        print("committed %s on %s (%d file(s): %s). Now re-run code-test on this commit." % (sha[:10], cc["branch"], len(files), ", ".join(files[:6])))
-        return 0
-    if c == "code-ship":
-        head = code_head(d)
-        if code_changes(d):
-            sys.exit("code-ship refused: uncommitted changes in the work clone (commit them, or undo them, then re-run code-test)")
-        if head == cc["base"]:
-            sys.exit("code-ship refused: the work clone has no commit of yours; the step reuses the task's code, nothing to ship")
-        if not any(x["sha"] == head and x["rc"] == 0 and not x["dirty"] for x in cc["tests"]):
-            sys.exit("code-ship refused: no passing code-test on exactly this commit (%s). Run code-test now." % head[:10])
-        s3 = [u for u in h["may_touch"] if u.startswith("s3://")]
-        if not s3:
-            sys.exit("code-ship refused: the plan's may_touch has no s3:// prefix to put the tarball under")
-        if not sub.is_dir():
-            sys.exit("code-ship refused: %s is not a folder in the work clone" % sub)
-        tgz = WORK / "task" / ("%s-code.tgz" % cc["name"])
-        tgz.parent.mkdir(parents=True, exist_ok=True)
-        ex = [x for p in CODE_SKIP for x in ("--exclude", p)] + [x for e in CODE_SKIP_EXT for x in ("--exclude", "*" + e)]
-        r = subprocess.run(["tar", "czf", str(tgz), *ex, "-C", str(sub), "."], capture_output=True, text=True)
-        if r.returncode or tgz.stat().st_size > CODE_SHIP_MAX:
-            sys.exit("tar failed or archive over %d MiB: %s" % (CODE_SHIP_MAX >> 20, r.stderr.strip()[:200]))
-        sha256 = hashlib.sha256(tgz.read_bytes()).hexdigest()
-        uri = "%scode/%s-%s.tgz" % (s3[0].rstrip("/") + "/", cc["name"], head[:12])
-        u = subprocess.run(aws_cmd() + ["s3", "cp", str(tgz), uri], capture_output=True, text=True, timeout=300, env=aws_env())
-        if u.returncode:
-            sys.exit("upload of the code tarball failed: %s" % u.stderr.strip()[:200])
-        rec = {"uri": uri, "sha256": sha256, "commit": head}
-        task_txn(n, lambda t: (t["continuation"]["code"].update(shipped=rec), tev(t, "night code shipped %s (commit %s, sha256 %s)" % (uri, head[:10], sha256[:16]))))
-        print("shipped: %s\nsha256: %s\ncommit: %s\nPut the sha256 and the commit in the stage manifest (they pin the code the Job runs); "
-              "next-add refuses a manifest that does not contain the sha256." % (uri, sha256, head))
-        return 0
-    sys.exit("unknown code command %s" % c)
 
 
 
@@ -6721,32 +6517,10 @@ def tool_next_add(n, t, rest):
     if step not in go:
         why = dict(held).get(step, "not a next step of %s" % od["from_step"])
         sys.exit("next-add refused: step %r may not be started automatically (%s). Report WAITING instead." % (step, why))
-    s3_ok = [u for u in h["may_touch"] if u.startswith("s3://")]
     for s in raw.get("stages") or []:
-        for u in list(s.get("done_s3") or []) + list(s.get("after_s3") or []):
-            if s3_ok and not any(str(u).startswith(x) for x in s3_ok):
-                sys.exit("next-add refused: %s is outside the plan's may_touch (%s)" % (u, ", ".join(s3_ok)))
         m = s.get("manifest")
         if isinstance(m, str) and not Path(m).expanduser().resolve().is_relative_to(plan_dir(od["plan"]).resolve() / "work"):
             sys.exit("next-add refused: manifest %s must be a file you wrote under %s" % (m, plan_dir(od["plan"]) / "work"))
-    cc = cont.get("code")
-    changed = False
-    if cc:
-        if step != cc["step"] or raw.get("name") != cc["name"]:
-            sys.exit("next-add refused: code was begun for step %s as task %s; the TASK file must be that step and name" % (cc["step"], cc["name"]))
-        head = code_head(cc["dir"])
-        if code_changes(cc["dir"]):
-            sys.exit("next-add refused: uncommitted changes in the code work clone (code-commit, then code-test, code-ship)")
-        changed = head != cc["base"]
-        if changed:
-            sh = cc.get("shipped") or {}
-            if not any(x["sha"] == head and x["rc"] == 0 and not x["dirty"] for x in cc["tests"]):
-                sys.exit("next-add refused: no passing code-test on exactly the committed code %s" % head[:10])
-            if sh.get("commit") != head:
-                sys.exit("next-add refused: the shipped tarball is not built from the committed code %s (run code-ship)" % head[:10])
-            mans = [Path(x["manifest"]).expanduser() for x in raw.get("stages") or [] if isinstance(x.get("manifest"), str)]
-            if not any(m.is_file() and sh["sha256"] in m.read_text() for m in mans):
-                sys.exit("next-add refused: no stage manifest contains the shipped code's sha256 %s (the Job would not run the pinned code)" % sh["sha256"][:16])
     hp = raw.get("handoff")
     if isinstance(hp, str) and hp and not handoff_path(hp, str(p)).resolve().is_relative_to(plan_dir(od["plan"]).resolve() / "work"):
         sys.exit("next-add refused: handoff %s must be a file you wrote under %s" % (hp, plan_dir(od["plan"]) / "work"))
@@ -6757,23 +6531,12 @@ def tool_next_add(n, t, rest):
     raw["origin"] = {k: o[k] for k in ORIGIN_FIELDS if o.get(k)} or None
     raw.pop("mode", None)
     carry = {k: t["code"][k] for k in ("pkg_dir", "extra_pkg_dirs") if (t.get("code") or {}).get(k)}     # what reship packs stays declared
-    if cc:
-        raw["code"] = dict({"repo": cc["dir"], "commit": head, "subdir": cc["subdir"]}, **carry)      # pinned: the new task runs exactly this commit
-    elif t.get("code"):
+    if t.get("code"):
         raw["code"] = dict({"repo": t["code"]["clone"], "subdir": (raw.get("code") or {}).get("subdir") or t["code"].get("subdir") or ""}, **carry)
     else:
         raw.pop("code", None)
     rc = task_add_raw(raw, str(p), by="continuation", parent=n)
     task_txn(n, lambda t: t["continuation"].setdefault("registered", []).append(raw["name"]))
-    if changed:
-        nt = task_load(raw["name"]) or {}
-        clone = (nt.get("code") or {}).get("clone", cc["dir"])
-        rec = {"step": step, "task": raw["name"], "branch": cc["branch"], "commit": head, "clone": clone, "tarball": (cc.get("shipped") or {}).get("uri"),
-               "files": sum(x["files"] for x in cc["commits"]), "t": iso()}
-        plan_txn(od["plan"], lambda st: (st.setdefault("code", []).append(rec),
-                 pev(st, "night code for step %s registered: branch %s @ %s, task %s, tests green" % (step, cc["branch"], head[:10], raw["name"]))))
-        digest("plan-code", "plan %s step %s: night code on branch %s @ %s (%d file(s), tests green, tarball %s). Review and merge in a session: "
-               "git fetch %s %s" % (od["plan"], step, cc["branch"], head[:10], rec["files"], rec["tarball"], clone, cc["branch"]), raw["name"])
     return rc
 
 
@@ -7427,38 +7190,6 @@ def cmd_tool(a):
         result = run_postcheck(t)
         print(json.dumps(result))
         return 0 if result["ok"] else 1
-    if c == "s3" and rest[:1] == ["cp"]:
-        if len(rest) != 3:
-            sys.exit("s3 cp URI DEST")
-        uri, dest = rest[1:]
-        h = plan_header((t.get("on_done") or {}).get("plan")) or {}
-        if not any(uri.startswith(prefix.rstrip("/") + "/") for prefix in h.get("may_touch", []) if prefix.startswith("s3://")):
-            sys.exit("source outside plan may_touch")
-        if dest.startswith("s3://"):
-            if not any(dest.startswith(prefix.rstrip("/") + "/") for prefix in h.get("may_touch", []) if prefix.startswith("s3://")):
-                sys.exit("destination outside plan may_touch")
-            target = dest
-        else:
-            root = (task_dir(n) / "downloads").resolve()
-            target = Path(dest).resolve()
-            if not target.is_relative_to(root):
-                sys.exit("destination must be under task downloads")
-        if not s3_split(uri) or (dest.startswith("s3://") and not s3_split(dest)):
-            sys.exit("copy requires exact object URIs")
-        bucket, key = s3_split(uri)
-        head = subprocess.run(aws_cmd() + ["s3api", "head-object", "--bucket", bucket, "--key", key],
-                              capture_output=True, text=True, timeout=120, env=aws_env())
-        try:
-            size = json.loads(head.stdout)["ContentLength"]
-        except (ValueError, KeyError):
-            sys.exit("cannot verify small object size")
-        if head.returncode or not isinstance(size, int) or not 0 <= size <= 256 * 1024:
-            sys.exit("copy limited to objects up to 256 KiB")
-        if isinstance(target, Path):
-            target.parent.mkdir(parents=True, exist_ok=True)
-        result = subprocess.run(aws_cmd() + ["s3", "cp", uri, str(target)], capture_output=True, text=True, timeout=120, env=aws_env())
-        print(result.stdout[-1000:])
-        return result.returncode
     if c == "s3":
         if len(rest) != 2 or rest[0] not in ("ls", "cat"):
             sys.exit("nrp-task s3 ls|cat s3://bucket/key")
@@ -7601,8 +7332,7 @@ def cmd_tool(a):
         return 0
     if c == "next-add":
         return tool_next_add(n, t, rest)
-    if c in ("code-begin", "code-test", "code-commit", "code-ship"):
-        return tool_code(n, t, c, rest)
+
     if c == "report":
         kinds = ("CONTINUED", "WAITING", "NOT-DONE", "STOPPED") if (t.get("continuation") or {}).get("state") == "running" \
             else ("RESUBMITTED", "STOPPED", "DONE", "UTIL_OK")
