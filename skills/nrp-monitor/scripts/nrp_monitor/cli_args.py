@@ -8,6 +8,7 @@ def monitor_parser():
     ap = argparse.ArgumentParser(description=_m_cli.__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="one pass")
+    r.add_argument("--shadow", action="store_true", help="isolated read-only comparison; requires scratch NRP_MONITOR_STATE")
     r.add_argument("--dry-run", action="store_true", help="print what would be launched; no claude, no notification, no state change")
     r.add_argument("--fake-util", metavar="FILE", help="use FILE as nrp-util-check output (test)")
     r.add_argument("--fake-finished", metavar="JOBS", help="comma-separated registered jobs to treat as finished (test)")

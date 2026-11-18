@@ -65,6 +65,10 @@ def save_merged(st):
 
 def cmd_run(a):
     try:
+        if getattr(a, "shadow", False):
+            from .shadow import isolated_pass
+            with isolated_pass():
+                return cmd_run_pass(a)
         return cmd_run_pass(a)
     finally:
         _m_state.S3_PASS = None
