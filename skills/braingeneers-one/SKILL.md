@@ -118,22 +118,31 @@ contracts, after deciding whether documentation alone answers the question.
 | --- | --- |
 | Load, analyze, visualize, or export neuronal spike trains with SpikeLab | `spikelab-analysis-implementer` |
 | Build, understand, debug, or make Recipes from lab Nextflow workflows; investigate a workflow run | `workflow-authoring` |
-| Build images for, submit, monitor, or troubleshoot NRP Nautilus batch jobs, including hosted LLMs or Brave Search | `nrp-cluster` |
-| Follow approved NRP work unattended (staged Jobs, exact success markers, utilization checks, tiered repair and escalation to the plan's own coordinator chat, continuing the approved plan) | `nrp-monitor` |
+| Manage direct NRP Nautilus batch jobs, including jobs that use hosted LLMs or Brave Search | `nrp-cluster` for general job work. Use `nrp-monitor` for approved unattended work or an already registered Monitor task. |
 | Find, search, verify, or download datasets; author Uploader metadata; prepare DANDI/GEO publication or shared collections | `data-explorer-cli-access` |
 | Find/read Slack conversations or send requested replies/email; diagnose, develop, or package Mission Control services and protected APIs | `mission-control-services-management` |
 | Map or refresh a code repository's `.code-summaries/` navigation index before reading its source | `summarize-codebase` |
 | Trace a manuscript figure, caption, number, or paragraph to its builder, data, and render; keep paper figures in sync with code | `paper-map` |
 | Style, check, or assemble publication figures (legends, whitespace, role-based text sizes, the Styler) | `figure-style` |
 
+For Workflows portal runs, including Recipes that run on NRP, start with
+`workflow-authoring`. Nextflow owns submission and retries for its tasks. Add
+`mission-control-services-management` if the evidence points to the Workflows
+service infrastructure or proxy.
+
+For direct NRP jobs, use `nrp-cluster` to build images, prepare and submit jobs,
+check progress or wait briefly during the session, or diagnose failures. When the
+user wants approved work to continue unattended, apply NRP Cluster's job sizing
+and policy rules first, then use `nrp-monitor` to register the work. For example,
+Monitor can verify a batch's S3 outputs overnight and start an approved aggregation job.
+For status or follow-up on an already registered task, start with `nrp-monitor`.
+
 For a combined request, load the specialists needed for the next action. For
 example, finding a dataset and analyzing it uses Data Explorer followed by
-SpikeLab; explicitly running that analysis on NRP also needs NRP Cluster.
-Workflow-run failures start with Workflow Authoring; infrastructure or proxy
-failures may additionally need Services Management. Do not suggest cluster
-execution merely because analysis is involved. Ask about the desired outcome
-when ambiguity would change the action, scientific method, or publication target.
-Do not route unrelated requests into this suite.
+SpikeLab. Add NRP Cluster if the user explicitly asks to run that analysis on NRP.
+Do not suggest cluster execution merely because analysis is involved. Ask about
+the desired outcome when ambiguity would change the action, scientific method,
+or publication target. Do not route unrelated requests into this suite.
 
 ## Load or install the specialist
 
