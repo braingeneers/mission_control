@@ -1,5 +1,11 @@
 # Log: nrp-monitor rewrite (newest first)
 
+## 2026-11-18 — post-swap fixes (main session)
+- 7944723: launchd now reads the utilization policy (install.sh copies it to the state dir; an unreadable file falls through). Verified: 0 policy warnings in the 12:47 pass (was every pass since 2026-11-10).
+- NRP violations research (Sonnet, read-only): thresholds match NRP's policy page (GPU >40%, CPU 20-200%, RAM 20-150%, 1 CPU/2GB exempt; our local override already has cpu_band [0.2, 2.0]). NRP's per-pod verdicts come from https://portal.nrp.ai/rpc `user.GetUserInfo` (Violations page nrp.ai/userinfo), browser CILogon cookie only; no Thanos metric or k8s label carries them. NRP's namespace recording rules use container_memory_rss; we use working set (higher), so NRP may flag memory LOW where we don't (inference). Options to Hunter: A flag on the stricter of rss/working set (recommended); B ask NRP support for a portal token. Undecided.
+- c440aae: session-start coordinator notice scoped to the current chat (T3CODE_THREAD_ID / session id vs origin link); unknown chat gets a count only. Request from Hunter via the t71 chat. Display only.
+- f49fe30: quiet status shows excluded nodes as one count line (full list in `status` and digest). "Need the owner" stays global (Hunter agreed). Suite 667 passed.
+
 ## 2026-11-18 — R4 swap: rewrite installed and merged (main session)
 - Hunter (verbatim, on the "nothing installed until you say so" line): "wdym installed? shouldnt this be the same now and we use the new version? if it breaks we just fix it". Then: "once you have it fixed so agents can use we will tell the other threads what was done and if there are problems to send your way for fixing". Day shadow loop stopped after pass 1 (no longer meaningful).
 - Backup before swap: `~/.local/share/nrp-monitor-backup/bin-pre-rewrite-20261118T1201/` (old bin files + plist) and `state-pre-rewrite-20261118T1201.tgz` (state without logs). Rollback: bootout label, copy bin files back to ~/.local/bin, trash ~/.local/bin/nrp_monitor, restore plist, bootstrap.
