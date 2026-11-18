@@ -1,5 +1,10 @@
 # Log: nrp-monitor rewrite (newest first)
 
+## 2026-11-18 — R3b pieces 1-2 (relay; pieces 3-4 pending)
+- `316f168` task state machine; `b8bcff9` failure ladder as data. Each verified alone in a clean scratch worktree: 587 passed (piece 1 236 s, piece 2 263 s).
+- Package lines 9021 (4e1a038) -> 8986 (b8bcff9). handle_failure 112 -> 17 lines; its guards/tiers are a 172-line LADDER section.
+- No test files changed. Piece 3 (cluster snapshot) is uncommitted with 1 failing test; piece 4 (agent BACKENDS) is a drafted script. See HANDOFF.md.
+
 ## 2026-11-18 — R3a package move
 - Commits: baseline `88ef48f` (includes registered C1-C4); package implementation `512a77f`, fixture targets `6805600`, fresh test-package identity `9782a7b`; documentation follows it on the same branch.
 - AST splitter `/tmp/r3a_split.py` assigned original source nodes by DESIGN section and helper overrides; all 350 functions/classes accounted for. Bodies normalize identically except the sibling `nrp-util-check` path and the two retained C2 repairs below.
