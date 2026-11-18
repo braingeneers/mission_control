@@ -1113,7 +1113,7 @@ services:
   # and digest come from service/image.lock. The same image runs the per-paper NRP Jobs.
   # Uploads use relay mode because the braingeneers bucket CORS only allows the uploader origins.
   lit-map:
-    image: hschweiger15/lit-map-service:20261117-41bbc2ee@sha256:5fd27ac79305620c830fec90975ac238a60eb55a9856f3038660ee4019af3f09
+    image: hschweiger15/lit-map-service:20261117-d97eb874@sha256:6c57d6ffe16c200d7f301847076f3cae6f1215a2566041fc661a2b99622ecb96
     container_name: lit-map
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1141,9 +1141,9 @@ services:
       LITMAP_KUBECONFIG: "/kube/config"
       LITMAP_K8S_NAMESPACE: "braingeneers"
       # NRP Jobs run this same image (keep identical to the image above).
-      LITMAP_JOB_IMAGE: "hschweiger15/lit-map-service:20261117-41bbc2ee@sha256:5fd27ac79305620c830fec90975ac238a60eb55a9856f3038660ee4019af3f09"
+      LITMAP_JOB_IMAGE: "hschweiger15/lit-map-service:20261117-d97eb874@sha256:6c57d6ffe16c200d7f301847076f3cae6f1215a2566041fc661a2b99622ecb96"
       LITMAP_MAX_JOBS: "2"
-      LITMAP_UPLOAD_MODE: "relay"
+      LITMAP_UPLOAD_MODE: "presigned"
       # Admins may delete abusive submissions. Login is CILogon by email, so this is an email list.
       LITMAP_ADMIN_EMAILS: "hschweig@ucsc.edu,dfparks@ucsc.edu"
       LITMAP_TRUST_PROXY: "true"
