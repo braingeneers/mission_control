@@ -33,10 +33,40 @@ def test_semantic_route_skips_and_records(isolated, route, monkeypatch):
 
 
 @pytest.mark.parametrize('verb', ['create', 'delete', 'patch', 'apply', 'replace', 'exec', 'label', 'annotate', 'wait', 'port-forward'])
-def test_kubectl_disallowed_verbs_raise(isolated, verb):
-    with shadow.isolated_pass(), pytest.raises(PermissionError):
-        subprocess.run(['kubectl', '-n', 'fake', verb, 'job', 'fake'])
+def test_kubectl_disallowed_verbs_skipped_never_run(isolated, monkeypatch, verb):
+    calls = []
+    monkeypatch.setattr(subprocess, 'run', lambda argv, **kw: calls.append(argv))
+    with shadow.isolated_pass():
+        assert subprocess.run(['kubectl', '-n', 'fake', verb, 'job', 'fake']).returncode == 125
+    assert calls == []
     assert 'kubectl ' + verb in (isolated / 'shadow-actions.jsonl').read_text()
+
+
+EP = ['--endpoint-url', 'https://s3.example']
+
+
+@pytest.mark.parametrize('argv', [['aws'] + EP + ['s3api', 'head-object', '--bucket', 'b', '--key', 'k', '--output', 'json'],
+                                  ['aws'] + EP + ['--profile', 'p', 's3', 'ls', 's3://b/']])
+def test_aws_reads_allowed(isolated, monkeypatch, argv):
+    calls = []
+    def fake(a, **kw):
+        calls.append(a)
+        return subprocess.CompletedProcess(a, 0, '{}', '')
+    monkeypatch.setattr(subprocess, 'run', fake)
+    with shadow.isolated_pass():
+        assert subprocess.run(argv).returncode == 0
+    assert calls == [argv]
+
+
+@pytest.mark.parametrize('argv', [['aws'] + EP + ['s3', 'cp', '-', 's3://b/k'], ['aws'] + EP + ['s3', 'rm', 's3://b/k'],
+                                  ['aws'] + EP + ['s3api', 'put-object', '--bucket', 'b'], ['aws', '--region', 'x', 's3', 'ls'],
+                                  ['aws'] + EP + ['s3', 'sync', 'a', 's3://b/']])
+def test_aws_writes_and_unknown_shapes_skipped(isolated, monkeypatch, argv):
+    calls = []
+    monkeypatch.setattr(subprocess, 'run', lambda a, **kw: calls.append(a))
+    with shadow.isolated_pass():
+        assert subprocess.run(argv).returncode == 125
+    assert calls == []
 
 
 @pytest.mark.parametrize('verb', ['get', 'describe', 'logs', 'top'])

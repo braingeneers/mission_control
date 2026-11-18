@@ -63,8 +63,22 @@ def _kubectl_verb(argv):
     return args[0] if args else ''
 
 
+def _aws_op(argv):
+    args = list(argv[1:])
+    # Only the monitor's own aws_cmd shape: global --endpoint-url/--profile, then the operation.
+    while args[:1] in (['--endpoint-url'], ['--profile']):
+        args = args[2:]
+    return tuple(args[:2])
+
+
 def _read_command(argv):
-    return isinstance(argv, (list, tuple)) and Path(str(argv[0])).name == 'kubectl' and _kubectl_verb(argv) in ('get', 'describe', 'logs', 'top')
+    if not isinstance(argv, (list, tuple)) or not argv:
+        return False
+    name = Path(str(argv[0])).name
+    if name == 'kubectl':
+        return _kubectl_verb(argv) in ('get', 'describe', 'logs', 'top')
+    # S3 success markers drive most stage decisions; HEAD/list are read-only.
+    return name == 'aws' and _aws_op(argv) in (('s3api', 'head-object'), ('s3', 'ls'))
 
 
 # Semantic boundaries, before any agent scratch setup / outbound IO. Every row
@@ -113,8 +127,9 @@ def isolated_pass():
             return original_run(argv, *args, **kwargs)
         label = Path(str(argv[0])).name if isinstance(argv, (tuple, list)) and argv else 'shell'
         if label == 'kubectl':
+            # Record and report failure (never success) so the rest of the pass is still compared.
             record('kubectl ' + _kubectl_verb(argv))
-            raise PermissionError('shadow kubectl verb allowlist')
+            return subprocess.CompletedProcess(argv, 125, '', 'shadow: kubectl %s skipped' % _kubectl_verb(argv))
         if label == 'nrp-util-check':
             # Execute the reviewed source here, under these same IO gates; never
             # spawn the installed helper, whose GPU fallback uses kubectl exec.
