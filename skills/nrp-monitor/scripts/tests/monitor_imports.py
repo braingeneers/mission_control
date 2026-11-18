@@ -5,6 +5,8 @@ assertions exercise the real package functions, without a shared execution names
 """
 import importlib
 import importlib.machinery
+import importlib.util
+import uuid
 import sys
 import types
 from pathlib import Path
@@ -36,7 +38,7 @@ class MonitorLoader(importlib.machinery.SourceFileLoader):
             return super().exec_module(module)
         package = Path(self.path).resolve().parent / 'nrp_monitor'
         # Unique package identity also isolates deferred relative imports.
-        alias = '_nrp_monitor_' + self.name
+        alias = '_nrp_monitor_' + self.name + '_' + uuid.uuid4().hex
         spec = importlib.util.spec_from_file_location(alias, package / '__init__.py', submodule_search_locations=[str(package)])
         instance = importlib.util.module_from_spec(spec)
         sys.modules[alias] = instance
