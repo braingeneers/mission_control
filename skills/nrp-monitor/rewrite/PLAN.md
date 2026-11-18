@@ -60,6 +60,6 @@ Restore: `git show edd3af7:skills/nrp-monitor/scripts/nrp-monitor` has every cut
 | C4 Tier 1 judge default | read-only triage before the fixer; 518 runs / 0 closes | 4962-5196 | 50d2068 | set `ladder.triage_judge: true` in state config.json. Existing ladder-test fixtures explicitly enable the optional judge; no assertions removed |
 | C5 state-dir clutter | old script copies, plist.migrated, forecast-test-fix, templates.bak, agents.json.bak | n/a | 2026-11-18 (trash, main session) | in macOS Trash until emptied; git has every script version |
 
-## R3a test-cut clarification (Hunter, 2026-11-18)
+## R3a test-cut rule (main session's answer to the R3a agent, 2026-11-18; follows from Hunter's cut approval, not his words)
 
 "Remove cut-specific tests; preserve all retained-behavior assertions. Only tests whose subject is a cut feature (chains, local gemini CLI runner, night code, or the judge running by default) may go; if a test mixes cut and retained behavior, keep and adapt the retained part. List every removed test (file::name and which cut) in your final report and in the Cut register's restore note in rewrite/PLAN.md, so they can be restored with the feature."
