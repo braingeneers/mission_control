@@ -1,17 +1,17 @@
 # Handoff: nrp-monitor rewrite  (2026-11-18, main session)
-**Plan and active steps:** plan `nrpmon-rewrite` (PLAN.md; Hunter's post-R3 answers recorded there). R3 done on branch
-`nrp-monitor-rewrite` (worktree ~/.t3/worktrees/mission_control/t3-5d6f3948-7a71276ff0751a9b, head fa07454 at start).
-Now: condense (items 1,2,3,5 from the branch LOG's duplication list) before R4. Stop: before install (R4 swap). R6 = Workflows stage type.
-**Verified this session:** NRP resource-use changes are in the rewrite: a8bbd60 (working-set sizing), 1c7debc (RED ALERT
-from dry-run admission) and bdb03a4 are ancestors of the branch, `nrp_monitor/red_alert.py` + working-set sizing exist,
-test_red_alert.py / test_sizing_robustness.py are identical to main and pass (23 passed); references/utilization.md identical to main.
-**In flight (T3 delegate tasks, completion wakes the main thread):**
-1. Condense: codex gpt-6.1-sol, in the branch worktree; one commit per item, full suite after each, then code-map refresh,
-   new LOG entry, branch rewrite/HANDOFF.md rewritten for R4. Check: `git -C <worktree> log --oneline fa07454..HEAD`.
-Repo-wide code map DONE: 83 files, merged to main (655966f), summaries.py check current. Includes 16 vendored yaml files
-   (noise). When the branch merges, .code-summaries aggregates conflict: regenerate them per summarize-codebase.
+**Plan and active steps:** plan `nrpmon-rewrite` (PLAN.md; Hunter's post-R3 answers recorded). Branch `nrp-monitor-rewrite`
+(worktree ~/.t3/worktrees/mission_control/t3-5d6f3948-7a71276ff0751a9b). Active: R4 shadow prep. Stop: before install (R4 swap). R6 = Workflows stage type.
+**Done + verified this session:** condense items 1,2,3,5 (2b4d996..846566c, map bc458c0, LOG/HANDOFF 6071cce): new owners
+stage_jobs.py (submit/restart/logs/resources), sizing.py (all evidence), cli_args.py, state.py locked-JSON helper. Main session
+re-ran the suite: 604 passed (225.9s). Code 6,790 -> 6,800 (findability, not size, per Hunter). Repo code map merged to main (655966f).
+NRP resource-use changes (a8bbd60, 1c7debc, bdb03a4) confirmed present in the rewrite.
+**In flight:** T3 delegate "nrp-monitor R4 shadow prep" (codex gpt-6.1-sol, branch worktree): adds one shadow switch that records-and-skips
+every side effect (kubectl allowlist get/describe/logs/top), tests, isolated state copy under /private/tmp/claude-501/nrp-shadow/,
+ONE comparison pass vs installed monitor's logs, report + unscheduled runner in rewrite/shadow/. Check: `git -C <worktree> log --oneline 6071cce..HEAD`.
 **Next:**
-1. When condense returns: verify suite output and diff yourself (spot-check moved functions, patch-target edits, line counts).
-2. R4 shadow prep per the branch rewrite/HANDOFF.md (read-only, isolated state, no installation); report to Hunter before the swap.
-**Read first:** branch rewrite/HANDOFF.md + top LOG entry; PLAN.md cut register.
-**Open questions for the user:** none. Installation still needs Hunter's explicit approval.
+1. When it returns: review the gating diff yourself (every mutation route gated? allowlist raises?), re-run the suite, read the comparison.
+2. Run the shadow runner every ~15 min for a day (one run_in_background Bash loop, or an nrp-monitor-independent schedule; not the installed monitor).
+3. Report the day's comparison to Hunter with a recommendation; stop before install.
+4. At branch merge: regenerate .code-summaries aggregates (both branches have maps).
+**Read first:** branch rewrite/HANDOFF.md + top LOG entry; PLAN.md R4 + cut register.
+**Open questions for the user:** none now. Installation needs Hunter's explicit approval.
