@@ -1,30 +1,47 @@
-"""NRP monitor task/model (mechanical extraction; R3a)."""
-import argparse
-import collections
-import contextlib
-import fcntl
-import getpass
-import hashlib
-import json
-import os
-import re
-import shlex
-import shutil
-import stat
-import subprocess
-import sys
-import tempfile
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-import uuid
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+"""Task status machine: every status change goes through `transition`, checked against TRANSITIONS."""
+
+from .. import state as _m_state
+
+LIVE, HELD = _m_state.TASK_LIVE, _m_state.TASK_HELD
+TERMINAL = ("done", "failed", "cancelled")       # "failed" is never entered; older task files may still hold it
+
+_MOVES = {                                        # event: (statuses it may leave, status it enters)
+    "submit": (LIVE + HELD, "running"),           # a Job was applied (retrying stays retrying, below)
+    "resubmit": (LIVE + HELD, "retrying"),        # a failed stage was applied again
+    "block": (LIVE + HELD, "blocked"),            # the submit was refused or held (quota, utilization, RED ALERT)
+    "release": (LIVE + HELD, "running"),          # a hold is answered or cleared; queued escalation wakes are dropped
+    "escalate": (LIVE + ("WITH_COORDINATOR", "failed"), "NEEDS_OWNER"),
+    "coordinate": (LIVE + ("failed",), "WITH_COORDINATOR"),
+    "finish": (LIVE, "done"),
+    "cancel": (LIVE + HELD + TERMINAL, "cancelled"),
+}
+TRANSITIONS = {s: {e: to for e, (src, to) in _MOVES.items() if s in src} for s in LIVE + HELD + TERMINAL}
+TRANSITIONS["retrying"]["submit"] = "retrying"
+
+
+class IllegalTransition(Exception):
+    pass
+
+
+def can(t, event):
+    return event in TRANSITIONS.get(t.get("status"), {})
+
+
+def transition(t, event, why=None, **fields):
+    """Move task `t` by `event`, set `fields`, and record `why` as a task event. Raises IllegalTransition."""
+    nxt = TRANSITIONS.get(t.get("status"), {}).get(event)
+    if nxt is None:
+        raise IllegalTransition("task %s: %s is not allowed from %s" % (t.get("name"), event, t.get("status")))
+    t["status"] = nxt
+    t.update(fields)
+    if event == "release":
+        t["webhook_outbox"] = [e for e in t.get("webhook_outbox") or [] if e.get("event_type") != "escalation"]
+    if why:
+        _m_state.tev(t, why)
+    return nxt
 
 
 def resize_advice(line):
-    from .. import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     out = []
     for kind, use, req, pct, mx in _m_state.FLAG_RES.findall(line):
         use, req = float(use), float(req)

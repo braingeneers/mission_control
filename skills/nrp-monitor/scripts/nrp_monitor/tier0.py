@@ -254,6 +254,7 @@ def report_long_pending(n, jobs):
 
 
 def _report_long_pending(n, jobs):
+    from .task import model as _m_task_model  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
@@ -283,9 +284,7 @@ def _report_long_pending(n, jobs):
                 _m_state.tstage(t, s["id"]).pop("pending_report", None)
                 if t.get("queue_hold") == s["id"]:
                     t.pop("queue_hold", None)
-                    t.update(status="running", reason="")
-                    t["webhook_outbox"] = [e for e in t.get("webhook_outbox", []) if e.get("event_type") != "escalation"]
-                    _m_state.tev(t, "stage %s scheduled; queue hold cleared automatically" % s["id"])
+                    _m_task_model.transition(t, "release", "stage %s scheduled; queue hold cleared automatically" % s["id"], reason="")
             _m_state.task_txn(n, clear)
             continue
         unschedulable = any(c.get("type") == "PodScheduled" and c.get("status") == "False" and

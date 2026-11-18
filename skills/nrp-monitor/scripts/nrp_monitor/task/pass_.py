@@ -138,6 +138,7 @@ def classify(t, s, logtxt):
 
 def do_submit(n, sid, reason, by):
     """Submit a stage's manifest. A failed stage = a retry (budgets enforced here, whoever asks). Returns (ok, message)."""
+    from . import model as _m_model  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
@@ -175,7 +176,7 @@ def do_submit(n, sid, reason, by):
         return False, gx + ". Report STOPPED; do not resubmit."
     if _m_red_alert.red_alert():                                                       # account RED ALERT: nothing new is created until NRP's dry-run accepts
         def hold(t):
-            t["status"] = "blocked"
+            _m_model.transition(t, "block")
             if "pending" not in t:
                 _m_state.tev(t, "submit of %s HELD: NRP RED ALERT (NRP refuses new pods on the account); sent when NRP's dry-run accepts" % s["job"])
             t.setdefault("pending", {"stage": sid, "reason": reason, "by": by, "since": _m_state.now(), "refusal": "NRP RED ALERT hold",
@@ -201,7 +202,7 @@ def do_submit(n, sid, reason, by):
         res = _m_cluster.apply_manifest(ns, path)
     if res == "blocked":
         def b(t):
-            t["status"] = "blocked"
+            _m_model.transition(t, "block")
             if "pending" not in t:
                 _m_state.tev(t, "submit of %s BLOCKED (account utilization or quota); the monitor checks the namespace once, wakes the coordinator, "
                        "and re-applies when the offenders change" % s["job"])
@@ -231,8 +232,8 @@ def do_submit(n, sid, reason, by):
         if (t.get("util_event") or {}).get("stage") == sid:
             t.pop("util_event", None)
         t.pop("pending", None)
-        t["status"] = "retrying" if retry or t["status"] == "retrying" else "running"
-        _m_state.tev(t, "submitted %s (attempt %d) by %s: %s" % (s2["job"], s2["attempt"], by, reason[:200]))
+        _m_model.transition(t, "resubmit" if retry else "submit",
+                            "submitted %s (attempt %d) by %s: %s" % (s2["job"], s2["attempt"], by, reason[:200]))
     _m_state.task_txn(n, ok)
     _m_task_registry.agent_manifest_checkpoint(n)
     return True, "SUBMITTED %s attempt %d (retries used %d of %d)" % (s["job"], _m_state.tstage(_m_state.task_load(n), sid)["attempt"],
@@ -259,6 +260,7 @@ def note_waiting(n, sid, missing):
 
 
 def advance_task(n, jobs, a):
+    from . import model as _m_model  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import agents as _m_agents  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import continuation as _m_continuation  # Local import breaks orchestration cycle; patches stay on the defining module.
@@ -309,7 +311,7 @@ def advance_task(n, jobs, a):
                     "; still outside the bands: " + ", ".join(o["pod"] for o in offs)) if offs else ""), a)
             return
         if not ok:
-            _m_state.task_txn(n, lambda t: t.update(status="retrying"))
+            _m_state.task_txn(n, lambda t: _m_model.transition(t, "resubmit"))
     _m_ladder.observe_task(n, jobs)
     _m_tier0.report_long_pending(n, jobs)
     if _m_state.task_load(n)["status"] in _m_state.TASK_HELD:
@@ -360,8 +362,7 @@ def advance_task(n, jobs, a):
             _m_ladder.handle_failure(n, a)
             return
         def finish(t):
-            t.update(status="done", finished=_m_state.now())
-            _m_state.tev(t, "all %d stages done" % len(t["stages"]))
+            _m_model.transition(t, "finish", "all %d stages done" % len(t["stages"]), finished=_m_state.now())
         _m_state.task_txn(n, finish)
         _m_notify.digest("task-done", "%s: all %d stage(s) done in %s; %d retr%s" % (t["label"], len(t["stages"]), _m_state.ago(t["created"]),
                len(t["attempts"]), "y" if len(t["attempts"]) == 1 else "ies"), n)
@@ -391,6 +392,7 @@ def advance_task(n, jobs, a):
 
 
 def recover_held_completion(n, jobs):
+    from . import model as _m_model  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import s3 as _m_s3  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import sizing as _m_sizing  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
@@ -409,11 +411,9 @@ def recover_held_completion(n, jobs):
         for s in completed:
             _m_state.tstage(t, s["id"]).update(state="done", done_ts=_m_state.now())
             _m_sizing.propagate_resources(t, _m_state.tstage(t, s["id"]))
-        t.update(status="running", failure=None)
         for key in ("reason", "coordinator_since", "util_event"):
             t.pop(key, None)
-        t["webhook_outbox"] = [e for e in t.get("webhook_outbox", []) if e.get("event_type") != "escalation"]
-        _m_state.tev(t, "held stage completed with all success markers; hold cleared")
+        _m_model.transition(t, "release", "held stage completed with all success markers; hold cleared", failure=None)
     _m_state.task_txn(n, recover)
     return True
 

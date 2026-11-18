@@ -142,17 +142,17 @@ def systemic_failure(t, f):
 
 
 def escalate(n, reason, a=None):
+    from .task import model as _m_task_model  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     out = {}
 
     def f(t):
-        if t["status"] in ("NEEDS_OWNER", "done", "cancelled"):
+        if not _m_task_model.can(t, "escalate"):
             return False
-        t["status"], t["reason"], t["needs_since"] = "NEEDS_OWNER", " ".join(reason.split())[:400], _m_state.now()
-        t["escalations"] = t.get("escalations", 0) + 1
+        _m_task_model.transition(t, "escalate", "NEEDS_OWNER: " + reason, reason=" ".join(reason.split())[:400],
+                                 needs_since=_m_state.now(), escalations=t.get("escalations", 0) + 1)
         out["k"], out["label"] = "task:%s:%d" % (n, t["escalations"]), t["label"]
-        _m_state.tev(t, "NEEDS_OWNER: " + reason)
     if _m_state.task_txn(n, f):
         _m_state.PASS["escalated"] = _m_state.PASS.get("escalated", 0) + 1
         _m_notify.push("NRP task %s needs you: %s  (nrp-monitor task show %s)" % (out["label"], reason[:200], n), out["k"],
@@ -183,6 +183,7 @@ def to_coordinator(n, reason, a=None, deputy=True):
     The task goes to WITH_COORDINATOR, not NEEDS_OWNER: the owner is told only if the chat runs `task needs-owner`. With no webhook
     configured for the task there is nobody to wake, so the owner is told instead (NEEDS_OWNER) and nothing is lost. A wake that cannot
     be delivered (wake_failed) or an answer that never comes (check_coordinator_waits) falls back the same way."""
+    from .task import model as _m_task_model  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
@@ -214,10 +215,10 @@ def to_coordinator(n, reason, a=None, deputy=True):
     out = {}
 
     def f(t):
-        if t["status"] in _m_state.TASK_HELD + ("done", "cancelled"):
+        if not _m_task_model.can(t, "coordinate"):
             return False
-        t["status"], t["reason"], t["coordinator_since"] = "WITH_COORDINATOR", reason[:400], _m_state.now()
-        t["coordinator_wakes"] = t.get("coordinator_wakes", 0) + 1
+        _m_task_model.transition(t, "coordinate", reason=reason[:400], coordinator_since=_m_state.now(),
+                                 coordinator_wakes=t.get("coordinator_wakes", 0) + 1)
         out["event"] = _m_wake.queue_task_webhook(t, "escalation", summary=coordinator_summary(t, reason))
         _m_state.tev(t, "WITH_COORDINATOR (Tier 3, wake queued): " + reason)
     if _m_state.task_txn(n, f):

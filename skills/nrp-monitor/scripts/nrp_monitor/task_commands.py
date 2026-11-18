@@ -183,6 +183,7 @@ def cmd_task_show(a):
 
 def cmd_task_resume(a):
     """After the owner decides: clear NEEDS_OWNER; the failed stage is resubmitted next pass (or --skip it), budgets restart."""
+    from .task import model as _m_task_model  # Local import breaks orchestration cycle; patches stay on the defining module.
     msgs, skipped, again, who = [], [], [], ["a person"]
 
     def f(t):
@@ -191,7 +192,6 @@ def cmd_task_resume(a):
             msgs.append("task %s is %s; only NEEDS_OWNER, WITH_COORDINATOR or blocked can be resumed" % (t["name"], t["status"]))
             return False
         who[0] = "the coordinator chat" if t["status"] == "WITH_COORDINATOR" else "a person"
-        t["webhook_outbox"] = [e for e in t.get("webhook_outbox") or [] if e.get("event_type") != "escalation"]   # the question is answered
         t.pop("queue_hold", None)
         for s in t["stages"]:
             q = s.get("queue_wait") or {}
@@ -208,7 +208,7 @@ def cmd_task_resume(a):
                        fingerprint=t["failure"].get("fingerprint") or _m_decisions.fingerprint(t, t["failure"]))
             t["attempts"].append(dict(stage=t["failure"]["stage"], job=t["failure"]["job"], cls=t["failure"]["cls"], sig=t["failure"]["sig"], fingerprint=t["failure"].get("fingerprint") or _m_decisions.fingerprint(t, t["failure"]),
                                       detail=t["failure"]["detail"][:200], fix="resumed by %s: %s" % (who[0], a.note or ""), by="person", ts=_m_state.now()))
-        t["failure"], t["status"], t["reason"] = None, "running", ""
+        _m_task_model.transition(t, "release", failure=None, reason="")         # the question is answered
         t["budget_from"] = len(t["attempts"])
         if a.retries is not None:
             t["max_retries"] = a.retries
@@ -283,7 +283,8 @@ def cmd_task_handoff(a):
 
 
 def cmd_task_cancel(a):
-    if not _m_state.task_txn(a.name, lambda t: (t.update(status="cancelled"), _m_state.tev(t, "cancelled by a person"))):
+    from .task import model as _m_task_model  # Local import breaks orchestration cycle; patches stay on the defining module.
+    if not _m_state.task_txn(a.name, lambda t: _m_task_model.transition(t, "cancel", "cancelled by a person")):
         sys.exit("no task %s" % a.name)
     print("task %s cancelled; nothing deleted" % a.name)
     return 0
