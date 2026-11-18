@@ -5070,7 +5070,7 @@ def handle_failure(n, a):
     if not agents_available():
         log("task %s: fix agent waits: %s" % (n, unavailable_text()))
         return
-    if not f.get("triaged") and triage_wanted(t, f):                       # Tier 1: once per failure
+    if OWNER.get("ladder", {}).get("triage_judge", False) and not f.get("triaged") and triage_wanted(t, f):                       # Tier 1: once per failure
         PASS["agents"] = PASS.get("agents", 0) + 1
         line, _ = run_task_agent(n, triage_prompt(t), a, kind="triage")
         if is_unavailable(line):

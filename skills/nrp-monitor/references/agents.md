@@ -119,3 +119,6 @@ The deputy is enabled by default (`config.json`: `"deputy_enabled": false` disab
 ```
 
 Only Claude/Codex writing backends are accepted, as for the fixer. Gemini remains triage-only. The deputy has the fixer's task/code tools and may read the copied plan; it gains only task-local decision commands and a bounded retry-cap increase. It cannot use the coordinator's cancel/owner-notification commands.
+
+Task failure Tier 1 triage is off by default (C4). To enable the retained judge, set
+`"ladder": {"triage_judge": true}` in state `config.json`. Backend selection remains in `agents.json`.

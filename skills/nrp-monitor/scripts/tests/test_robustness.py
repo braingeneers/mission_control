@@ -141,6 +141,7 @@ class Memory(Base):
         self.assertEqual(self.w.triage_verdict('CLOSE: need 7.7Gi, right 10Gi, request 12Gi')[0], 'CLOSE')
 
     def test_configured_roles_share_memory_evidence_and_only_fixer_changes(self):
+        self.w.OWNER['ladder'] = {'triage_judge': True}  # exercise the optional judge
         for triage, fixer in [('claude', 'claude'), ('codex', 'codex'), ('agy', 'claude'), (None, None)]:
             if triage:
                 self.w.AGENTS_CFG.write_text(json.dumps({'tiers': {'triage': [{'runner': triage}], 'task': [{'runner': fixer}]}}))
