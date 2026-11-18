@@ -1,14 +1,16 @@
-# Handoff: nrp-monitor R4 shadow (2026-11-18)
-**Plan and active steps:** `nrpmon-rewrite`, PLAN.md R4. One isolated shadow pass completed; day comparison pending. Stop before install/swap. R5 later; R6 unapproved.
-**Where:** branch `nrp-monitor-rewrite`, worktree `/Users/hunterschweiger/.t3/worktrees/mission_control/t3-5d6f3948-7a71276ff0751a9b`. No push, installation, live mutation or scheduling.
-**Checked:** explicit `run --shadow` gates plus filesystem/subprocess/HTTP allowlists. Normal decision path runs only on an isolated copied state; see `shadow/AUDIT.md`. Installed monitor was read, never executed.
-**Evidence:** `shadow/2026-11-18-single-pass.md`: 14 live tasks / 23 stage rows; 10 expected suppression differences, 3 unexplained, 4 unchanged with recent evidence, 6 unknown recent decisions. Private snapshot `/private/tmp/claude-501/nrp-shadow/pass-afbwh5g0`.
-**Unexplained:** newly observed failed stages for 20260720 ws17–64, 20260720 ws65–128, and loop1 ws65–128. Same group-bound parsing ValueError; time drift is plausible but unproven. Agent suppression explains subsequent coordinator routing only.
-**In flight:** none. Final suite: 643 passed, 7 existing warnings, 262.48s (`/tmp/r4-suite.txt`). No live shadow pass remains running.
-**Next:**
-1. Run the shadow over a day, then report to Hunter; stop before install. Main session chooses cadence; no scheduling authorized here.
-2. Runner: `/Users/hunterschweiger/miniconda3/bin/python3 skills/nrp-monitor/rewrite/shadow/run.py` from this worktree. Each invocation refreshes an isolated copy, runs one pass, saves a timestamped report. Never run the installed monitor for comparison.
-3. Investigate unexplained changes and incomplete coverage; compare fresh installed logs/task events, not only state totals. Obtain separate Hunter approval before any install/swap.
-**Gotchas:** AWS HEAD observations deliberately suppressed; S3 unknown. Admission create probes, fallback Jobs, agents, notifications, postchecks and wakes skipped. Legacy check_pods reached a forbidden delete and stopped: incomplete coverage, zero deletes. Local downstream transitions after skipped agents are provisional. This is not proof of equivalence or installation acceptance.
-**Read first:** PLAN.md R4/Cut register; newest LOG entry; shadow/AUDIT.md; shadow/2026-11-18-single-pass.md; scripts/nrp_monitor/shadow.py.
-**Open questions:** none blocks repeating read-only comparisons; uncertainty remains in the three stage failures and global legacy enforcement coverage.
+# Handoff: nrp-monitor R4 decision shadow (2026-11-18)
+- Plan: nrpmon-rewrite, PLAN.md R4; stop before install/swap. R5 later; R6 unapproved.
+- Worktree: `/Users/hunterschweiger/.t3/worktrees/mission_control/t3-5d6f3948-7a71276ff0751a9b`, branch `nrp-monitor-rewrite`.
+- No push, install, scheduling, live mutation or installed monitor execution.
+- Comparator uses first task/stage decisions, not final state. First suppressed task action ends reliable coverage; later events are provisional. Untouched siblings are unknown.
+- Installed launchd interval checked: 300 seconds. Window starts at snapshot start and ends two intervals after shadow completion. Missing installed evidence is pending, then unknown; silence never proves wait.
+- Each invocation resolves old pending rows in private `result-*.json` and `pending.json`, rewriting their reports. Day summary counts each row once per run, including current verdicts and route counts.
+- Private persistence: `/private/tmp/claude-501/nrp-shadow/`. Reports: gitignored `rewrite/shadow/runs/`. Old Markdown-only runs lack persisted decision data and are excluded from aggregation.
+- Filesystem finding: inferred four old blocks were relative `os.unlink('job.json', dir_fd=...)` during isolated submit-temp cleanup. Checked reproduction and two FD regression cases confirm the gate bug/recovery; no production source write or new redirect. See shadow/AUDIT.md.
+- Final shadow: `shadow/runs/2026-11-18T114731.md`, private `pass-_8g7_fbs`; exit 0, matched 2 / unexplained 0 / pending 15 / unknown 12 at completion; zero filesystem blocks/global errors. Re-judged 11:51:43: matched 7 / unexplained 0 / pending 10 / unknown 12. Pending is not equivalence evidence.
+- No suspected rewrite bug identified. Summary retains four earlier-development mismatches: one missing journal task scope (fixed), three wait/later-failure timing gaps; see newest LOG entry.
+- Focused checks: 60 passed. Full suite: 664 passed, 7 existing warnings, 242.71s (`/tmp/r4-suite.txt`).
+- Next: main session runs the shadow every ~15 minutes for a day, then day-summary, reports to Hunter, and stops before install. No scheduler was installed.
+- One run, from this worktree: `/Users/hunterschweiger/miniconda3/bin/python3 skills/nrp-monitor/rewrite/shadow/run.py`.
+- Summary, adjust local start time: `/Users/hunterschweiger/miniconda3/bin/python3 skills/nrp-monitor/rewrite/shadow/run.py --day-summary 2026-11-18T00:00:00`.
+- Read first: PLAN.md R4/Cut register; newest LOG.md; shadow/AUDIT.md; latest run report.

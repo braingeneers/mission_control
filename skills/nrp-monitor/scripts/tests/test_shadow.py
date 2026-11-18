@@ -146,3 +146,46 @@ def test_filesystem_mutation_paths_are_gated(isolated, tmp_path):
         with pytest.raises(PermissionError):
             (tmp_path / 'newdir').mkdir()
     assert outside.read_text() == 'original'
+
+
+def test_isolated_temporary_cleanup_resolves_directory_fd(isolated):
+    # Production do_submit's TemporaryDirectory invokes relative unlink via rmtree.
+    with shadow.isolated_pass():
+        with tempfile.TemporaryDirectory(prefix='nrp-submit-') as td:
+            (Path(td) / 'job.json').write_text('{}')
+        assert not Path(td).exists()
+    assert not (isolated / 'shadow-actions.jsonl').exists()
+
+
+def test_external_directory_fd_stays_blocked(isolated, tmp_path):
+    import os
+    outside = tmp_path / 'keep.json'
+    outside.write_text('keep')
+    fd = os.open(tmp_path, os.O_RDONLY)
+    try:
+        with shadow.isolated_pass():
+            with pytest.raises(PermissionError):
+                os.unlink('keep.json', dir_fd=fd)
+    finally:
+        os.close(fd)
+    record = json.loads((isolated / 'shadow-actions.jsonl').read_text())
+    assert record['route'] == 'os.remove'
+    assert record['path_kind'] == 'external .json'
+    assert record['target'] == str(outside)
+    assert outside.read_text() == 'keep'
+
+
+def test_successful_observation_records_done_before_delete(isolated, monkeypatch):
+    from nrp_monitor import cluster, ladder, notify, s3, stage_jobs
+    task = dict(name='fake', namespace='fake', stages=[dict(id='stage', job='job', state='running', done_s3=['s3://fake/done'])])
+    monkeypatch.setattr(ladder, 'terminal_task', lambda n: False)
+    monkeypatch.setattr(state, 'task_load', lambda n: task)
+    monkeypatch.setattr(state, 'task_txn', lambda *a: None)
+    monkeypatch.setattr(stage_jobs, 'save_task_logs', lambda *a: ('fake', ''))
+    monkeypatch.setattr(s3, 's3_exists', lambda *a: True)
+    monkeypatch.setattr(notify, 'digest', lambda *a: None)
+    monkeypatch.setattr(cluster, 'kubectl', lambda *a, **k: subprocess.CompletedProcess(a, 125, '', 'shadow'))
+    with shadow.isolated_pass():
+        ladder.observe_task('fake', {'job': {'state': 'ok'}})
+    records = [json.loads(line) for line in (isolated / 'shadow-actions.jsonl').read_text().splitlines()]
+    assert records == [dict(would_do='decision', category='mark_done', task='fake', stage='stage', time=records[0]['time'])]

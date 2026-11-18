@@ -4,12 +4,16 @@ The normal pass runs on a disposable copy (dry_run=False), so its decisions and
 local transitions remain observable. Suppressed actions never claim real success.
 """
 import contextlib
+from datetime import datetime
+import traceback
+import fcntl
 import importlib
 import io
 import json
 import os
 from pathlib import Path
 import runpy
+import re
 import subprocess
 import sys
 import tempfile
@@ -18,12 +22,13 @@ from urllib.parse import urlsplit
 
 _ACTIVE = None
 _TASK = None
+_STAGE = None
 
 
-def record(route):
+def record(would_do, **details):
     if _ACTIVE is not None:
         with (_ACTIVE / 'shadow-actions.jsonl').open('a') as stream:
-            stream.write(json.dumps({'would_do': route, 'task': _TASK}) + '\n')
+            stream.write(json.dumps({'would_do': would_do, 'task': _TASK, 'stage': _STAGE, 'time': datetime.now().isoformat(), **details}) + '\n')
 
 
 def _audit(event, args):
@@ -37,18 +42,31 @@ def _audit(event, args):
         if (mode and any(c in mode for c in 'wax+')) or flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC):
             paths = [path]
     elif event in ('os.remove', 'os.rmdir', 'os.mkdir', 'os.chmod', 'os.utime', 'os.truncate'):
-        paths = [args[0]]
+        paths = [(args[0], args[2] if event == "os.chmod" else args[1] if event in ("os.remove", "os.rmdir") else args[2] if event == "os.mkdir" else -1)]
     elif event in ('os.rename', 'os.link', 'os.symlink'):
-        paths = list(args[:2])
+        paths = [(args[0], args[2] if len(args) > 2 else -1), (args[1], args[3] if len(args) > 3 else -1)]
     elif event in ('os.system', 'os.exec', 'os.posix_spawn'):
         record('blocked process primitive ' + event)
         raise PermissionError('shadow forbids process primitive')
     elif event == 'subprocess.Popen' and not _read_command(args[1]):
         record('blocked raw subprocess ' + Path(str(args[0])).name)
         raise PermissionError('shadow subprocess allowlist')
-    for path in paths:
-        if not Path(os.fsdecode(path)).resolve().is_relative_to(_ACTIVE):
-            record('filesystem write outside isolated state')
+    for item in paths:
+        path, dir_fd = item if isinstance(item, tuple) else (item, -1)
+        path = Path(os.fsdecode(path))
+        if not path.is_absolute() and dir_fd not in (None, -1):
+            # shutil.rmtree uses relative unlink/rmdir with an open directory FD.
+            # Resolve that FD, not cwd; otherwise legitimate isolated cleanup is blocked.
+            if sys.platform == 'darwin':
+                parent = os.fsdecode(fcntl.fcntl(dir_fd, 50, bytes(1024)).split(b'\0', 1)[0])
+            else:
+                parent = os.readlink('/proc/self/fd/%d' % dir_fd)
+            path = Path(parent) / path
+        if not path.resolve().is_relative_to(_ACTIVE):
+            stack = traceback.extract_stack(limit=8)
+            record('filesystem write outside isolated state', route=event,
+                   path_kind='external ' + (path.suffix or 'directory'),
+                   target=str(path), caller=[f'{Path(f.filename).name}:{f.lineno}:{f.name}' for f in stack[:-1]])
             raise PermissionError('shadow forbids write outside isolated state')
 
 
@@ -171,7 +189,50 @@ def isolated_pass():
                 return _result(*args, **kwargs)
             patch(obj, name, skip)
         # Stored executor aliases must follow their defining function's gate.
-        from . import agents, wake
+        # Ordered observations share the action journal so suppression boundaries are exact.
+        original_log = state.log
+        def log(message):
+            match = re.match(r'task ([^:]+): ', message)
+            record('observation', message=message, task=match[1] if match else _TASK)
+            return original_log(message)
+        patch(state, 'log', log)
+        from . import stage_jobs, task_agents, agents, wake, cluster
+        original_kubectl = cluster.kubectl
+        def kubectl(*args, **kwargs):
+            # observe_task deletes a proven successful Job BEFORE logging done.
+            # Capture that decision before the IO gate; never infer it from the
+            # later state/log produced after a suppressed delete.
+            caller = sys._getframe(1)
+            if (caller.f_globals.get('__name__') == __package__ + '.ladder'
+                    and caller.f_code.co_name == 'observe_task'
+                    and len(args) > 2 and args[2] == 'delete'):
+                record('decision', category='mark_done', task=caller.f_locals['n'],
+                       stage=caller.f_locals['s']['id'])
+            return original_kubectl(*args, **kwargs)
+        patch(cluster, 'kubectl', kubectl)
+        def scoped(obj, method, stage_arg):
+            original = getattr(obj, method)
+            def wrapped(*args, **kwargs):
+                global _STAGE, _TASK
+                previous, previous_task = _STAGE, _TASK
+                _TASK = args[0]['name'] if stage_arg == 'delete' else args[0]
+                if stage_arg == 'delete':
+                    _STAGE = args[1]['id']
+                    record('decision', category='mark_done' if args[2] == 'Job succeeded' else 'safety_stop' if args[2] == 'NRP violation safety stop' else 'submit' if args[2] == 'before resubmit' else 'restart')
+                elif stage_arg == 'agent':
+                    task = state.task_load(args[0])
+                    _STAGE = (task.get('failure') or task.get('util_event') or {}).get('stage')
+                    record('decision', category='utilization_review' if task.get('util_event') and not task.get('failure') else 'fix_agent')
+                else:
+                    _STAGE = args[1] if len(args) > 1 else kwargs.get('sid')
+                try:
+                    return original(*args, **kwargs)
+                finally:
+                    _STAGE, _TASK = previous, previous_task
+            patch(obj, method, wrapped)
+        scoped(stage_jobs, 'do_submit', 'submit')
+        scoped(stage_jobs, 'delete_stage_job', 'delete')
+        scoped(task_agents, 'run_task_agent', 'agent')
         patch(agents, 'RUNNER_EXEC', {n: agents.exec_backend for n in agents.RUNNER_EXEC})
         for name in ('exec_claude', 'exec_codex', 'exec_agy'):
             patch(agents, name, agents.exec_backend)

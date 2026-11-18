@@ -37,3 +37,37 @@ verb, allowed reads through a fake cluster, shell/S3/agent subprocess rejection,
 raw Popen rejection, webhook rejection, external write rejection and installed-state
 refusal. The runner refreshes state each invocation and executes exactly one pass;
 no cron, launchd, loop or scheduler is provided or installed.
+
+Decision comparison (2026-11-18): ordered observations and suppressed actions share
+`shadow-actions.jsonl` (private evidence). Semantic wrappers retain task/stage
+context for submit/replacement/agents; the exact `ladder.observe_task` successful
+Job deletion call records mark_done before its suppressed delete. First decisions
+per stage before the first suppressed task action are comparable; everything
+later is provisional. Utilization measurements alone are not review decisions;
+agent entry records the review/fix category. Old-Job cleanup within do_submit is
+part of submit; an explicit utilization replacement is restart. Untouched siblings after suppression are unknown, never
+credited with the task's action. No-action rows need explicit installed evidence;
+missing evidence stays pending through two installed intervals after pass end,
+then becomes unknown. Installed launchd StartInterval was checked at 300 seconds.
+Each invocation re-judges pending persisted results and rewrites their reports;
+`--day-summary SINCE` aggregates those results without duplicating resolutions.
+Results/pending state live only below `/private/tmp/claude-501/nrp-shadow/`;
+per-run/day reports live in gitignored `runs/`. Pre-comparator Markdown reports
+have no persisted decision data and are intentionally excluded from aggregation.
+
+Filesystem finding (inferred attribution; checked local reproduction): all four
+original records immediately followed kubectl apply, consistent with do_submit's
+TemporaryDirectory cleanup: `stage_jobs.py:do_submit` -> TemporaryDirectory.__exit__
+-> shutil.rmtree -> os.unlink('job.json', dir_fd=<isolated nrp-submit directory>).
+The actual target is `<isolated pass>/nrp-submit-*/job.json`, not a task source
+manifest. The old gate resolved job.json against cwd, falsely reporting an
+external write. A local reproduction retained at
+`/private/tmp/claude-501/nrp-shadow/cleanup-proof-1bk0q03s/proof.txt` confirms one
+false block and successful tempfile recovery; it did not change the decision.
+Original random directory suffixes were not recorded and are unrecoverable.
+No new redirection is needed: these files already belong to isolated state.
+The gate now resolves directory descriptors (F_GETPATH on macOS; /proc/self/fd
+on Linux). Tests check isolated cleanup and rejection of an actual external
+relative unlink. Remaining external writes stay blocked and record operation,
+path kind and code caller, with the exact target retained only in private JSONL.
+The comparator treats such a block as suppression, never a stage failure.
