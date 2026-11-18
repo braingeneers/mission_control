@@ -317,7 +317,7 @@ def check_orphans(a, st):
     from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     try:
-        js = _m_cluster.fetch_jobs(_m_state.NS)
+        js = _m_cluster.jobs_in(_m_state.NS)
     except Exception:
         return
     known = set()

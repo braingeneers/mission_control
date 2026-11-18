@@ -1,35 +1,49 @@
 """NRP monitor cluster (mechanical extraction; R3a)."""
-import argparse
-import collections
 import contextlib
-import fcntl
-import getpass
-import hashlib
 import json
-import os
 import re
-import shlex
-import shutil
-import stat
 import subprocess
-import sys
-import tempfile
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+
+from . import state as _m_state
 
 # ---- cluster reads -------------------------------------------------------------------------------------------
+# Pass-wide scans read each namespace's Jobs once (fetch_jobs) and each Job's pods once (job_pods), kept in SNAPSHOT until
+# a kubectl call changes that namespace. Action guards use a fresh single-Job read. Outside a pass (nrp-task, CLI commands) SNAPSHOT is None and every read is fresh.
+SNAPSHOT = None
+MUTATING = ("apply", "create", "delete", "patch", "replace", "label", "annotate")
+
+
+@contextlib.contextmanager
+def pass_snapshot():
+    global SNAPSHOT
+    outer, SNAPSHOT = SNAPSHOT, ({} if SNAPSHOT is None else SNAPSHOT)
+    try:
+        yield
+    finally:
+        SNAPSHOT = outer
+
+
+def _cached(key, read):
+    if SNAPSHOT is None:
+        return read()
+    if key not in SNAPSHOT:
+        SNAPSHOT[key] = read()
+    return SNAPSHOT[key]
+
+
 def kubectl(*args, timeout=120):
+    """The only way the monitor runs kubectl. A call that changes a namespace drops that namespace from the pass snapshot."""
+    if SNAPSHOT and args[:1] == ("-n",) and len(args) > 2 and args[2] in MUTATING:
+        for key in [k for k in SNAPSHOT if k[1] == args[1]]:
+            del SNAPSHOT[key]
     return subprocess.run(["kubectl", *args], capture_output=True, text=True, timeout=timeout)
 
 
 def my_pods():
     """{name: owner_job_or_None} for the owner's pods that are Running, Pending or Failed (by annotation)."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     if not _m_state.USER_ANN:
         raise RuntimeError("nrp_user_annotation is not set (config.json or NRP_MONITOR_USER_ANNOTATION): cannot tell which pods are yours")
     r = kubectl("-n", _m_state.NS, "get", "pods", "-o", "json")
@@ -45,6 +59,11 @@ def my_pods():
         job = next((o["name"] for o in m.get("ownerReferences", []) if o.get("kind") == "Job"), None)
         out[m["name"]] = job
     return out
+
+
+def jobs_in(ns):
+    """{job: {state, start, deadline, ours}} for namespace `ns` (fetch_jobs), read once per pass. Raises RuntimeError like fetch_jobs."""
+    return _cached(("jobs", ns), lambda: fetch_jobs(ns))
 
 
 def job_state(name, ns):
@@ -85,7 +104,6 @@ def classify_job(j):
 
 
 def fetch_jobs(ns):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     r = kubectl("-n", ns, "get", "jobs", "-o", "json")
     if r.returncode:
         raise RuntimeError(r.stderr.strip()[:150] or "kubectl get jobs failed")
@@ -101,7 +119,6 @@ def fetch_jobs(ns):
 def apply_manifest(ns, path):
     """'ok' | 'blocked' | error text. Server dry-run first."""
     from . import red_alert as _m_red_alert  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     for extra in (["--dry-run=server"], []):
         r = kubectl("-n", ns, "apply", *extra, "-f", path, timeout=180)
         if r.returncode:
@@ -129,7 +146,6 @@ def namespace_offenders(ns):
     (rule nrp or gpu; a lab-floor-only flag is not counted by NRP's webhook) or stuck. Returns a list of dicts: pod, owner (Job or other
     ownerReference), username (nrp.ai/username annotation, may be ""), service_account, ours (annotation == our owner annotation),
     usage ({cpu|mem|gpu: use/request/pct}) and line (nrp-util-check's text). Raises RuntimeError when kubectl or the metrics fail."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import util as _m_util  # Local import breaks orchestration cycle; patches stay on the defining module.
     r = kubectl("-n", ns, "get", "pods", "-o", "json")
     if r.returncode:
@@ -171,7 +187,6 @@ def offender_text(o):
 
 
 def block_wake_text(n, stage, job, refusal, offenders, err):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     head = "NRP refused the submit of task %s (stage %s, Job %s): %s" % (n, stage, job, " ".join(refusal.split())[:200])
     if err:
         return ("%s. The namespace-wide utilization check FAILED (%s), so the cause is unknown. Look at all Running pods with "
@@ -196,7 +211,6 @@ def block_episode(n):
     coordinator chat once (the task stays `blocked`, so the monitor goes on re-applying when the offenders clear). Later calls in the same
     episode do nothing. A failed check is logged and still produces the one wake, carrying the raw refusal."""
     from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import wake as _m_wake  # Local import breaks orchestration cycle; patches stay on the defining module.
     t = _m_state.task_load(n)
     p = (t or {}).get("pending") or {}
@@ -234,7 +248,6 @@ def block_should_reapply(n):
     """True when the pending submit should be applied again this pass. Pods outside the bands explain the block: no re-apply until a
     re-check (at most every BLOCK_RECHECK_S) finds the set changed (or empty). No offenders or a failed check: the block is
     unexplained, so it goes on being applied each pass, as before, with the 6 h escalation as the fallback."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     p = (_m_state.task_load(n) or {}).get("pending") or {}
     if p.get("checked") is None:
         block_episode(n)
@@ -262,7 +275,6 @@ def block_should_reapply(n):
 
 
 def thanos_query(expr):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     try:
         with urllib.request.urlopen(_m_state.THANOS_URL + "?" + urllib.parse.urlencode({"query": expr}), timeout=60) as r:
             d = json.load(r)
@@ -274,13 +286,11 @@ def thanos_query(expr):
 
 def bad_nodes():
     from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     return {n: r for n, r in _m_notify.read_json(_m_state.STATE / "bad-nodes.json", {}).items() if r.get("expires", 0) > _m_state.now()}
 
 
 def record_bad_node(node, why, fault=None):
     from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     with _m_state.state_lock():
         nodes = _m_notify.read_json(_m_state.STATE / "bad-nodes.json", {})
         if fault and (nodes.get(node) or {}).get("fault") == fault:
@@ -290,17 +300,18 @@ def record_bad_node(node, why, fault=None):
 
 
 def bad_node_lines():
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     return ["excluded node %s until %s (last fault %s)" % (n, _m_state.iso_at(r["expires"]), _m_state.iso_at(r["last_fault"]))
             for n, r in sorted(bad_nodes().items())]
 
 
 def job_pods(ns, job):
-    r = kubectl("-n", ns, "get", "pods", "-l", "job-name=" + job, "-o", "json")
-    try:
-        return json.loads(r.stdout or "{}").get("items", []) if r.returncode == 0 else []
-    except ValueError:
-        return []
+    def read():
+        r = kubectl("-n", ns, "get", "pods", "-l", "job-name=" + job, "-o", "json")
+        try:
+            return json.loads(r.stdout or "{}").get("items", []) if r.returncode == 0 else []
+        except ValueError:
+            return []
+    return _cached(("pods", ns, job), read)
 
 
 def pending_reason(t, s):

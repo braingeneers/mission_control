@@ -93,6 +93,11 @@ def cmd_run(a):
 
 
 def cmd_run_pass(a):
+    with _m_cluster.pass_snapshot():                                          # each namespace's Jobs and each Job's pods are read once per pass
+        return run_pass(a)
+
+
+def run_pass(a):
     _m_state.STATE.mkdir(parents=True, exist_ok=True)
     lock = open(_m_state.LOCK, "w")
     try:

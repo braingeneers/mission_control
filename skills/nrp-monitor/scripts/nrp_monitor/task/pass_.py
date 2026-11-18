@@ -422,62 +422,67 @@ def process_tasks(a, st):
     from .. import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .. import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .. import tier0 as _m_tier0  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from ..task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
     if not a.dry_run:
         for n in _m_state.task_names():
             _m_ladder.terminal_task(n)
     names = [x for x in _m_state.task_names() if (_m_state.task_load(x) or {}).get("status") in _m_state.TASK_LIVE + _m_state.TASK_HELD]
     _m_state.PASS["tasks"] = len(names)
-    cache = {}
-    for n in names:
-        t = _m_state.task_load(n)
-        try:
-            # Deterministic manifest corruption cannot improve by retrying. Do not edit legacy files.
-            if t["status"] not in _m_state.TASK_HELD and not a.dry_run:
-                invalid = None
-                for stage in t["stages"]:
-                    if stage.get("manifest"):
-                        try:
-                            _m_task_registry.manifest_doc(stage["manifest"])
-                        except Exception as error:
-                            invalid = _m_task_registry.manifest_error(stage["manifest"], error)
-                            break
-                if invalid:
-                    _m_state.log("task %s invalid manifest: %s" % (n, invalid))
-                    _m_state.task_txn(n, lambda cur: cur.update(task_exception=dict(
-                        signature="invalid-manifest", count=1, detail=invalid, escalated=True)))
-                    _m_ladder.to_coordinator(n, "invalid task manifest: " + invalid, a, deputy=False)
-                    continue
-            if (t.get("task_exception") or {}).get("escalated") and t["status"] in _m_state.TASK_HELD:
-                continue
-            if t["namespace"] not in cache:
-                cache[t["namespace"]] = _m_cluster.fetch_jobs(t["namespace"])
-            if t["status"] in _m_state.TASK_HELD:
-                if t.get("queue_hold") and not a.dry_run:
-                    _m_tier0.report_long_pending(n, cache[t["namespace"]])
-                    t = _m_state.task_load(n)
-                if t["status"] in _m_state.TASK_HELD and (a.dry_run or not recover_held_completion(n, cache[t["namespace"]])):
-                    continue
-            advance_task(n, cache[t["namespace"]], a)
-            if t.get("task_exception") and not a.dry_run:
-                _m_state.task_txn(n, lambda cur: cur.pop("task_exception", None))
-        except Exception as e:
-            detail = "%s: %s" % (type(e).__name__, str(e))
-            _m_state.log("task %s error: %s" % (n, detail[:1000]))
-            if not a.dry_run:
-                signature = hashlib.sha256(detail.encode()).hexdigest()[:16]
-                def record(cur):
-                    prior = cur.get("task_exception") or {}
-                    count = prior.get("count", 0) + 1 if prior.get("signature") == signature else 1
-                    cur["task_exception"] = dict(signature=signature, count=count, detail=detail,
-                                                 escalated=count >= _m_state.TASK_EXCEPTION_LIMIT)
-                _m_state.task_txn(n, record)
-                if _m_state.task_load(n)["task_exception"]["escalated"]:
-                    _m_ladder.to_coordinator(n, "task pass failed %d consecutive times: %s" % (_m_state.TASK_EXCEPTION_LIMIT, detail), a, deputy=False)
-
+    with _m_cluster.pass_snapshot():
+        for n in names:
+            process_task(n, a)
     try:
         _m_ladder.check_coordinator_waits(a)
     except Exception as e:
         _m_state.log("coordinator wait check error: %s: %s" % (type(e).__name__, str(e)[:150]))
+
+
+def process_task(n, a):
+    from .. import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
+    from .. import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
+    from .. import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
+    from .. import tier0 as _m_tier0  # Local import breaks orchestration cycle; patches stay on the defining module.
+    from ..task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
+    t = _m_state.task_load(n)
+    try:
+        # Deterministic manifest corruption cannot improve by retrying. Do not edit legacy files.
+        if t["status"] not in _m_state.TASK_HELD and not a.dry_run:
+            invalid = None
+            for stage in t["stages"]:
+                if stage.get("manifest"):
+                    try:
+                        _m_task_registry.manifest_doc(stage["manifest"])
+                    except Exception as error:
+                        invalid = _m_task_registry.manifest_error(stage["manifest"], error)
+                        break
+            if invalid:
+                _m_state.log("task %s invalid manifest: %s" % (n, invalid))
+                _m_state.task_txn(n, lambda cur: cur.update(task_exception=dict(
+                    signature="invalid-manifest", count=1, detail=invalid, escalated=True)))
+                _m_ladder.to_coordinator(n, "invalid task manifest: " + invalid, a, deputy=False)
+                return
+        if (t.get("task_exception") or {}).get("escalated") and t["status"] in _m_state.TASK_HELD:
+            return
+        jobs = _m_cluster.jobs_in(t["namespace"])
+        if t["status"] in _m_state.TASK_HELD:
+            if t.get("queue_hold") and not a.dry_run:
+                _m_tier0.report_long_pending(n, jobs)
+                t = _m_state.task_load(n)
+            if t["status"] in _m_state.TASK_HELD and (a.dry_run or not recover_held_completion(n, jobs)):
+                return
+        advance_task(n, jobs, a)
+        if t.get("task_exception") and not a.dry_run:
+            _m_state.task_txn(n, lambda cur: cur.pop("task_exception", None))
+    except Exception as e:
+        detail = "%s: %s" % (type(e).__name__, str(e))
+        _m_state.log("task %s error: %s" % (n, detail[:1000]))
+        if not a.dry_run:
+            signature = hashlib.sha256(detail.encode()).hexdigest()[:16]
+            def record(cur):
+                prior = cur.get("task_exception") or {}
+                count = prior.get("count", 0) + 1 if prior.get("signature") == signature else 1
+                cur["task_exception"] = dict(signature=signature, count=count, detail=detail,
+                                             escalated=count >= _m_state.TASK_EXCEPTION_LIMIT)
+            _m_state.task_txn(n, record)
+            if _m_state.task_load(n)["task_exception"]["escalated"]:
+                _m_ladder.to_coordinator(n, "task pass failed %d consecutive times: %s" % (_m_state.TASK_EXCEPTION_LIMIT, detail), a, deputy=False)
 

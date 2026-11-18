@@ -135,15 +135,12 @@ def s3_prepass(a):
     if a.dry_run or not s3_incluster_on():
         return
     want, conf = [], {}
-    jobs_ns = {}
 
     def jobs_of(ns):
-        if ns not in jobs_ns:
-            try:
-                jobs_ns[ns] = _m_cluster.fetch_jobs(ns)
-            except Exception:
-                jobs_ns[ns] = None
-        return jobs_ns[ns]
+        try:
+            return _m_cluster.jobs_in(ns)
+        except Exception:
+            return None
 
     for n in [x for x in _m_state.task_names() if (_m_state.task_load(x) or {}).get("status") in _m_state.TASK_LIVE]:
         t = _m_state.task_load(n)
