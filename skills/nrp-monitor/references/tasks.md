@@ -75,7 +75,7 @@ Derive the deadline from measured runtime with margin; the queue counts toward i
 
 ## Commands
 
-`nrp-monitor task list`, `task show NAME`, `task code NAME` (declare reship's code dirs), `task stage NAME STAGE --resumable` (mark a stage of a registered task resumable, as `resumable: true` in TASK.json would), `task handoff NAME FILE`, `task watch NAME`, `task resume NAME` (continue after a person or the coordinator chat decided, from
+`nrp-monitor task list`, `task show NAME`, `task code NAME` (declare reship's code dirs), `task stage NAME STAGE --resumable` (mark a stage of a registered task resumable, as `resumable: true` in TASK.json would; `--done-s3 URI` replaces its success marker; `--exclude-node NODE` persists a node exclusion), `task handoff NAME FILE`, `task watch NAME`, `task resume NAME` (continue after a person or the coordinator chat decided, from
 `NEEDS_OWNER` or `WITH_COORDINATOR`; `--gpu-ok-until DATE` after extending a GPU approval), `task needs-owner NAME --reason TEXT` (run by the
 coordinator chat only when the owner is truly needed: sets `NEEDS_OWNER`, sends the one DM), `task cancel NAME`, `status`, `digest --hours N`,
 `origin task NAME --title .. --link .. [--harness claude|codex --session ID --cwd DIR]` (add or fix attribution and the wake target later). Agents use `nrp-task`, a wrapper that validates
@@ -92,6 +92,7 @@ the full size within the plan's approved limits and explicitly registers it. Do 
 behind profile stages.
 
 `nrp-monitor task stage NAME STAGE --resumable` marks an existing stage via task_txn and logs an event. Use only when rerunning skips finished items.
+`nrp-monitor task stage NAME STAGE --done-s3 s3://bucket/key` replaces the stage's success marker (one exact object, checked like `task add`; it may not repeat an `after_s3` gate). Use it when a Job's output prefix changes instead of editing task.json.
 
 ## Coordinator use of nrp-task
 
@@ -106,7 +107,7 @@ it refuses running or pending Jobs and refuses an uncertain status check.
 
 ## Memory observations and held completion
 
-Running utilization flags are observations, not failures. Add a positive `measured_runtime_seconds` to a stage when measured history exists; without it, memory LOW ramp-up lasts 30 minutes. Per-pod peaks, OOM limits and review evidence persist with the stage. See [utilization](utilization.md) for the exact sizing rule and worked example.
+Running utilization flags are observations, not failures. Add a positive `measured_runtime_seconds` to a stage when measured history exists; without it, memory LOW review ramp-up lasts 30 minutes. NRP-band actions use a shorter ramp-up (at most 15 minutes; 10 without history); see [utilization](utilization.md). Per-pod peaks, OOM limits and review evidence persist with the stage. See [utilization](utilization.md) for the exact sizing rule and worked example.
 
 Each pass also checks NEEDS_OWNER and WITH_COORDINATOR tasks. When the held stage Job is Complete and all exact `done_s3` markers exist, the stage becomes done, an event records recovery, and the hold clears. Normal next stages and plan-step completion wakes then proceed. Complete Jobs with missing or unreadable markers stay held and name the missing evidence.
 

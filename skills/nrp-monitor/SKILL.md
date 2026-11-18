@@ -140,13 +140,14 @@ A coordinator chat selects its task explicitly: `NRP_TASK=<name> nrp-task reship
 `NRP_TASK=<name> nrp-task show`. Find names with `nrp-monitor task list`.
 `nrp-task --help` and `nrp-task reship --help` work without `NRP_TASK`.
 To persist a stage-specific exclusion: `nrp-monitor task stage NAME STAGE --exclude-node NODE`
-(repeatable). Automatic node exclusions are shared and expire 24 hours after the last fault.
+(repeatable). To change a stage's success marker: `nrp-monitor task stage NAME STAGE --done-s3 s3://bucket/key`.
+Automatic node exclusions are shared and expire 24 hours after the last fault.
 The optional Antigravity `agy` runner is triage-only; select it through setup, e.g.
 `--triage agy:gemini-3.8-flash-low,claude:haiku`. Changing source does not change live config.
 
 ## Utilization review and wake routes
 
-Utilization flags leave healthy stages running. The triage judge returns CLOSE or ESCALATE; the fixer makes every change. Memory LOW uses ramp-up, whole-life per-pod peaks and recorded OOM limits, with 50% headroom. See [utilization](references/utilization.md) for the exact rule and worked example.
+Utilization flags leave healthy stages running. The triage judge returns CLOSE or ESCALATE; the fixer makes every change. Memory LOW uses ramp-up, whole-life per-pod peaks and recorded OOM limits, with 50% headroom. NRP-band flags (`rule=nrp`) wait through ramp-up (25% of measured runtime, at most 15 min; 10 min without history), count only our account toward the safety stop, and never auto-restart a stage the coordinator resized or resumed. See [utilization](references/utilization.md) for the exact rule and worked example.
 
 T3 origins can use `origin.link: "t3-thread://v2/ENV/THREAD"` (angle brackets around the link are accepted).
 A configured `<state>/webhooks/<task>` remains the preferred T3 route. Otherwise the monitor sends the wake text
