@@ -322,6 +322,9 @@ def utilization_band_action(n, sid, pod, line):
     for key, use, req, pct, mx in _m_state.FLAG_RES.findall(line):
         proposed = float(cpu) if key == "cpu" and cpu else float(mem) / 2**30 if key == "mem" and mem else None
         band = _m_config.util_policy().get("cpu_band" if key == "cpu" else "memory_band", [.2, 1.5])
+        if key == "mem":   # judged on the lower of working set and RSS (nrp-util-check), so the spiky check uses it too
+            rss = re.search(r"\brss ([\d.]+)Gi", line)
+            use = min(float(use), float(rss.group(1))) if rss else use
         if proposed and float(use) < band[0] * proposed:
             details += "; spiky: constant request cannot fit this band; use smaller shards or make the stage resumable"
     sizes = {cs[0]["name"]: {"cpu": cpu, "memory": mem}}

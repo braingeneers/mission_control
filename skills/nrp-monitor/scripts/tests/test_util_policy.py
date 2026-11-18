@@ -86,6 +86,24 @@ class Policy(unittest.TestCase):
         self.assertEqual(m.pod_lines(a, "p1", 3600, dict(self.cpu_idle), 10), "")
         self.assertTrue(m.pod_lines(a, "p2", 3600, dict(self.gpu_idle, cpu=1, mem=1e9), 10).startswith("LOW p2"))
 
+    # ---- memory is judged on the stricter of working set and RSS (Hunter 2026-11-18)
+    def test_memory_band_uses_the_stricter_of_working_set_and_rss(self):
+        m = self.load(local=OWNER_LOCAL)
+        base = {"req": {"cpu": 4, "memory": 8e9}, "cpu": 2, "gpus": []}
+        # working set 30 % is inside the band, but RSS 10 % (cache-heavy pod) is below NRP's 20 % floor
+        self.assertEqual(m.nrp_bad(dict(base, mem=2.4e9, rss=0.8e9)), ['mem'])
+        # RSS above 150 % while the working set reads lower still counts
+        self.assertEqual(m.nrp_bad(dict(base, mem=11e9, rss=12.5e9)), ['mem'])
+        self.assertEqual(m.nrp_bad(dict(base, mem=4e9, rss=3e9)), [], 'both inside the band')
+        self.assertEqual(m.nrp_bad(dict(base, mem=4e9)), [], 'no RSS series: working set alone')
+        a = type('A', (), {"frac": m.POLICY["lab_floor"], "n": "ns"})
+        line = m.pod_lines(a, "p", 3600, dict(base, mem=2.4e9, rss=0.8e9), 10)
+        self.assertIn('rss 0.7Gi 10%', line)
+        self.assertTrue(line.endswith('[NRP violation] rule=nrp'), line)
+        # lab floor (40 %) also reads the lower measure
+        lab = m.pod_lines(a, "p", 3600, dict(base, mem=4e9, rss=2.8e9), 10)
+        self.assertTrue(lab.endswith('[lab 40% rule] rule=lab'), lab)
+
     # ---- local override
     def test_local_override_enables_bands_floor_exemption_and_account_check(self):
         m = self.load(local=OWNER_LOCAL)

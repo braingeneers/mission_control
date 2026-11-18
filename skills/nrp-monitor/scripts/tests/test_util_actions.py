@@ -92,6 +92,21 @@ def test_violation_actions(monitor, resumable, elapsed, count, stop):
             push.assert_not_called()
 
 
+def test_spiky_check_reads_the_lower_rss(monitor):
+    m = monitor
+    running(m, False)
+    m.task_txn('sample', lambda t: t['stages'][0].update(nrp_flag_since=10000))
+    evidence = {'right_gi': 10, 'need_gi': 6.1}
+
+    def summary(line):
+        m.task_txn('sample', lambda t: t.update(webhook_outbox=[]))
+        with patch.object(m, 'now', return_value=10000), patch.object(m, 'namespace_offenders', return_value=[]), patch.object(m, 'memory_low_evidence', return_value=evidence), patch.object(m, 'thanos_query', return_value=[{'value': [0, '2']}]), patch.object(m, 'save_task_logs'), patch.object(m, 'kubectl', return_value=result([])), patch.object(m, 'push'):
+            m.utilization_band_action('sample', 'a', 'work-17-abc', line)
+        return m.task_load('sample')['webhook_outbox'][-1]['summary']
+    # working set 4Gi fits a 10Gi request's 20 % floor; RSS 1.5Gi does not
+    assert 'spiky' in summary('LOW work-17-abc cpu 2/2 (100%), mem 4.0/32.0Gi (12%, max 6.1, rss 1.5Gi 5%) rule=nrp')
+
+
 def test_working_set_precedes_cgroup_and_oom_minimum(monitor):
     m = monitor
     t = running(m)

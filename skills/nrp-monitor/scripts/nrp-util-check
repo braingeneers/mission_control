@@ -10,6 +10,10 @@ Every number is read from NRP's public Prometheus (https://thanos.nrp-nautilus.i
 dashboards, averaged over the last --window minutes (capped at the pod's age):
   requests  kube_pod_container_resource_requests (cpu, memory, nvidia_com_gpu)
   CPU       rate(container_cpu_usage_seconds_total)        memory  container_memory_working_set_bytes (mean and max)
+                                                           and container_memory_rss (mean)
+  Memory is judged both ways: NRP's own namespace rules use RSS (it leaves out file cache, so it reads lower than the
+  working set), and we cannot read which one its violation counter uses. A pod is outside a memory band if EITHER
+  measure is, so we never miss a pod NRP would flag (Hunter 2026-11-18: "error on the side of caution").
   GPU       DCGM_FI_DEV_GPU_UTIL per GPU (the GPU dashboard's series)
 Flags (a pod is LOW if any holds):
   - lab rule: CPU, memory or GPU under --frac (40 %, from the skill's policy file) of the request;
@@ -190,7 +194,7 @@ def by_pod(expr):
 
 
 def metrics(ns, pods, window):
-    """{pod: {"req": {resource: value}, "cpu", "mem", "mem_max", "gpus": [(index, model, mean %)]}} over `window` min."""
+    """{pod: {"req": {resource: value}, "cpu", "mem", "mem_max", "rss", "gpus": [(index, model, mean %)]}} over `window` min."""
     sel = f'namespace="{ns}",pod=~"{"|".join(pods)}"'
     c = f'{sel},container!="",container!="POD"'
     w = f"{window}m"
@@ -202,7 +206,8 @@ def metrics(ns, pods, window):
             out[m["pod"]]["req"][m.get("resource")] = float(x["value"][1])
     for k, expr in (("cpu", f"sum by (pod) (rate(container_cpu_usage_seconds_total{{{c}}}[{w}]))"),
                     ("mem", f"sum by (pod) (avg_over_time(container_memory_working_set_bytes{{{c}}}[{w}]))"),
-                    ("mem_max", f"sum by (pod) (max_over_time(container_memory_working_set_bytes{{{c}}}[{w}]))")):
+                    ("mem_max", f"sum by (pod) (max_over_time(container_memory_working_set_bytes{{{c}}}[{w}]))"),
+                    ("rss", f"sum by (pod) (avg_over_time(container_memory_rss{{{c}}}[{w}]))")):
         for p, v in by_pod(expr).items():
             if p in out:
                 out[p][k] = v
@@ -211,6 +216,13 @@ def metrics(ns, pods, window):
         if m.get("pod") in out:
             out[m["pod"]]["gpus"].append((m.get("gpu", "?"), m.get("modelName", "?"), float(x["value"][1])))
     return out
+
+
+def mem_lo_hi(m):
+    """(lowest, highest) mean memory over the working set and RSS (RSS only when thanos has it): the stricter reading
+    each way, so a band check on these flags a pod if either measure is outside it."""
+    v = [m[k] for k in ("mem", "rss") if k in m]
+    return min(v), max(v)
 
 
 def nrp_bad(m):
@@ -224,8 +236,10 @@ def nrp_bad(m):
         return bad  # exempt from the CPU / memory bands
     if NRP_CPU and rc and "cpu" in m and not NRP_CPU[0] * rc <= m["cpu"] <= NRP_CPU[1] * rc:
         bad.append("cpu")
-    if NRP_MEM and rm and "mem" in m and not NRP_MEM[0] * rm <= m["mem"] <= NRP_MEM[1] * rm:
-        bad.append("mem")
+    if NRP_MEM and rm and "mem" in m:
+        lo, hi = mem_lo_hi(m)
+        if lo < NRP_MEM[0] * rm or hi > NRP_MEM[1] * rm:
+            bad.append("mem")
     return bad
 
 
@@ -261,8 +275,9 @@ def pod_lines(a, n, age, m, w):
     fr = a.frac or 0                                    # lab floor: off unless a local override or --frac sets it
     if rc and ((fr and m["cpu"] < fr * rc) or "cpu" in nb):
         bad.append(f"cpu {m['cpu']:.2f}/{rc:.2f} ({100*m['cpu']/rc:.0f}%)")
-    if rm and ((fr and m["mem"] < fr * rm) or "mem" in nb):
-        bad.append(f"mem {m['mem']/2**30:.1f}/{rm/2**30:.1f}Gi ({100*m['mem']/rm:.0f}%, max {m.get('mem_max', 0)/2**30:.1f})")
+    if rm and ((fr and mem_lo_hi(m)[0] < fr * rm) or "mem" in nb):
+        rss = f", rss {m['rss']/2**30:.1f}Gi {100*m['rss']/rm:.0f}%" if "rss" in m else ""
+        bad.append(f"mem {m['mem']/2**30:.1f}/{rm/2**30:.1f}Gi ({100*m['mem']/rm:.0f}%, max {m.get('mem_max', 0)/2**30:.1f}{rss})")
     if rg:
         floor = 100 * max(fr, NRP_GPU)
         if m["gpus"]:
