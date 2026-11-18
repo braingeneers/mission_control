@@ -11,7 +11,7 @@ terminal is attached (otherwise it prints how to run it). Setup asks which subsc
 detects the installed CLIs, suggests Tier 1 = Gemini Flash with the lowest thinking (when Gemini CLI is available, else Haiku / Codex) and
 Tier 2 = Sonnet (Codex after it as the failover when you have both), shows a diff against the current file, asks to write, keeps the old
 file as `agents.json.bak` and replaces it atomically. Non-interactive: `nrp-monitor setup --non-interactive [--subscriptions claude,gemini]
-[--triage gemini:gemini-3.8-flash:lowest,claude:haiku] [--fixer claude:sonnet] [--dry-run]` (`RUNNER[:MODEL[:THINKING]]`, comma list = order).
+[--triage agy:gemini-3.8-flash-low,claude:haiku] [--fixer claude:sonnet] [--dry-run]` (`RUNNER[:MODEL[:THINKING]]`, comma list = order).
 
 ```json
 {
@@ -47,17 +47,7 @@ file as `agents.json.bak` and replaces it atomically. Non-interactive: `nrp-moni
 - Commands: `nrp-monitor setup`, `nrp-monitor agents` (state and each tier's backends), `agents test [RUNNER]` (one tiny prompt through each runner),
   `agents unblock RUNNER`.
 
-## The Gemini runner (read-only tier only)
-
-`gemini` (the local Gemini CLI) is available for the `triage` tier only; a config naming it for any other tier is refused. It runs
-`gemini -p ... --approval-mode default --skip-trust -o json --admin-policy FILE -m ALIAS` with the prompt on stdin. The same allowlist as
-the Claude runner is enforced through Gemini CLI's policy engine: a per-run admin policy denies every tool, then allows only the listed
-`nrp-task show|logs|describe|util|s3` command prefixes and reads under the task's folder (no `../`); edit and write rules are never
-translated, so a Gemini agent cannot change a file, and in headless mode anything not allowed is denied. Thinking depth comes from a per-run
-system settings file (`GEMINI_CLI_SYSTEM_SETTINGS_PATH`) that defines a model alias with a `thinkingConfig`; `~/.gemini` is not touched.
-The Gemini CLI has no dollar or turn cap here, only the tier's time limit. Sign in with the CLI's own login (`gemini`, Google account);
-`GEMINI_API_KEY` is not passed through (the agent environment is scrubbed), so an API-key user keeps the key in `~/.gemini/.env`.
-Live Gemini CLI testing was rejected server-side (IneligibleTierError/UNSUPPORTED_CLIENT); see known-issues.md.
+The local Gemini CLI runner was removed in R3a (C3). Gemini remains available through `agy`.
 
 ## Claude and Codex are not equally restricted
 
@@ -71,7 +61,7 @@ When the user has already specified per-tier backends/models, the agent applies 
 `nrp-monitor setup --non-interactive --triage ... --fixer ...`; do not ask the user to run setup.
 Example configuration: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.1-sol then Claude Sonnet for the fixer:
 ```sh
-nrp-monitor setup --non-interactive --triage gemini:gemini-3.8-flash:lowest,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
+nrp-monitor setup --non-interactive --triage agy:gemini-3.8-flash-low,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
 ```
 
 ## Antigravity (`agy`, triage only)
