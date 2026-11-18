@@ -117,7 +117,7 @@ def util_task(m, mode, rule):
 
     def f(t):
         t.update(failure=None, mode=mode)
-        t['stages'][0].update(state='running', submitted=500)
+        t['stages'][0].update(state='running', submitted=500, pod_started=500)
         t['util_event'] = {'stage': 'a', 'job': 'work-17', 'cls': 'util', 'sig': 'util:x', 'detail': line, 'ts': 600,
                            'evidence': {'peaks_gi': {'work-17-abc': 6.1}, 'true_peak_gi': 7.58}, 'rule': rule, 'pod': 'work-17-abc'}
     m.task_txn('watcher', f)
@@ -127,6 +127,7 @@ def util_task(m, mode, rule):
 def review(m, agent):
     with patch.object(m, 'run_task_agent', agent), patch.object(m, 'task_prompt', return_value='FIX'), \
             patch.object(m, 'triage_prompt', return_value='JUDGE'), \
+            patch.object(m, 'job_pods', return_value=[]), \
             patch.object(m, 'namespace_offenders', return_value=[]), \
             patch.object(m, 'memory_low_evidence', return_value={'need_gi': 6.1, 'right_gi': 10}), \
             patch.object(m, 'thanos_query', return_value=[{'value': [0, '2']}]):

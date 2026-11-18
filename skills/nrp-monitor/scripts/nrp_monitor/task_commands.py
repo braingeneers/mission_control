@@ -81,16 +81,22 @@ def cmd_task_code(a):
 
 
 def cmd_task_stage(a):
-    """`task stage NAME STAGE --resumable`: mark a stage of an already registered task as resumable (re-running it skips finished items),
-    so Tier 0 may resubmit it once with 2x deadline after a timeout. Same effect as `resumable: true` in TASK.json at `task add`."""
+    """Update a registered stage's resumability, node exclusions or exact S3 done marker."""
     t = _m_state.task_load(a.name)
     if not t:
         sys.exit("no task %s" % a.name)
     if not any(s["id"] == a.stage for s in t["stages"]):
         sys.exit("task %s has no stage %s (stages: %s)" % (a.name, a.stage, ", ".join(s["id"] for s in t["stages"])))
     nodes = getattr(a, "exclude_node", None) or []
-    if not a.resumable and not nodes:
-        sys.exit("nothing to change: pass --resumable or --exclude-node NODE")
+    done_s3 = getattr(a, "done_s3", None)
+    if done_s3 is not None:
+        from . import s3 as _m_s3
+        if not _m_s3.s3_split(done_s3):
+            sys.exit("done_s3 = full s3://bucket/key URI of a single object (no trailing slash)")
+        if done_s3 in (_m_state.tstage(t, a.stage).get("after_s3") or []):
+            sys.exit("done_s3 repeats one of the stage's after_s3 URIs (it would never be submitted)")
+    if not a.resumable and not nodes and done_s3 is None:
+        sys.exit("nothing to change: pass --resumable, --exclude-node NODE or --done-s3 URI")
     for node in nodes:
         if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}", node):
             sys.exit("invalid node name")
@@ -99,16 +105,22 @@ def cmd_task_stage(a):
         for node in nodes:
             _m_tier0.exclude_node(doc, node)
         _m_task_registry.manifest_write(_m_state.tstage(t, a.stage)["manifest"], doc)
-    if not a.resumable:
+    if not a.resumable and done_s3 is None:
         print("stage %s: excluded %s" % (a.stage, ", ".join(nodes)))
         return 0
 
     def mark(t):
-        _m_state.tstage(t, a.stage)["resumable"] = True
-        _m_state.tev(t, "stage %s marked resumable by operator (Tier 0 may resubmit it once with 2x deadline after a timeout)" % a.stage)
+        stage = _m_state.tstage(t, a.stage)
+        if a.resumable:
+            stage["resumable"] = True
+            _m_state.tev(t, "stage %s marked resumable by operator (Tier 0 may resubmit it once with 2x deadline after a timeout)" % a.stage)
+        if done_s3 is not None:
+            old = ", ".join(stage["done_s3"])
+            stage["done_s3"] = [done_s3]
+            _m_state.tev(t, "stage %s done marker changed from %s to %s by operator" % (a.stage, old, done_s3))
     if not _m_state.task_txn(a.name, mark):
         sys.exit("no task %s" % a.name)
-    print("task %s: stage %s is resumable" % (a.name, a.stage))
+    print("task %s: stage %s %s" % (a.name, a.stage, "is resumable" if a.resumable else "done marker updated"))
     return 0
 
 
@@ -180,6 +192,10 @@ def cmd_task_resume(a):
         who[0] = "the coordinator chat" if t["status"] == "WITH_COORDINATOR" else "a person"
         t.pop("queue_hold", None)
         for s in t["stages"]:
+            if s.get("nrp_stopped") or s.get("nrp_woken") or s.get("util_deleted"):
+                for key in ("nrp_flag_since", "nrp_stopped", "nrp_woken"):
+                    s.pop(key, None)
+                s["coordinator_sized"] = _m_state.now()
             q = s.get("queue_wait") or {}
             if q.get("fired") and q.get("attempt") == s.get("attempt", 1):
                 q.update(fired=False, multiplier=q.get("multiplier", 1) * 2)
@@ -350,6 +366,6 @@ def cmd_util_restart(a):
         except OSError:
             print("monitor pass in progress; retry after it finishes")
             return 1
-        ok, message = _m_stage_jobs.utilization_restart(a.name, a.stage, getattr(a, "cpu", None), getattr(a, "mem", None))
+        ok, message = _m_stage_jobs.utilization_restart(a.name, a.stage, getattr(a, "cpu", None), getattr(a, "mem", None), coordinator_sized=getattr(a, "coordinator_sized", False))
     print(message)
     return 0 if ok else 1

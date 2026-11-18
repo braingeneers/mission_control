@@ -149,7 +149,7 @@ def do_submit(n, sid, reason, by):
                                                                        len(_m_state.task_load(n)["attempts"]), t["max_retries"])
 
 
-def utilization_restart(n, sid=None, cpu=None, mem=None, container_resources=None):
+def utilization_restart(n, sid=None, cpu=None, mem=None, container_resources=None, coordinator_sized=False):
     """Explicit replacement, without a failure or retry. Delete only a registered stage Job."""
     from . import ladder as _m_ladder
     from . import notify as _m_notify
@@ -188,6 +188,8 @@ def utilization_restart(n, sid=None, cpu=None, mem=None, container_resources=Non
     def reset(cur):
         stage = _m_state.tstage(cur, s["id"])
         stage.update(state="pending", attempt=stage.get("attempt", 1) + 1)
+        if coordinator_sized:
+            stage["coordinator_sized"] = _m_state.now()
         for key in ("nrp_flag_since", "nrp_woken", "nrp_stopped", "submitted"):
             stage.pop(key, None)
         cur.pop("util_event", None)

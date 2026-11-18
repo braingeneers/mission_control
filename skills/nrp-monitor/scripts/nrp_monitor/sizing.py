@@ -137,6 +137,17 @@ def thanos_peak_mem(ns, job, container, since_ts, per_pod=False):
 
 
 
+def job_pod_ages(t, s, pods=None):
+    """Ages from each pod's start time, falling back to its creation time."""
+    from . import cluster as _m_cluster
+    from . import state as _m_state
+    if pods is None:
+        pods = _m_cluster.job_pods(t["namespace"], s["job"])
+    return {p["metadata"]["name"]: max(0, _m_state.now() - (
+        _m_state.parse_ts(p.get("status", {}).get("startTime") or p["metadata"].get("creationTimestamp", ""))
+        or _m_state.now())) for p in pods}
+
+
 def memory_low_evidence(t, s, flagged_pod, working_set_only=False):
     from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
@@ -151,7 +162,7 @@ def memory_low_evidence(t, s, flagged_pod, working_set_only=False):
     runtime = s.get("measured_runtime_seconds")
     threshold = float(runtime) * .25 if runtime else 1800
     pods = _m_cluster.job_pods(t["namespace"], s["job"])
-    ages = {p["metadata"]["name"]: max(0, _m_state.now() - (_m_state.parse_ts(p.get("status", {}).get("startTime") or p["metadata"].get("creationTimestamp", "")) or _m_state.now())) for p in pods}
+    ages = job_pod_ages(t, s, pods)
     age = ages.get(flagged_pod, max(0, _m_state.now() - s.get("pod_started", _m_state.now())))
     since = min(s.get("memory_since", _m_state.now()), t.get("created", _m_state.now()), s.get("submitted", _m_state.now()),
                 *(_m_state.now() - age for age in ages.values()))

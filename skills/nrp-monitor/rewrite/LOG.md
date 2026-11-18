@@ -1,5 +1,9 @@
 # Log: nrp-monitor rewrite (newest first)
 
+## 2026-11-18 — band action: own-account count, ramp-up gate, coordinator sizing kept, `task stage --done-s3`
+- Reported by the ft-ladder coordinator (~13:35): (1) ft-disease-sizegroups u96 stopped for one pod aged 5m (account stop: `namespace_offenders` counted every account's pods incl. Workflows `nf-*` under nextflow-sa); (2) ft-official-units-region: band auto-restart (cpu=1.0, 3Gi) overwrote the coordinator's 250m/6Gi manifest 7 min after its resume, then stopped the pod at 6m; (3) done_s3 had to be hand-edited.
+- Fixes (codex gpt-6.1-sol, reviewed): stop count only `ours`; NRP band flags wait through ramp-up = min(25% measured runtime, 15 min), 10 min without history, age from the flag line, unknown age = act (my choice, cautious); resume after a band wake/stop clears nrp_* and sets `coordinator_sized` (also `task resize`) → wake instead of auto-restart; `task stage NAME STAGE --done-s3 URI`. 702 tests pass.
+
 ## 2026-11-18 — account summary counts just-started pods apart (660cd6c)
 - Hunter asked to confirm the "5 of 112 outside NRP bands" were being handled. Checked at 13:14 and 13:24: all but 0-1 were pods under 1 min old (no CPU series, memory not loaded); the one real case (ft-disease-resume-u384-2-dk28q, 20.0% mem) rose to 21% by the next pass. Real violations today (ft-official-units-region) were stopped and its coordinator chat resized and resumed it (13:14). nf-* pods belong to the Workflows service account, not Hunter.
 - Hunter: "ok sounds good go ahead". Summary now reads `account: N of M ... , +K started under 5 min ago (not judged yet)`; `state.ACCT` group 3 parses K and `acct_alarm` still adds it (unchanged alert). Tests: 673 passed. Installed 13:41; live run printed "account: 0 of 95".

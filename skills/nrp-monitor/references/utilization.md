@@ -48,18 +48,30 @@ read from its tag).
 
 ## Running task observations
 
-An NRP CPU or memory band flag (`rule=nrp`, LOW or HIGH) requires action. A resumable
+An NRP CPU or memory band flag (`rule=nrp`, LOW or HIGH) waits through pod ramp-up:
+25% of measured stage runtime, capped at 15 minutes, or 10 minutes without measured history.
+Age comes from the flag line (pod start time); an unknown age is treated as past ramp-up. During ramp-up there is no stop, restart, wake or grace timer;
+one event per pod records the wait. After ramp-up the flag requires action. A resumable
 stage with working-set and CPU measurements is resized and restarted without
 failure or retry use. Otherwise the coordinator is woken once with mean, peak, current and
 proposed requests and a grace deadline; a spiky workload gets a smaller-shard/resumability warning.
 An NRP review cannot close with “no change”. Lab-only observations retain judge/fixer review.
 
-`nrp_violation_grace_minutes` in config.json defaults to 30, from the first NRP flag of
+`nrp_violation_grace_minutes` in config.json defaults to 30, from the first NRP flag after ramp-up of
 that Job. A still-violating registered task Job is stopped after grace, or immediately when
-`namespace_offenders` reaches `account_block_after_violating_pods - 1` (normally 3).
+our account’s offenders reach `account_block_after_violating_pods - 1` (normally 3).
+Other accounts are excluded from this count; the namespace-wide blocked-submit diagnosis is unchanged.
 Logs are saved and S3 outputs retained; the task goes to its coordinator and the owner receives
 one safety-stop notice. Other users' Jobs are never stopped by this action. Missing sizing
 measurements defer resizing, never the safety deadline. Multi-container stages use separate measurements for each container.
+
+Resuming a task after a band wake or stop clears the old grace timer and wake/stop flags
+and marks affected stages `coordinator_sized`. Operator `task resize` also sets this marker.
+These stages wake the coordinator once with the measurements instead of auto-restarting;
+grace and safety stops still apply.
+
+Use `nrp-monitor task stage NAME STAGE --done-s3 s3://bucket/key` to replace its done marker.
+The URI must name one exact object, with no trailing slash; the old and new markers are logged.
 
 Use `nrp-monitor task resize NAME [--stage S] [--cpu X] [--mem Y]` or
 `nrp-monitor task restart NAME [--stage S]`. The equivalent fixer commands are
@@ -69,7 +81,7 @@ it cancels stale queued wakes and uses no failure/retry/owner notice. Terminal t
 Memory sizing prefers Thanos working-set peak; cgroup peak is fallback only without working-set
 series. Recorded OOM limits remain a minimum; utilization requests use ceil(peak × 1.5).
 
-For memory LOW (NRP band: 20–150% of request), wait until each flagged pod is past ramp-up: 25% of the stage's
+For lab-only memory LOW observations, wait until each flagged pod is past ramp-up: 25% of the stage's
 measured runtime, or 30 minutes when no measured history is available. A stage can record measured history as
 `measured_runtime_seconds` in TASK.json; do not substitute its deadline for measured runtime.
 Use each pod's whole-life Thanos peak, including earlier attempts, rather than the 10-minute mean. Set
@@ -84,12 +96,12 @@ Both roles receive per-pod peaks and ages, request and limit, OOM history, need,
 suggested verdict. The judge may disagree with the suggestion but must cite the numbers. It cannot edit files or run
 state-changing task commands. Invalid replies escalate. The fixer alone edits manifests, resubmits or splits inputs.
 
-Lab-only worked example: a workload requests 12Gi. Ramp-up can defer a lab observation, but never an NRP-band action. Whole-life peaks of
+Lab-only worked example: a workload requests 12Gi. Ramp-up can defer both lab observations and NRP-band actions under their respective rules. Whole-life peaks of
 4.5–7.7Gi and a recorded OOM at 6Gi give need 7.7Gi and right 12Gi. Since 12 <= 1.2*12, the request is sized correctly.
 The peak range is only about 1.7x (max/median cannot exceed that range), so there is no split.
 
 NRP bands (`rule=nrp`) use the deterministic action path above for both LOW and HIGH,
-including watch-only tasks. They bypass ramp-up and review cooldowns. Missing measurements
+including watch-only tasks. After ramp-up they bypass review cooldowns. Missing measurements
 and spiky workloads require coordinator action before the safety deadline; they cannot be
 closed with “no change”.
 

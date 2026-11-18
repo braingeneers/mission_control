@@ -289,11 +289,33 @@ def utilization_band_action(n, sid, pod, line):
     s = _m_state.tstage(t, sid)
     if s["state"] != "running":
         return
+    runtime = s.get("measured_runtime_seconds")
+    ramp_up = min(float(runtime) * .25, 900) if runtime else 600
+    m_age = _m_state.AGE_RE.search(line)          # nrp-util-check's own age first; the pod list only when the line has none
+    if m_age:
+        age = int(m_age.group(1)) * 60
+    else:
+        try:
+            age = _m_sizing.job_pod_ages(t, s).get(pod)
+        except Exception:
+            age = None
+        if age is None:                           # unknown age never holds a band action back (it would wait forever)
+            age = ramp_up
+    if age < ramp_up:
+        def record_ramp_up(cur):
+            stage = _m_state.tstage(cur, sid)
+            seen = stage.setdefault("nrp_ramp_up_logged", [])
+            if pod not in seen:
+                seen.append(pod)
+                del seen[:-50]
+                _m_state.tev(cur, "band flag during ramp-up (age %gm < %gm): not acted on yet" % (age / 60, ramp_up / 60))
+        _m_state.task_txn(n, record_ramp_up)
+        return
     first = s.get("nrp_flag_since", _m_state.now())
     _m_state.task_txn(n, lambda cur: _m_state.tstage(cur, sid).setdefault("nrp_flag_since", first))
     grace = float(_m_state.OWNER.get("nrp_violation_grace_minutes", 30)) * 60
     try:
-        count = len(_m_cluster.namespace_offenders(t["namespace"]))
+        count = sum(1 for o in _m_cluster.namespace_offenders(t["namespace"]) if o["ours"])
     except Exception:
         count = 0
     stop = _m_state.now() - first >= grace or count >= int(_m_config.util_policy().get("account_block_after_violating_pods", 4)) - 1
@@ -338,7 +360,7 @@ def utilization_band_action(n, sid, pod, line):
             "cpu": _m_sizing.cpu_request(cp, small),
             "memory": str(max(int(small.get("memory_bytes", 2000000000)), math.ceil(max(peak or 0, oom) * 1.5 / 2**30) * 2**30)) if peak is not None or oom else None}
         details += "; container %s peak memory=%s CPU=%s proposed=%s" % (c["name"], peak, cp, sizes[c["name"]])
-    if _m_timeouts.stage_resumable(s) and all(v["cpu"] and v["memory"] for v in sizes.values()):
+    if not s.get("coordinator_sized") and _m_timeouts.stage_resumable(s) and all(v["cpu"] and v["memory"] for v in sizes.values()):
         ok, why = _m_stage_jobs.utilization_restart(n, sid, cpu, mem) if len(cs) == 1 else _m_stage_jobs.utilization_restart(n, sid, container_resources=sizes)
         if ok: return
         details += "; restart failed: " + why
