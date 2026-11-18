@@ -457,10 +457,6 @@ def lookup_origin(ref):
         rec = load()["jobs"].get(name)
         if rec:
             return rec.get("origin"), "job %s: %s" % (name, (rec.get("label") or "")[:70])
-    if kind in ("", "chain"):
-        c = chain_load(name) if name and "/" not in name else None
-        if c:
-            return c.get("origin"), "chain %s: %s" % (name, (c.get("owner") or "")[:70])
     return None, "%s (no such registration)" % ref
 
 
@@ -469,9 +465,6 @@ def owner_of_job(st, job):
     tk = task_of_job(job) if job else None
     if tk:
         return "task:" + tk[0]
-    for cn in chain_names():
-        if any(s["job"] == job for s in (chain_load(cn) or {}).get("steps", [])):
-            return "chain:" + cn
     if job and job in st["jobs"]:
         return "job:" + job
     return None
@@ -1608,9 +1601,6 @@ def tiered_job_followup(job, rec, prompt, allowed, triage_allowed=None):
 # cancel/wait` can run beside a pass. Nothing here ever retries or resizes: a stop is a decision for a person.
 STEP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
 JOB_RE = re.compile(r"^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$")
-LIVE = ("active", "gated")                 # chains whose steps may be submitted
-OBSERVED = ("active", "gated", "stopped")  # chains whose running Jobs are still looked after
-TERMINAL = {"finished": 0, "stopped": 1, "cancelled": 1, "gated": 4}
 PASS = {}                                   # counters for the heartbeat line
 
 
@@ -1649,55 +1639,20 @@ def state_lock(timeout=60):
         f.close()
 
 
-def chain_path(name):
-    return CHAINS / name / "chain.json"
 
 
-def chain_load(name):
-    try:
-        return json.loads(chain_path(name).read_text())
-    except Exception:
-        return None
 
 
-def chain_write(c):
-    p = chain_path(c["name"])
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(c, indent=1, sort_keys=True))
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, p)
 
 
-def chain_names():
-    return sorted(p.parent.name for p in CHAINS.glob("*/chain.json")) if CHAINS.is_dir() else []
 
 
-def chain_txn(name, fn):
-    """Re-read the chain under state.lock, apply fn(c). fn returns False to abort (nothing written)."""
-    with state_lock():
-        c = chain_load(name)
-        if c is None:
-            return False
-        r = fn(c)
-        if r is False:
-            return False
-        chain_write(c)
-        return True if r is None else r
 
 
-def ev(c, msg):
-    c.setdefault("events", []).append("%s %s" % (iso(), msg))
-    del c["events"][:-60]
-    log("chain %s: %s" % (c["name"], msg))
 
 
-def step_of(c, sid):
-    return next(s for s in c["steps"] if s["id"] == sid)
 
 
-def is_done(s):
-    return s.get("state") == "done"
 
 
 # ---- validation ----------------------------------------------------------------------------------------------
@@ -1716,132 +1671,6 @@ def under_protected(path):
     return None
 
 
-def validate_chain(raw):
-    """Return (chain dict ready to store, warnings). Raises ChainError listing every problem."""
-    bad, warn = [], []
-    if not isinstance(raw, dict):
-        raise ChainError("top level must be an object")
-    name = raw.get("name")
-    if not isinstance(name, str) or not re.match(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$", name):
-        bad.append("name: required, letters/digits/_.- (max 63)")
-    notes = raw.get("notes", "")
-    if not isinstance(notes, str):
-        bad.append("notes: must be text")
-    elif len(notes.encode()) > RESUME_MAX:
-        bad.append("notes: %d KB, limit is %d KB (a chain's notes are what the follow-up agent reads; keep them short)"
-                   % (len(notes.encode()) // 1024, RESUME_MAX // 1024))
-    on_finish = raw.get("on_finish", "notify")
-    if on_finish not in ("notify", "agent"):
-        bad.append("on_finish: 'notify' or 'agent'")
-    follow = raw.get("followup", "")
-    if not isinstance(follow, str) or len(follow.encode()) > 4096:
-        bad.append("followup: text, at most 4 KB")
-    if on_finish == "agent" and not follow:
-        warn.append("on_finish=agent without 'followup': the agent only gets the notes and step summary")
-    ns = raw.get("namespace", NS)
-    if not isinstance(ns, str) or not re.match(r"^[a-z0-9][-a-z0-9]*$", ns):
-        bad.append("namespace: invalid")
-    steps_in = raw.get("steps")
-    if not isinstance(steps_in, list) or not steps_in:
-        raise ChainError("; ".join(bad + ["steps: non-empty list required"]))
-    if len(steps_in) > 100:
-        bad.append("steps: at most 100")
-    steps, ids = [], set()
-    for i, s in enumerate(steps_in):
-        if not isinstance(s, dict):
-            bad.append("steps[%d]: must be an object" % i)
-            continue
-        sid = s.get("id")
-        w = "step %s" % (sid if isinstance(sid, str) else "#%d" % i)
-        if not isinstance(sid, str) or not STEP_ID_RE.match(sid):
-            bad.append("%s: id required (letters/digits/_.-)" % w)
-        elif sid in ids:
-            bad.append("%s: duplicate id" % w)
-        ids.add(sid)
-        job = s.get("job")
-        if not isinstance(job, str) or not JOB_RE.match(job) or len(job) > 63:
-            bad.append("%s: job must be a DNS-1123 name (lowercase, digits, -, max 63)" % w)
-        argv = s.get("argv")
-        if not isinstance(argv, list) or not argv or not all(isinstance(x, str) for x in argv):
-            bad.append("%s: argv must be a non-empty list of strings" % w)
-            argv = None
-        cwd = s.get("cwd")
-        if not isinstance(cwd, str) or not cwd:
-            bad.append("%s: cwd required" % w)
-        else:
-            cwd = os.path.expanduser(cwd)
-            if not os.path.isabs(cwd):
-                bad.append("%s: cwd must be absolute" % w)
-            elif under_protected(cwd):
-                bad.append("%s: cwd %s is under %s; macOS privacy (TCC) blocks launchd from reading there. Run from a "
-                           "copy outside Desktop/Documents/Downloads (e.g. ~/.cache/<name>/<sha>)" % (w, cwd, under_protected(cwd)))
-            elif not os.path.isdir(cwd):
-                bad.append("%s: cwd %s is not a directory" % (w, cwd))
-        if argv:
-            if argv[0].startswith(("/", "~")) and under_protected(argv[0]):
-                bad.append("%s: argv[0] %s is under a TCC-protected folder" % (w, argv[0]))
-            for x in argv[1:]:
-                if (x.startswith("/") or x.startswith("~/")) and under_protected(x):
-                    warn.append("%s: argument %s is under Desktop/Documents/Downloads; a launchd-run pass cannot read it" % (w, x))
-        env = s.get("env", {})
-        if not isinstance(env, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in env.items()):
-            bad.append("%s: env must map strings to strings (no secrets: this file is stored on disk)" % w)
-        after = s.get("after", [])
-        if not isinstance(after, list) or not all(isinstance(x, str) for x in after):
-            bad.append("%s: after must be a list of step ids" % w)
-            after = []
-        d3 = s.get("done_s3", [])
-        if not isinstance(d3, list) or not all(s3_split(x) for x in d3):
-            bad.append("%s: done_s3 must be a list of s3://bucket/key URIs, each ONE object (no trailing slash; checked exactly, not as a prefix)" % w)
-        if s.get("gate") not in (None, "manual"):
-            bad.append("%s: gate must be 'manual'" % w)
-        dl = s.get("deadline_s")
-        if dl is not None and (not isinstance(dl, int) or isinstance(dl, bool) or dl <= 0):
-            bad.append("%s: deadline_s must be a positive integer" % w)
-        st0 = s.get("state", "pending")
-        if st0 not in ("pending", "running", "done"):
-            bad.append("%s: state may be pending, running or done (adopting existing work)" % w)
-        steps.append({"id": sid, "job": job, "cwd": cwd, "argv": argv or [], "env": env if isinstance(env, dict) else {},
-                      "after": after, "done_s3": d3 if isinstance(d3, list) else [], "gate": s.get("gate"),
-                      "deadline_s": dl, "state": st0})
-    jobs = [s["job"] for s in steps if s["job"]]
-    for j in set(jobs):
-        if jobs.count(j) > 1:
-            bad.append("job name %s used by more than one step" % j)
-    for s in steps:
-        for x in s["after"]:
-            if x not in ids:
-                bad.append("step %s: after refers to unknown step %s" % (s["id"], x))
-            elif x == s["id"]:
-                bad.append("step %s: after itself" % s["id"])
-    # cycle check (Kahn)
-    indeg = {s["id"]: len([x for x in s["after"] if x in ids]) for s in steps if s["id"]}
-    queue = [k for k, v in indeg.items() if v == 0]
-    seen = 0
-    while queue:
-        k = queue.pop()
-        seen += 1
-        for s in steps:
-            if k in s["after"] and s["id"] in indeg:
-                indeg[s["id"]] -= 1
-                if indeg[s["id"]] == 0:
-                    queue.append(s["id"])
-    if seen < len(indeg) and not any("unknown step" in b for b in bad):
-        bad.append("after: dependency cycle among steps " + ", ".join(sorted(k for k, v in indeg.items() if v > 0)))
-    if bad:
-        raise ChainError("\n  - ".join(["%d problem(s):" % len(bad)] + bad))
-    t = now()
-    for s in steps:
-        if s["state"] == "running":
-            s["submitted"] = t
-        elif s["state"] == "done":
-            s["done_ts"] = t
-            s["adopted"] = True
-    origin = norm_origin(raw.get("origin"))
-    c = {"name": name, "owner": str(raw.get("owner", ""))[:200], "origin": origin, "namespace": ns, "notes": notes, "on_finish": on_finish,
-         "followup": follow, "s3_endpoint": raw.get("s3_endpoint") or "", "aws_profile": raw.get("aws_profile") or "",
-         "status": "active", "reason": "", "created": t, "steps": steps, "events": []}
-    return c, warn
 
 
 def load_chain_file(path):
@@ -1863,25 +1692,6 @@ def load_chain_file(path):
         raise ChainError("not valid JSON: %s" % e)
 
 
-def dry_run_steps(c):
-    """Run every step's argv minus --apply. A step without --apply cannot be dry-run safely: parse-only."""
-    bad = 0
-    for s in c["steps"]:
-        if s["state"] != "pending":
-            print("  %-12s skipped (%s)" % (s["id"], s["state"]))
-            continue
-        if "--apply" not in s["argv"]:
-            print("  %-12s parse-only (no --apply in argv; not executed)" % s["id"])
-            continue
-        argv = [x for x in s["argv"] if x != "--apply"]
-        try:
-            r = subprocess.run(argv, cwd=s["cwd"], env=step_env(s), capture_output=True, text=True, timeout=300)
-            ok, tail = r.returncode == 0, (r.stderr.strip() or r.stdout.strip()).splitlines()[-3:]
-        except Exception as e:
-            ok, tail = False, [str(e)[:200]]
-        bad += not ok
-        print("  %-12s %s%s" % (s["id"], "dry-run ok" if ok else "DRY-RUN FAILED", "" if ok else ": " + " | ".join(tail)))
-    return bad
 
 
 # ---- cluster / S3 reads --------------------------------------------------------------------------------------
@@ -2073,16 +1883,6 @@ def s3_prepass(a):
                 jobs_ns[ns] = None
         return jobs_ns[ns]
 
-    for n in [x for x in chain_names() if (chain_load(x) or {}).get("status") in OBSERVED]:
-        c = chain_load(n)
-        js = jobs_of(c["namespace"])
-        if js is None:
-            continue
-        for s in c["steps"]:
-            if s["state"] == "running" and s.get("done_s3") and (js.get(s["job"]) or {"state": "ok"})["state"] == "ok":
-                for u in s["done_s3"]:
-                    want.append(u)
-                    conf[u] = c
     for n in [x for x in task_names() if (task_load(x) or {}).get("status") in TASK_LIVE]:
         t = task_load(n)
         js = jobs_of(t["namespace"])
@@ -2158,276 +1958,24 @@ def save_logs(c, s, reason):
 
 
 # ---- chain transitions ----------------------------------------------------------------------------------------
-def stop_chain(name, sid, reason, a=None):
-    """Mark the step failed (when sid) and the chain stopped; notify once."""
-    out = {}
-
-    def f(c):
-        if sid:
-            s = step_of(c, sid)
-            if s["state"] != "done":
-                s["state"], s["reason"] = "failed", reason
-                s["failed_job"] = s["job"]
-        if c["status"] in LIVE:
-            c["status"], c["reason"], c["stopped_at"] = "stopped", "step %s: %s" % (sid, reason) if sid else reason, now()
-            out["new"] = True
-        ev(c, "step %s: %s" % (sid, reason) if sid else reason)
-    chain_txn(name, f)
-    if out.get("new"):
-        PASS["stopped"] = PASS.get("stopped", 0) + 1
-        c = chain_load(name)
-        push("chain %s STOPPED at %s: %s. Nothing retried; `nrp-monitor chain show %s`" %
-             (name, sid or "-", reason[:100], name), "chain:%s:%d" % (name, int(c.get("stopped_at") or now())), refs=["chain:" + name])
 
 
-def set_state(name, sid, **kw):
-    def f(c):
-        s = step_of(c, sid)
-        s.update(kw)
-    chain_txn(name, f)
 
 
-def complete_step(c, s):
-    name, sid = c["name"], s["id"]
-    if not s.get("logs_saved"):
-        p = save_logs(c, s, "Job succeeded")
-        set_state(name, sid, logs_saved=True, logs=p)
-    for uri in s.get("done_s3", []):
-        r = s3_exists(uri, c)
-        if r is False:
-            stop_chain(name, sid, "Job succeeded but %s does not exist" % uri)
-            return
-        if r is None:
-            n = s.get("s3_errors", 0) + 1
-            set_state(name, sid, s3_errors=n)
-            if n >= 5:
-                stop_chain(name, sid, "cannot check %s (aws s3api head-object failed %d passes)" % (uri, n))
-            return
-    d = kubectl("-n", c["namespace"], "delete", "job", s["job"], "--wait=false")
-    if d.returncode and "NotFound" not in d.stderr:
-        log("chain %s: delete job %s failed: %s" % (name, s["job"], d.stderr.strip()[:100]))
-        return                                                            # retry next pass; logs already saved
-    set_state(name, sid, state="done", done_ts=now(), reason="")
-    PASS["done"] = PASS.get("done", 0) + 1
-    chain_txn(name, lambda c: ev(c, "step %s done, Job deleted" % sid))
 
 
-def observe_steps(c, jobs):
-    name = c["name"]
-    for s in c["steps"]:
-        sid = s["id"]
-        if s["state"] == "submitting":                                    # crash between "submitting" and "running"
-            if s["job"] in jobs:
-                set_state(name, sid, state="running", submitted=now(), adopted=True)
-                chain_txn(name, lambda c: ev(c, "step %s: adopted existing Job %s after a restart" % (sid, s["job"])))
-            else:
-                stop_chain(name, sid, "left in 'submitting' and Job %s does not exist (crash or failed submit)" % s["job"])
-            continue
-        if s["state"] != "running":
-            continue
-        info = jobs.get(s["job"])
-        if info is None:
-            if now() - s.get("submitted", 0) < MISSING_GRACE_S:
-                continue
-            if s.get("done_s3") and all(s3_exists(u, c) is True for u in s["done_s3"]):
-                set_state(name, sid, state="done", done_ts=now(), reason="Job gone, outputs present, logs not captured")
-                continue
-            stop_chain(name, sid, "Job %s is gone (deleted or TTL) before it was seen finishing" % s["job"])
-        elif info["state"] == "ok":
-            complete_step(chain_load(name), step_of(chain_load(name), sid))
-        elif info["state"] == "FAILED":
-            p = save_logs(c, s, "Job failed")
-            set_state(name, sid, logs=p, logs_saved=True)
-            stop_chain(name, sid, "Job %s FAILED (logs: %s)" % (s["job"], p))
-        elif s.get("deadline_s") and info["start"] and not s.get("overrun"):
-            limit = s["deadline_s"] + max(600, s["deadline_s"] // 10)
-            if now() - info["start"] > limit:
-                p = save_logs(c, s, "past deadline %ds" % s["deadline_s"])
-                set_state(name, sid, logs=p, overrun=True)
-                stop_chain(name, sid, "Job %s running %dm past deadline %ds (not deleted; logs: %s)"
-                           % (s["job"], (now() - info["start"] - s["deadline_s"]) // 60, s["deadline_s"], p))
-                set_state(name, sid, state="running", reason="")           # still running: keep observing it
 
 
-def submit_step(name, sid):
-    """submitting -> run argv -> running. Returns True when a Job was created."""
-    def begin(c):
-        s = step_of(c, sid)
-        if c["status"] not in LIVE or s["state"] != "pending":
-            return False
-        s["state"], s["submit_started"] = "submitting", now()
-        ev(c, "step %s: submitting" % sid)
-    if not chain_txn(name, begin):
-        return False
-    c = chain_load(name)
-    s = step_of(c, sid)
-    lp = CHAINS / name / "logs" / ("%s.submit.txt" % sid)
-    lp.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        r = subprocess.run(s["argv"], cwd=s["cwd"], env=step_env(s), capture_output=True, text=True, timeout=SUBMIT_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        log("chain %s step %s: submit timed out; left in 'submitting', next pass adopts or fails it" % (name, sid))
-        return False
-    except Exception as e:                                                # cannot even start: nothing was created
-        lp.write_text("could not start: %s\n" % e)
-        stop_chain(name, sid, "could not run argv: %s" % str(e)[:100])
-        return False
-    lp.write_text(("rc=%d\n--- stdout ---\n%s\n--- stderr ---\n%s" % (r.returncode, r.stdout[-8000:], r.stderr[-8000:])))
-    if r.returncode and BLOCK_RE.search(r.stderr + r.stdout):              # NRP refused it: account RED ALERT, the step waits (not a failure)
-        red_alert_enter(c["namespace"], (r.stderr.strip() or r.stdout.strip())[-300:], "chain %s submit refused" % name)
-        set_state(name, sid, state="pending")
-        return False
-    if r.returncode:
-        tail = (r.stderr.strip() or r.stdout.strip()).splitlines()[-1:] or [""]
-        stop_chain(name, sid, "submit exited %d: %s (see %s)" % (r.returncode, tail[0][:100], lp))
-        return False
-    set_state(name, sid, state="running", submitted=now())
-    chain_txn(name, lambda c: ev(c, "step %s: running (Job %s)" % (sid, s["job"])))
-    PASS["submitted"] = PASS.get("submitted", 0) + 1
-    return True
 
 
-def finish_chain(name):
-    out = {}
-
-    def f(c):
-        if c["status"] not in LIVE or not all(is_done(s) for s in c["steps"]):
-            return False
-        c["status"], c["finished"], c["reason"] = "finished", now(), ""
-        ev(c, "all %d steps done" % len(c["steps"]))
-        out["c"] = c
-    if chain_txn(name, f):
-        c = out["c"]
-        PASS["finished"] = PASS.get("finished", 0) + 1
-        notify("chain %s FINISHED (%d steps, %s)%s" % (name, len(c["steps"]), ago(c["created"]),
-               "; follow-up agent will run" if c["on_finish"] == "agent" else ""), ref="chain:" + name)
 
 
-def advance_chain(name, jobs, counts, a):
-    c = chain_load(name)
-    observe_steps(c, jobs)
-    c = chain_load(name)
-    if c["status"] not in LIVE:
-        return
-    for s in c["steps"]:
-        if s["state"] != "pending" or not all(is_done(step_of(c, x)) for x in s["after"]):
-            continue
-        sid = s["id"]
-        if s.get("gate") == "manual" and not s.get("gate_cleared"):
-            def g(c):
-                if c["status"] != "active":
-                    return False
-                c["status"], c["gate_step"] = "gated", sid
-                c["reason"] = "manual gate before step %s" % sid
-                ev(c, "gated before step %s" % sid)
-            if chain_txn(name, g):
-                push("chain %s GATED before step %s: decide, then `nrp-monitor chain resume %s`" % (name, sid, name),
-                     "gate:%s:%s:%d" % (name, sid, int(now())), refs=["chain:" + name])
-            continue
-        info = jobs.get(s["job"])
-        if info is not None:
-            if s.get("retry_cleanup") and s.get("failed_job") == s["job"] and info["state"] in ("ok", "FAILED"):
-                d = kubectl("-n", c["namespace"], "delete", "job", s["job"], "--wait=false")
-                log("chain %s: deleted finished Job %s before retry (rc=%d)" % (name, s["job"], d.returncode))
-                jobs.pop(s["job"], None) if not d.returncode else None
-            else:
-                PASS["blocked"] = PASS.get("blocked", 0) + 1
-                log("chain %s step %s waits: Job %s already exists" % (name, sid, s["job"]))
-            continue
-        cap = max_jobs()
-        if counts["n"] >= cap:
-            PASS["capped"] = PASS.get("capped", 0) + 1
-            log("chain %s step %s waits: %d of our Jobs unfinished (cap %d)" % (name, sid, counts["n"], cap))
-            continue
-        if red_alert():                                                   # account RED ALERT: nothing new until NRP's dry-run accepts
-            PASS["held"] = PASS.get("held", 0) + 1
-            log("chain %s step %s HELD: NRP RED ALERT" % (name, sid))
-            continue
-        if submit_step(name, sid):
-            counts["n"] += 1
-    finish_chain(name)
 
 
-def process_chains(a, st):
-    names = [n for n in chain_names() if (chain_load(n) or {}).get("status") in OBSERVED]
-    PASS["chains"] = len(names)
-    if not names:
-        return
-    if a.dry_run:
-        for n in names:
-            c = chain_load(n)
-            print("[dry-run] chain %s (%s): %s" % (n, c["status"], ", ".join("%s=%s" % (s["id"], s["state"]) for s in c["steps"])))
-        return
-    jobs_ns, bad_ns = {}, set()
-    for ns in sorted({chain_load(n)["namespace"] for n in names}):
-        try:
-            jobs_ns[ns] = fetch_jobs(ns)
-        except Exception as e:
-            bad_ns.add(ns)
-            st["kube_errors"] += 1
-            log("chains: kubectl get jobs -n %s failed (%d in a row): %s" % (ns, st["kube_errors"], str(e)[:120]))
-            if st["kube_errors"] >= 6:
-                push("kubectl has failed %d passes in a row, chains and tasks are not advancing: %s" % (st["kube_errors"], str(e)[:100]),
-                     "kube-error")
-    if not bad_ns:
-        st["kube_errors"] = 0
-        push_clear("kube-error")
-    mine = {(ns, n) for ns, js in jobs_ns.items() for n, i in js.items() if i["ours"] and i["state"] in ("running", "pending")}
-    for n in names:                                                      # chain Jobs count even without the annotation
-        c = chain_load(n)
-        js = jobs_ns.get(c["namespace"], {})
-        mine |= {(c["namespace"], s["job"]) for s in c["steps"] if s["state"] in ("running", "submitting")
-                 and js.get(s["job"], {"state": "pending"})["state"] in ("running", "pending")}
-    counts = {"n": len(mine)}
-    PASS["our_jobs"] = counts["n"]
-    for n in names:
-        c = chain_load(n)
-        if c["namespace"] in bad_ns:
-            continue
-        try:
-            advance_chain(n, jobs_ns[c["namespace"]], counts, a)
-        except Exception as e:
-            log("chain %s error: %s: %s" % (n, type(e).__name__, str(e)[:150]))
 
 
-def chain_summary(c):
-    lines = []
-    for s in c["steps"]:
-        lines.append("- %s job=%s state=%s%s%s" % (s["id"], s["job"], s["state"], " (%s)" % s["reason"][:100] if s.get("reason") else "",
-                     " log=%s" % s["logs"] if s.get("logs") else ""))
-    return "\n".join(lines)
 
 
-def run_chain_followups(a, st):
-    for n in chain_names():
-        c = chain_load(n)
-        if not c or c["status"] != "finished" or c["on_finish"] != "agent" or c.get("followup_started"):
-            continue
-        if a.dry_run:
-            print("[dry-run] chain %s finished: would launch follow-up agent" % n)
-            continue
-        if not agents_available():
-            log("chain %s follow-up waits: %s" % (n, unavailable_text()))
-            continue
-        chain_txn(n, lambda c: c.update(followup_started=now()))          # mark first: exactly once
-        text = "Chain %s (%s) finished: all %d steps done.\n\nNOTES:\n%s\n\nSTEPS:\n%s\n\n" % (
-            n, c["owner"], len(c["steps"]), c["notes"], chain_summary(c))
-        if c.get("followup"):
-            text += "WHAT TO DO:\n%s\n" % c["followup"]
-        text += "\nLog tails are files under %s (read only what you need).\n" % (CHAINS / n / "logs")
-        k = "kubectl -n %s" % c["namespace"]
-        allowed = kube_read_allow(k) + [
-                   "Read(%s/**)" % (WORK / "followup"), "Read(%s/**)" % (CHAINS / n / "logs")]
-        cmd = agent_cmd("repair", allowed)
-        log("chain %s followup start" % n)
-        rec = {"ns": c["namespace"], "label": c["owner"] or n, "origin": c.get("origin")}
-        cmd.spec["ledger_task"] = "chain:" + n
-        res = run_agent(cmd, job_prompt("chain " + n, rec, "chain finished", text), WORK / "followup")
-        log("chain %s followup: %s" % (n, res[:300]))
-        if is_unavailable(res):                                           # ran out of usage mid-call: run it again next pass
-            chain_txn(n, lambda c: c.pop("followup_started", None))
-            continue
-        notify("chain %s finished: %s" % (c["owner"] or n, res[:140]), st, None, ref="chain:" + n)
 
 
 # ---- digest and push (v2: routine events are silent; one push when the owner is needed) ---------------------------
@@ -3806,10 +3354,6 @@ def task_add_raw(raw, src_file, by="session", parent=None):
             ot = task_load(o)
             if o != n and ot and ot["status"] in TASK_LIVE + TASK_HELD:
                 busy.update({s["job"]: o for s in ot["stages"] if s["state"] != "done"})
-        for cn in chain_names():
-            c = chain_load(cn)
-            if c and c["status"] in OBSERVED:
-                busy.update({s["job"]: "chain " + cn for s in c["steps"] if s["state"] != "done"})
         dup = [s["job"] for s in t["stages"] if s["job"] in busy]
         if dup:
             sys.exit("task refused: Job %s already belongs to %s" % (dup[0], busy[dup[0]]))
@@ -4519,8 +4063,7 @@ def process_red_alert(a, st):
         return
     cur = red_alert()
     names = [n for n in task_names() if (task_load(n) or {}).get("status") in TASK_LIVE + TASK_HELD]
-    nss = {cur["ns"]} if cur else {NS} | {task_load(n)["namespace"] for n in names} | {
-        (chain_load(c) or {}).get("namespace") or NS for c in chain_names() if (chain_load(c) or {}).get("status") in LIVE}
+    nss = {cur["ns"]} if cur else {NS} | {task_load(n)["namespace"] for n in names}
     probed = read_json(RED_ALERT, {}).get("probed", {})
     for ns in sorted(nss):
         if now() - probed.get(ns, 0) < RED_PROBE_S:
@@ -6196,8 +5739,6 @@ def check_orphans(a, st):
     known = set()
     for n in task_names():
         known |= {s["job"] for s in (task_load(n) or {}).get("stages", [])}
-    for cn in chain_names():
-        known |= {s["job"] for s in (chain_load(cn) or {}).get("steps", [])}
     known |= {j for j, r in st["jobs"].items() if r.get("status") == "watching"}
     seen = read_json(ORPHANS, {})
     live = {j for j, i in js.items() if i["ours"] and i["state"] in ("running", "pending") and j not in known}
@@ -7732,7 +7273,7 @@ def cmd_origin(a):
         flags.setdefault("cwd", os.getcwd())
     kind, name = a.kind, a.name
     if not flags:
-        cur = {"task": lambda: (task_load(name) or {}).get("origin"), "chain": lambda: (chain_load(name) or {}).get("origin"),
+        cur = {"task": lambda: (task_load(name) or {}).get("origin"),
                "job": lambda: (load()["jobs"].get(name) or {}).get("origin")}[kind]()
         print("%s %s origin: %s" % (kind, name, origin_plain(cur)))
         return 0
@@ -7763,8 +7304,6 @@ def cmd_origin(a):
         log_fn("origin %s -> %s by %s (evidence: %s)" % (origin_plain(old), origin_plain(new), by, a.evidence))
     if kind == "task":
         ok = task_txn(name, lambda t: apply(t, lambda m: tev(t, m)))
-    elif kind == "chain":
-        ok = chain_txn(name, lambda c: apply(c, lambda m: ev(c, m)))
     else:
         with state_lock():
             st = load()
@@ -8077,160 +7616,14 @@ def cmd_tool(a):
 
 
 # ---- chain commands --------------------------------------------------------------------------------------------
-def cmd_chain_add(a):
-    try:
-        raw, text = load_chain_file(a.file)
-        if isinstance(raw, dict):
-            raw["origin"] = origin_overlay(raw.get("origin"), a)
-        c, warn = validate_chain(raw)
-    except ChainError as e:
-        sys.exit("chain file refused: %s" % e)
-    if not a.dry_run:
-        require_origin_note(c["origin"], "chain", c["name"])
-    for w in warn:
-        print("warning: " + w, file=sys.stderr)
-    if a.dry_run:
-        print("chain %s valid: %d steps. Dry-running steps that have --apply (without it):" % (c["name"], len(c["steps"])))
-        return 1 if dry_run_steps(c) else 0
-
-    def create():
-        if chain_path(c["name"]).exists():
-            sys.exit("chain %s already exists (`chain show`, or choose another name)" % c["name"])
-        owner_of = {}
-        for n in chain_names():
-            o = chain_load(n)
-            if o and o["status"] in OBSERVED:
-                owner_of.update({s["job"]: n for s in o["steps"] if s["state"] != "done"})
-        dup = [s["job"] for s in c["steps"] if s["job"] in owner_of]
-        if dup:
-            sys.exit("Job name(s) %s already belong to chain %s" % (", ".join(dup), owner_of[dup[0]]))
-        d = CHAINS / c["name"]
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "spec.original.json").write_text(text)                      # the copy that nothing reads at run time
-        chain_write(c)
-    with state_lock():
-        create()
-    log("chain add %s: %d steps" % (c["name"], len(c["steps"])))
-    n = collections.Counter(s["state"] for s in c["steps"])
-    print("chain %s added: %d steps (%d pending, %d running, %d done). The next `nrp-monitor run` pass starts it; "
-          "`nrp-monitor chain wait %s` blocks until it ends." % (c["name"], len(c["steps"]), n["pending"], n["running"], n["done"], c["name"]))
-    return 0
 
 
-def cmd_chain_list(a):
-    names = chain_names()
-    if not names:
-        print("no chains")
-    for n in names:
-        c = chain_load(n)
-        if not c:
-            continue
-        cnt = collections.Counter(s["state"] for s in c["steps"])
-        print("%-9s %-28s %d/%d done%s%s  [%s] <%s> %s" % (c["status"], n, cnt["done"], len(c["steps"]),
-              ", %d running" % cnt["running"] if cnt["running"] else "", ", %d failed" % cnt["failed"] if cnt["failed"] else "",
-              c["owner"][:40], (c.get("origin") or {}).get("title") or ORIGIN_MISSING, c["reason"][:90]))
-    return 0
 
 
-def cmd_chain_show(a):
-    c = chain_load(a.name)
-    if not c:
-        sys.exit("no chain %s" % a.name)
-    print("%s [%s] owner=%s ns=%s created %s ago on_finish=%s" % (c["name"], c["status"], c["owner"], c["namespace"],
-          ago(c["created"]), c["on_finish"]))
-    print("origin: " + origin_plain(c.get("origin"), "owner field: %s" % (c.get("owner") or "-")))
-    if c["reason"]:
-        print("reason: " + c["reason"])
-    for s in c["steps"]:
-        extra = " after=%s" % ",".join(s["after"]) if s["after"] else ""
-        extra += " GATE%s" % ("(cleared)" if s.get("gate_cleared") else "") if s.get("gate") else ""
-        if s["state"] == "running":
-            extra += " running %s" % ago(s["submitted"])
-        if s.get("reason"):
-            extra += " (%s)" % s["reason"][:120]
-        if s.get("logs"):
-            extra += " log=%s" % s["logs"]
-        print("  %-12s %-10s %s%s" % (s["id"], s["state"], s["job"], extra))
-    for e in c.get("events", [])[-5:]:
-        print("  . " + e)
-    hb = heartbeat_age()
-    print("monitor heartbeat: %s" % ("none" if hb is None else ago(hb) + " ago"))
-    return 0
 
 
-def cmd_chain_cancel(a):
-    def f(c):
-        if c["status"] in ("finished", "cancelled"):
-            return False
-        c["status"], c["reason"] = "cancelled", "cancelled by a person"
-        ev(c, "cancelled")
-    if not chain_txn(a.name, f):
-        sys.exit("chain %s not found or already ended" % a.name)
-    c = chain_load(a.name)
-    left = [s["job"] for s in c["steps"] if s["state"] in ("running", "submitting")]
-    print("chain %s cancelled. Nothing is deleted; Jobs still in the cluster: %s" % (a.name, ", ".join(left) or "none"))
-    return 0
 
 
-def cmd_chain_resume(a):
-    edits = {}
-    for kv in a.edit_step or []:
-        if len(kv) != 2 or "=" not in kv[1]:
-            sys.exit("--edit-step STEP key=value")
-        k, v = kv[1].split("=", 1)
-        try:
-            v = json.loads(v)
-        except ValueError:
-            pass
-        edits.setdefault(kv[0], []).append((k, v))
-    err = []
-
-    def f(c):
-        if c["status"] not in ("stopped", "gated"):
-            err.append("chain %s is %s: only a stopped or gated chain can be resumed" % (c["name"], c["status"]))
-            return False
-        ids = {s["id"] for s in c["steps"]}
-        for sid in list(edits) + list(a.skip or []):
-            if sid not in ids:
-                err.append("no step %s" % sid)
-                return False
-        for sid, kvs in edits.items():
-            s = step_of(c, sid)
-            for k, v in kvs:
-                head, _, tail = k.partition(".")
-                if head == "env" and tail and isinstance(v, str):
-                    s["env"][tail] = v
-                elif k == "argv" and isinstance(v, list) and v and all(isinstance(x, str) for x in v):
-                    s["argv"] = v
-                elif k == "job" and isinstance(v, str) and JOB_RE.match(v) and len(v) <= 63:
-                    s["job"] = v
-                elif k == "cwd" and isinstance(v, str) and os.path.isdir(os.path.expanduser(v)) and not under_protected(v):
-                    s["cwd"] = os.path.expanduser(v)
-                elif k == "deadline_s" and isinstance(v, int) and v > 0:
-                    s["deadline_s"] = v
-                elif k == "done_s3" and isinstance(v, list) and all(isinstance(x, str) for x in v):
-                    s["done_s3"] = v
-                else:
-                    err.append("cannot edit %s.%s (editable: argv, job, cwd, deadline_s, done_s3, env.KEY; value JSON)" % (sid, k))
-                    return False
-        for sid in a.skip or []:
-            s = step_of(c, sid)
-            s.update(state="done", skipped=True, done_ts=now(), reason="skipped by a person")
-        for s in c["steps"]:
-            if s["state"] == "failed":
-                s["state"], s["retry_cleanup"], s["reason"] = "pending", True, ""
-                s.pop("logs_saved", None)
-                s.pop("s3_errors", None)
-            if s["id"] == c.get("gate_step") or (s.get("gate") and not s.get("gate_cleared") and c["status"] == "gated"):
-                s["gate_cleared"] = True
-        c["status"], c["reason"] = "active", ""
-        c.pop("gate_step", None)
-        ev(c, "resumed%s%s" % (" skip=" + ",".join(a.skip) if a.skip else "", " edits=" + ",".join(edits) if edits else ""))
-    ok = chain_txn(a.name, f) if chain_load(a.name) else err.append("no chain %s" % a.name)
-    if err or not ok:
-        sys.exit(err[0] if err else "resume failed")
-    print("chain %s resumed; the next run pass continues it" % a.name)
-    return 0
 
 
 def heartbeat_age():
@@ -8245,34 +7638,6 @@ def write_heartbeat(text):
     HEART.write_text("%s %s\n" % (iso(), text))
 
 
-def cmd_chain_wait(a):
-    start = now()
-    while True:
-        c = chain_load(a.name)
-        if c is None:
-            print("ERROR no chain %s" % a.name)
-            return 2
-        st_ = c["status"]
-        cnt = collections.Counter(s["state"] for s in c["steps"])
-        prog = "%d/%d done" % (cnt["done"], len(c["steps"]))
-        if st_ == "finished":
-            print("FINISHED %s: %s" % (a.name, prog))
-            return 0
-        if st_ in ("stopped", "cancelled"):
-            print("%s %s: %s; %s" % (st_.upper(), a.name, prog, c["reason"][:160]))
-            return 1
-        if st_ == "gated":
-            print("GATED %s: %s; %s" % (a.name, prog, c["reason"][:160]))
-            return 4
-        hb = max(heartbeat_age() or 0, c["created"])
-        if now() - hb > HEART_STALL_S:
-            print("STALLED %s: %s; monitor has not run for %s (start `sh -c 'while :; do nrp-monitor run; sleep 300; done'`)"
-                  % (a.name, prog, ago(hb)))
-            return 5
-        if a.m and now() - start >= a.m:
-            print("RUNNING %s: %s; %s" % (a.name, prog, ", ".join("%s=%s" % (s["id"], s["state"]) for s in c["steps"] if s["state"] in ("running", "submitting"))))
-            return 3
-        time.sleep(min(WAIT_POLL_S, max(1, a.m - (now() - start))) if a.m else WAIT_POLL_S)
 
 
 # ---- setup: choose each tier's backend from the subscriptions the user has (writes agents.json) ----------------------
@@ -8518,15 +7883,13 @@ def cmd_status(a):
     for line in bad_node_lines():
         print(line)
     hb = heartbeat_age()
-    chains = [chain_load(n) for n in chain_names()]
-    live = [c for c in chains if c and c["status"] in LIVE]
     watching = [j for j, r in load()["jobs"].items() if r.get("status") == "watching"]
     tasks = [n for n in task_names() if (task_load(n) or {}).get("status") in TASK_LIVE]
-    active = len(live) + len(watching) + len(tasks)
+    active = len(watching) + len(tasks)
     age = None if hb is None else now() - hb
     # counts are registrations, not Kubernetes Jobs: a task covers many Jobs (its stages), a legacy `add` covers one
     n_stage_jobs = sum(1 for n in tasks for s in (task_load(n) or {}).get("stages", []) if s["state"] == "running")
-    desc = "%d chain(s), %d task(s) (%d running stage Job(s)) and %d legacy watched job(s) active" % (len(live), len(tasks), n_stage_jobs, len(watching))
+    desc = "%d task(s) (%d running stage Job(s)) and %d legacy watched job(s) active" % (len(tasks), n_stage_jobs, len(watching))
     if active and (age is None or age > HEART_WARN_S):
         print("WARNING: nrp-monitor %s but %s; nothing is being submitted, checked or notified. Start: "
               "sh -c 'while :; do nrp-monitor run; sleep 300; done'" %
@@ -8590,15 +7953,8 @@ def cmd_run_pass(a):
         process_red_alert(a, st)                                          # NRP's admission verdict first: it gates every submit below
     except Exception as e:
         log("process_red_alert error: %s: %s" % (type(e).__name__, str(e)[:150]))
-    first = () if a.tasks_only else (process_chains,)                       # chains first: submits are time-critical
-    for fn in first:
-        try:
-            fn(a, st)
-        except Exception as e:
-            log("%s error: %s" % (fn.__name__, str(e)[:150]))
-    beat("chains-done")
     rest = (process_tasks, process_continuations, process_task_webhooks) if a.tasks_only else (check_pods, process_tasks, process_continuations, process_task_webhooks, check_jobs,
-                                                                         run_chain_followups, check_orphans)
+                                                                         check_orphans)
     for fn in rest:
         try:
             fn(a, st)
@@ -8845,7 +8201,7 @@ def main():
     o.add_argument("--replace", action="store_true", help="replace an origin; a new chat clears old chat fields")
     o.set_defaults(f=cmd_origin, kind="task")
     o = sub.add_parser("origin", help="record/show which chat owns a task, chain or legacy job (metadata only; backfill for work registered without one)")
-    o.add_argument("kind", choices=("task", "chain", "job"))
+    o.add_argument("kind", choices=("task", "job"))
     o.add_argument("name")
     o.add_argument("--chat", help="T3 v2 link or session id (requires --harness)")
     o.add_argument("--by", help="who changed the origin (default: current session or cli)")
@@ -8884,30 +8240,6 @@ def main():
     x = ags.add_parser("unblock", help="clear a runner's usage-limit block")
     x.add_argument("runner")
     x.set_defaults(f=cmd_agents)
-    ch = sub.add_parser("chain", help="multi-step Job chains (no agent polls)").add_subparsers(dest="ccmd", required=True)
-    x = ch.add_parser("add", help="validate FILE (JSON/YAML), copy it into the state dir, start it on the next pass")
-    x.add_argument("file")
-    x.add_argument("--dry-run", action="store_true", help="validate; run each step's argv minus --apply (steps without --apply: parse only)")
-    add_origin_args(x)
-    x.set_defaults(f=cmd_chain_add)
-    ch.add_parser("list").set_defaults(f=cmd_chain_list)
-    x = ch.add_parser("show")
-    x.add_argument("name")
-    x.set_defaults(f=cmd_chain_show)
-    x = ch.add_parser("wait", help="block until finished (0), stopped/cancelled (1), no such chain (2), -m reached (3), "
-                                    "manual gate (4), monitor not running (5); prints ONE line; never calls kubectl")
-    x.add_argument("name")
-    x.add_argument("-m", type=int, default=0, help="max seconds to wait")
-    x.set_defaults(f=cmd_chain_wait)
-    x = ch.add_parser("resume", help="clear a stop or gate; failed steps are retried unless --skip'd")
-    x.add_argument("name")
-    x.add_argument("--skip", action="append", metavar="STEP", help="treat STEP as done")
-    x.add_argument("--edit-step", nargs=2, action="append", metavar=("STEP", "KEY=VALUE"),
-                   help="edit argv (JSON list), job, cwd, deadline_s, done_s3 (JSON), or env.KEY before retrying")
-    x.set_defaults(f=cmd_chain_resume)
-    x = ch.add_parser("cancel", help="stop the chain; deletes nothing")
-    x.add_argument("name")
-    x.set_defaults(f=cmd_chain_cancel)
     a = ap.parse_args()
     sys.exit(a.f(a))
 

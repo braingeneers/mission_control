@@ -280,35 +280,6 @@ class O(unittest.TestCase):
         self.assertIn("[t1 · fixture-sort-chat]", out)
         self.assertIn("not by one chat", out)
 
-    def test_chain_origin_add_show_backfill_and_stop_alert(self):
-        step = {"id": "a", "job": "c-a", "cwd": str(self.tmp), "argv": ["/bin/echo", "x"], "state": "running"}
-        spec = {"name": "c1", "owner": "some owner", "steps": [step], "origin": RT}
-        f = self.tmp / "c1.json"
-        f.write_text(json.dumps(spec))
-        rc, out, err = self.wd("chain", "add", str(f))
-        self.assertEqual(rc, 0, err)
-        rc, out, _ = self.wd("chain", "show", "c1")
-        self.assertIn('origin: chat "fixture-sort-chat"', out)
-        spec.pop("origin")
-        spec["name"] = "c2"
-        spec["steps"] = [dict(step, job="c-b")]
-        f.write_text(json.dumps(spec))
-        rc, out, err = self.wd("chain", "add", str(f))
-        self.assertEqual(rc, 0)
-        self.assertIn("has no origin", err)
-        rc, out, _ = self.wd("chain", "show", "c2")
-        self.assertIn("origin not recorded (owner field: some owner)", out)
-        rc, out, err = self.wd("origin", "chain", "c2", "--title", "finch", "--link", RT["link"], "--evidence", "verified by parent")
-        self.assertEqual(rc, 0, err)
-        self.set_job("c-a", state="FAILED")
-        self.set_job("c-b", state="FAILED")
-        rc, out, err = self.wd("run")
-        self.assertEqual(rc, 0, err)
-        pushes = self.pushes()
-        self.assertEqual(len(pushes), 2, pushes)
-        joined = "\n".join(pushes)
-        self.assertIn("[fixture-sort-chat] chain c1 STOPPED", joined)
-        self.assertIn("[finch] chain c2 STOPPED", joined)
 
     def test_legacy_add_records_origin_and_a_same_job_reregistration_keeps_it(self):
         rc, out, err = self.wd("add", "legacy-1", "--label", "old job", "--origin-title", "fixture-sort-chat", "--origin-link", RT["link"])
