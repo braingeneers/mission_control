@@ -162,11 +162,12 @@ def plan_state(pid):
 def plan_txn(pid, fn):
     from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    with _m_state.state_lock():
-        st = plan_state(pid)
-        fn(st)
+    def modify(st):
+        fn(st)  # plan callbacks historically do not veto writes with False
+    def write(st):
         plan_dir(pid).mkdir(parents=True, exist_ok=True)
         _m_notify.write_json(plan_dir(pid) / "state.json", st)
+    _m_state.json_txn(lambda: plan_state(pid), modify, write)
 
 
 def pev(st, msg):

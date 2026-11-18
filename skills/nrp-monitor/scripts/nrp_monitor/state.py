@@ -465,10 +465,7 @@ def task_write(t):
 
 def task_txn(n, fn):
     from . import plan_wakes as _m_plan_wakes  # Local import breaks orchestration cycle; patches stay on the defining module.
-    with state_lock():
-        t = task_load(n)
-        if t is None:
-            return False
+    def modify(t):
         previous = t.get("status")
         completed = set(t.get("completed_stages", [])) | {s["id"] for s in t.get("stages", []) if s["state"] == "done"}
         r = fn(t)
@@ -478,8 +475,8 @@ def task_txn(n, fn):
         if t.get("status") != previous and t.get("status") in ("done", "failed", "cancelled"):
             t["terminal_at"] = now()
             _m_plan_wakes.terminal_wake(t)
-        task_write(t)
-        return True if r is None else r
+        return r
+    return json_txn(lambda: task_load(n), modify, task_write)
 
 
 def task_names():
@@ -702,3 +699,20 @@ SETUP_TIERS = (("triage", "Tier 1 triage judge (reads one event, answers CLOSE /
 
 SETUP_DEFAULT_MODEL = {("claude", "triage"): "haiku", ("claude", "task"): "sonnet", ("codex", "triage"): "gpt-6.1-sol", ("codex", "task"): "gpt-6.1-sol"}
 
+
+
+def json_txn(load, modify, write):
+    """One locked read/modify/write. Missing state or literal False aborts without a write.
+
+    Callers own defaults, validation, lifecycle hooks and file formatting. Load and
+    write are callables so those policies and their existing patch targets stay local.
+    """
+    with state_lock():
+        value = load()
+        if value is None:
+            return False
+        result = modify(value)
+        if result is False:
+            return False
+        write(value)
+        return True if result is None else result

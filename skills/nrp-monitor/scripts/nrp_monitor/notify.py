@@ -106,12 +106,13 @@ def push(msg, key, dry=False, refs=None):
         print("[dry-run] would PUSH: " + tag + msg)
         print("[dry-run] Slack text:\n" + _m_wake.slack_text(msg, refs))
         return False
-    with _m_state.state_lock():
-        sent = read_json(_m_state.PUSHED, {})
+    def claim(sent):
         if key in sent:
             return False
         sent[key] = {"t": _m_state.iso(), "msg": tag + msg, "origin": [_m_wake.origin_plain(*_m_wake.lookup_origin(r)) for r in refs] or ["shared"]}
-        write_json(_m_state.PUSHED, sent)
+    if not _m_state.json_txn(lambda: read_json(_m_state.PUSHED, {}), claim,
+                             lambda sent: write_json(_m_state.PUSHED, sent)):
+        return False
     ledger_task = refs[0].split(":", 1)[-1] if len(refs) == 1 else "shared"
     task_failure = ((_m_state.task_load(ledger_task) or {}).get("failure") or {}) if len(refs) == 1 and refs[0].startswith("task:") else {}
     _m_decisions.cost_event(ledger_task, "owner_dm", "owner", "escalated", notification_key=key,
@@ -130,10 +131,11 @@ def push(msg, key, dry=False, refs=None):
 def push_clear(key):
     """Re-arm a push key once its condition has cleared (account alarm, kubectl failing)."""
     from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    with _m_state.state_lock():
-        sent = read_json(_m_state.PUSHED, {})
-        if sent.pop(key, None) is not None:
-            write_json(_m_state.PUSHED, sent)
+    def clear(sent):
+        if sent.pop(key, None) is None:
+            return False
+    _m_state.json_txn(lambda: read_json(_m_state.PUSHED, {}), clear,
+                      lambda sent: write_json(_m_state.PUSHED, sent))
 
 
 def jwt_days_left():
