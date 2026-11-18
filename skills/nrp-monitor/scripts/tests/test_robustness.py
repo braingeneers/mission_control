@@ -84,14 +84,14 @@ class Memory(Base):
             e = self.w.memory_low_evidence(t, s, 'p2')
         self.assertIn('missing peaks', e['suggested_verdict'])
 
-    def test_true_peak_is_used_for_review(self):
+    def test_working_set_is_used_for_review(self):
         t, s = self.stage()
         folder = self.w.task_dir(t['name']) / 'logs'
         folder.mkdir(parents=True, exist_ok=True)
         (folder / (s['job'] + '-a1.txt')).write_text('NRP_MEMORY_PEAK ' + json.dumps(
             {'source': 'cgroup_v2', 'bytes': 12*2**30, 'container': 'worker'}))
         e = self.evidence(t, s)
-        self.assertEqual((e['true_peak_gi'], e['need_gi'], e['right_gi']), (12, 12, 18))
+        self.assertEqual((e['true_peak_gi'], e['need_gi'], e['right_gi']), (12, 7.7, 12))
 
     def test_split_only_with_whole_life_low_pods(self):
         t, s = self.stage()
@@ -100,20 +100,12 @@ class Memory(Base):
         self.assertEqual(self.evidence(t, s, peaks, pods)['suggested_verdict'], 'inputs differ in size')
         self.assertNotEqual(self.evidence(t, s, peaks)['suggested_verdict'], 'inputs differ in size')
 
-    def test_ramp_flag_is_suppressed_and_mature_flag_keeps_running(self):
-        t, s = self.stage()
+    def test_nrp_band_flag_is_action_even_during_ramp(self):
+        self.stage()
         line = 'LOW p2 age 17m, 10m mean: mem 1.2/12Gi (10%) [NRP violation] rule=nrp'
-        st = {'strikes': {}}
-        with patch.object(self.w, 'memory_low_evidence', return_value={'ramp_up': True}):
-            self.w.task_pod_flag(st, 't1', 'a', 'p2', 'LOW', line)
-        self.assertNotIn('util_event', self.w.task_load('t1'))
-        with patch.object(self.w, 'memory_low_evidence', return_value=dict(self.evidence(t, s), ramp_up=False)):
-            self.w.task_pod_flag(st, 't1', 'a', 'p2', 'LOW', line)
-        result = self.w.task_load('t1')
-        self.assertEqual(result['stages'][0]['state'], 'running')
-        self.assertIsNone(result['failure'])
-        self.assertEqual(result['status'], 'running')
-        self.assertIn('util_event', result)
+        with patch.object(self.w, 'utilization_band_action') as action:
+            self.w.task_pod_flag({'strikes': {}}, 't1', 'a', 'p2', 'LOW', line)
+            action.assert_called_once_with('t1', 'a', 'p2', line)
 
     def test_per_pod_query(self):
         with patch.object(self.w, 'thanos_query', return_value=[{'metric': {'pod': 'p'}, 'value': [0, '123']}]) as query:
@@ -241,11 +233,13 @@ class Runners(Base):
         with patch.dict(os.environ, NRP_MONITOR_CODEX_AUTH=str(auth)), patch.object(self.w.subprocess, 'run', side_effect=fake):
             self.w.exec_codex({'tier': 'triage', 'allowed': [], 'json': False}, 'judge', self.tmp, 10, {})
 
-    def test_high_flag_is_an_observation(self):
+    def test_high_flag_requires_band_action(self):
         self.task()
         line = 'HIGH p age 60m: cpu 4/1 (400%) rule=nrp'
         self.assertIsNotNone(self.w.FLAG.match(line))
-        self.w.task_pod_flag({'strikes': {}}, 't1', 'a', 'p', 'HIGH', line)
+        with patch.object(self.w, 'utilization_band_action') as action:
+            self.w.task_pod_flag({'strikes': {}}, 't1', 'a', 'p', 'HIGH', line)
+            action.assert_called_once_with('t1', 'a', 'p', line)
         t = self.w.task_load('t1')
         self.assertEqual(t['stages'][0]['state'], 'running')
         self.assertIsNone(t['failure'])

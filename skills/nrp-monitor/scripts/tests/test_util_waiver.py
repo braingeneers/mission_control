@@ -173,12 +173,11 @@ class Suppression(Base):
         self.agent()
         h.run_pass()
         m = self.module()
-        st = self.flag(m, NRP_LINE)
-        self.assertEqual(len(self.notes()), 1, 'an NRP-band flag is still processed under a waiver')
-        self.assertIn('[nrp]', self.notes()[0])
-        self.assertEqual(h.task()['util_event']['rule'], 'nrp')
+        with patch.object(m, 'utilization_band_action') as action:
+            self.flag(m, NRP_LINE)
+            action.assert_called_once_with('t1', 'a', 't1-a-abc', NRP_LINE)
         self.flag(m, "LOW t1-a-abc age 218m, 10m mean: gpu 5% (gpu 0, A100) [NRP violation] rule=gpu")
-        self.assertEqual(len(self.notes()), 2)
+        self.assertEqual(len(self.notes()), 1)
 
     def test_waiver_ends_with_its_time_or_with_the_job(self):
         h = self.h
@@ -205,11 +204,12 @@ class Suppression(Base):
         self.started()
         m = self.module()
         st = {'strikes': {'t1-a-abc': {'n': 1, 't': time.time() - 3600, 'owner': 't1'}}, 'jobs': {}, 'pods': {}}
-        m.task_pod_flag(st, 't1', 'a', 't1-a-abc', 'LOW', NRP_LINE)
+        with patch.object(m, 'utilization_band_action') as action:
+            m.task_pod_flag(st, 't1', 'a', 't1-a-abc', 'LOW', NRP_LINE)
+            action.assert_called_once_with('t1', 'a', 't1-a-abc', NRP_LINE)
         self.assertIsNone(h.task()['failure'])
         self.assertEqual(h.task()['stages'][0]['state'], 'running')
-        f = h.task()['util_event']
-        self.assertEqual((f['cls'], f['rule'], f['pod']), ('util', 'nrp', 't1-a-abc'))
+        self.assertNotIn('util_event', h.task())  # direct NRP action replaces the review event
         self.edit(lambda t: t.update(failure=None))
         # an older nrp-util-check has no rule token: the tag says it
         self.assertEqual(m.flag_rule('LOW p age 1m, 10m mean: cpu 1/2 (5%) [NRP violation]'), 'nrp')

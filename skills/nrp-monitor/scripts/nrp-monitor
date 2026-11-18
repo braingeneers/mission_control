@@ -1298,7 +1298,7 @@ def check_pods(a, st):
     for kind, pod, line in flagged:
         strike = 2 if st["strikes"].get(pod) else 1
         gap = 10**9 if kind == "FAILED" else (STRIKE_GAP_S if strike == 2 else POD_DEDUPE_S)
-        if now() - st["pods"].get(pod, 0) < gap:
+        if now() - st["pods"].get(pod, 0) < gap and not (flag_rule(line) == "nrp" and task_of_job(mine.get(pod))):
             continue
         if kind == "FAILED":
             if not a.dry_run:
@@ -4316,7 +4316,7 @@ def namespace_offenders(ns):
     out = []
     for line in u.stdout.splitlines():
         m = FLAG.match(line)
-        if not m or m.group(1) not in ("LOW", "STUCK") or m.group(2) not in running or flag_rule(line) == "lab":
+        if not m or m.group(1) not in ("LOW", "HIGH", "STUCK") or m.group(2) not in running or flag_rule(line) == "lab":
             continue
         p = running[m.group(2)]
         meta, refs = p["metadata"], p["metadata"].get("ownerReferences") or []
@@ -4697,6 +4697,11 @@ def do_submit(n, sid, reason, by):
         task_txn(n, hold)
         return True, ("HELD: NRP RED ALERT, NRP is refusing new pods on the account. The monitor sends this submit when its dry-run "
                       "accepts again. Do not retry yourself; resize or delete low pods instead.")
+    zero = zero_node_reason(manifest_doc(s["manifest"]))
+    if zero:
+        task_fail(n, sid, "unschedulable", "zero-nodes", zero)
+        to_coordinator(n, zero, deputy=False)
+        return False, zero
     st_ = job_state(s["job"], ns)
     if st_ in ("running", "pending", "error"):
         return False, "Job %s is still %s" % (s["job"], st_)
@@ -4741,6 +4746,8 @@ def do_submit(n, sid, reason, by):
         s2.update(state="running", submitted=now())
         s2.pop("pod_started", None)
         s2["dl"] = {"resubmits": (s2.get("dl") or {}).get("resubmits", 0)}      # a new Job gets fresh deadline tracking (Tier 0, deadline_watch)
+        for key in ("nrp_flag_since", "nrp_woken", "nrp_stopped"):
+            s2.pop(key, None)
         s2.pop("util_deleted", None)
         if (t.get("util_event") or {}).get("stage") == sid:
             t.pop("util_event", None)
@@ -4836,6 +4843,178 @@ def check_coordinator_waits(a):
         t = task_load(n) or {}
         if t.get("status") == "WITH_COORDINATOR" and now() - t.get("coordinator_since", now()) > COORD_STALE_S:
             escalate(n, "the coordinator chat did not answer for %s. %s" % (ago(t["coordinator_since"]), t.get("reason", "")), a)
+
+
+# ---- utilization actions (patch P, 2026-11-18) ----
+def utilization_restart(n, sid=None, cpu=None, mem=None, container_resources=None):
+    """Explicit replacement, without a failure or retry. Delete only a registered stage Job."""
+    t = task_load(n)
+    if not t or terminal_task(n):
+        return False, "task missing or terminal"
+    candidates = [s for s in t["stages"] if s["state"] == "running"]
+    s = tstage(t, sid) if sid else (candidates[0] if len(candidates) == 1 else None)
+    if not s or s["state"] not in ("running", "pending"):
+        return False, "select a running or pending stage"
+    doc = manifest_doc(s["manifest"])
+    import math
+    for value, parse in ((cpu, cpu_quantity), (mem, mem_bytes)):
+        if value is None:
+            continue
+        try:
+            parsed = parse(str(value)) or 0
+            if not math.isfinite(parsed) or parsed <= 0:
+                return False, "resources must be positive finite quantities"
+        except (ValueError, TypeError, OverflowError):
+            return False, "invalid resource quantity"
+    for c in doc["spec"]["template"]["spec"]["containers"]:
+        sized = (container_resources or {}).get(c["name"], {})
+        for key, value in (("cpu", sized.get("cpu", cpu)), ("memory", sized.get("memory", mem))):
+            if value is not None:
+                for kind in ("requests", "limits"):
+                    c.setdefault("resources", {}).setdefault(kind, {})[key] = str(value)
+    save_task_logs(t, s, "utilization restart")
+    r = kubectl("-n", t["namespace"], "delete", "job", s["job"], "--wait=true", "--timeout=180s", timeout=240)
+    if r.returncode and "NotFound" not in r.stderr:
+        return False, "could not delete old Job: " + r.stderr[:150]
+    manifest_write(s["manifest"], doc)
+    def reset(cur):
+        stage = tstage(cur, s["id"])
+        stage.update(state="pending", attempt=stage.get("attempt", 1) + 1)
+        for key in ("nrp_flag_since", "nrp_woken", "nrp_stopped", "submitted"):
+            stage.pop(key, None)
+        cur.pop("util_event", None)
+        cur["webhook_outbox"] = []
+        cur["status"] = "running"
+        tev(cur, "utilization restart stage %s cpu=%s memory=%s (no retry)" % (s["id"], cpu, mem))
+    task_txn(n, reset)
+    digest("util-restart", "stage %s cpu=%s memory=%s" % (s["id"], cpu, mem), n)
+    return True, "restart queued for next pass"
+
+
+def cmd_util_restart(a):
+    STATE.mkdir(parents=True, exist_ok=True)
+    with open(LOCK, "a") as lock:
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            print("monitor pass in progress; retry after it finishes")
+            return 1
+        ok, message = utilization_restart(a.name, a.stage, getattr(a, "cpu", None), getattr(a, "mem", None))
+    print(message)
+    return 0 if ok else 1
+
+
+UTIL_NODE_CACHE = None
+
+
+def zero_node_reason(doc):
+    """Required selectors are AND; affinity terms are OR. Read errors fail open."""
+    global UTIL_NODE_CACHE
+    spec = doc["spec"]["template"]["spec"]
+    selector = spec.get("nodeSelector") or {}
+    required = spec.get("affinity", {}).get("nodeAffinity", {}).get("requiredDuringSchedulingIgnoredDuringExecution")
+    if not selector and required is None:
+        return None
+    if "util_nodes" not in PASS:
+        try:
+            r = kubectl("get", "nodes", "-o", "json")
+            UTIL_NODE_CACHE = json.loads(r.stdout)["items"] if r.returncode == 0 else None
+        except Exception:
+            UTIL_NODE_CACHE = None
+        PASS["util_nodes"] = len(UTIL_NODE_CACHE) if UTIL_NODE_CACHE is not None else -1
+    nodes = UTIL_NODE_CACHE
+    if nodes is None:
+        return None
+    def matches(e, labels):
+        k, op, vals = e["key"], e["operator"], e.get("values", [])
+        v = labels.get(k)
+        if op == "In": return v in vals
+        if op == "NotIn": return v not in vals
+        if op == "Exists": return k in labels
+        if op == "DoesNotExist": return k not in labels
+        if op in ("Gt", "Lt"):
+            try: return int(v) > int(vals[0]) if op == "Gt" else int(v) < int(vals[0])
+            except (ValueError, TypeError, IndexError): return False
+        return False
+    for node in nodes:
+        if node.get("spec", {}).get("unschedulable"):
+            continue
+        labels = node["metadata"].get("labels", {})
+        if any(labels.get(k) != v for k, v in selector.items()):
+            continue
+        if required is None:
+            return None
+        for term in required.get("nodeSelectorTerms", []):
+            if (term.get("matchExpressions") or term.get("matchFields")) and all(matches(e, labels) for e in term.get("matchExpressions", [])) and all(
+                    matches(e, {"metadata.name": node["metadata"]["name"]}) for e in term.get("matchFields", [])):
+                return None
+    return "zero schedulable nodes match nodeSelector=%s required nodeAffinity=%s" % (selector, required)
+
+
+def utilization_band_action(n, sid, pod, line):
+    """An NRP band flag always has a bounded lifetime, even for watch-only tasks."""
+    import math
+    t = task_load(n)
+    s = tstage(t, sid)
+    if s["state"] != "running":
+        return
+    first = s.get("nrp_flag_since", now())
+    task_txn(n, lambda cur: tstage(cur, sid).setdefault("nrp_flag_since", first))
+    grace = float(OWNER.get("nrp_violation_grace_minutes", 30)) * 60
+    try:
+        count = len(namespace_offenders(t["namespace"]))
+    except Exception:
+        count = 0
+    stop = now() - first >= grace or count >= int(util_policy().get("account_block_after_violating_pods", 4)) - 1
+    if stop:
+        save_task_logs(t, s, "NRP violation safety stop")
+        r = kubectl("-n", t["namespace"], "delete", "job", s["job"], "--wait=true", "--timeout=180s", timeout=240)
+        reason = "NRP band violation safety stop: " + line
+        if r.returncode and "NotFound" not in r.stderr:
+            reason += " DELETE FAILED: " + r.stderr[:150]
+        else:
+            task_txn(n, lambda cur: tstage(cur, sid).update(state="pending", util_deleted=True))
+        if not s.get("nrp_stopped"):
+            task_txn(n, lambda cur: tstage(cur, sid).update(nrp_stopped=True))
+            to_coordinator(n, reason, deputy=False)
+            if task_load(n)["status"] != "NEEDS_OWNER":
+                push("NRP task %s: %s" % (n, reason[:250]), "nrp-stop:" + n + ":" + str(first), refs=["task:" + n])
+        digest("util-stop", reason, n)
+        return
+    doc = manifest_doc(s["manifest"])
+    cs = doc["spec"]["template"]["spec"]["containers"]
+    evidence = memory_low_evidence(t, s, pod, working_set_only=True)
+    window = max(300, int(now() - s.get("submitted", first)) + 120)
+    rows = thanos_query('max(max_over_time(rate(container_cpu_usage_seconds_total{namespace=%s,pod=~%s,container=%s}[5m])[%ds:30s]))' % (json.dumps(t["namespace"]), json.dumps(re.escape(s["job"]) + "-.*"), json.dumps(cs[0]["name"]), window))
+    peak_cpu = float(rows[0]["value"][1]) if rows else None
+    small = util_policy().get("small_pod_exempt") or {"cpu": 1, "memory_bytes": 2000000000}
+    cpu = str(max(float(small.get("cpu", 1)), math.ceil(peak_cpu * 1500) / 1000)) if peak_cpu is not None else None
+    mem = str(max(int(small.get("memory_bytes", 2000000000)), evidence["right_gi"] * 2**30)) if (evidence["need_gi"] or evidence.get("peaks_gi") or evidence.get("true_peak_gi") is not None) else None
+    details = '"No change" is not an allowed answer. mean/request: %s; memory peak=%sGi proposed=%s bytes; CPU peak=%s proposed=%s; grace deadline=%s' % (line, evidence["need_gi"], mem, peak_cpu, cpu, iso(first + grace))
+    for key, use, req, pct, mx in FLAG_RES.findall(line):
+        proposed = float(cpu) if key == "cpu" and cpu else float(mem) / 2**30 if key == "mem" and mem else None
+        band = util_policy().get("cpu_band" if key == "cpu" else "memory_band", [.2, 1.5])
+        if proposed and float(use) < band[0] * proposed:
+            details += "; spiky: constant request cannot fit this band; use smaller shards or make the stage resumable"
+    sizes = {cs[0]["name"]: {"cpu": cpu, "memory": mem}}
+    for c in cs[1:]:
+        peak = thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted", first))
+        if peak is None:
+            peak = saved_memory_peak(t, s, c["name"], all_attempts=True)
+        oom = max(s.get("oom_limits_gi", []) or [0]) * 2**30
+        rows = thanos_query('max(max_over_time(rate(container_cpu_usage_seconds_total{namespace=%s,pod=~%s,container=%s}[5m])[%ds:30s]))' % (json.dumps(t["namespace"]), json.dumps(re.escape(s["job"]) + "-.*"), json.dumps(c["name"]), window))
+        cp = float(rows[0]["value"][1]) if rows else None
+        sizes[c["name"]] = {
+            "cpu": str(max(float(small.get("cpu", 1)), math.ceil(cp * 1500) / 1000)) if cp is not None else None,
+            "memory": str(max(int(small.get("memory_bytes", 2000000000)), math.ceil(max(peak or 0, oom) * 1.5 / 2**30) * 2**30)) if peak is not None or oom else None}
+        details += "; container %s peak memory=%s CPU=%s proposed=%s" % (c["name"], peak, cp, sizes[c["name"]])
+    if stage_resumable(s) and all(v["cpu"] and v["memory"] for v in sizes.values()):
+        ok, why = utilization_restart(n, sid, cpu, mem) if len(cs) == 1 else utilization_restart(n, sid, container_resources=sizes)
+        if ok: return
+        details += "; restart failed: " + why
+    if not s.get("nrp_woken"):
+        task_txn(n, lambda cur: (tstage(cur, sid).update(nrp_woken=True), queue_task_webhook(cur, "util_nrp", summary=details), tev(cur, details)))
+        digest("util-review", details, n)
 
 
 # ---- Tier 0 timeouts (no model): extend a progressing Job in place, credit queue time, resubmit a resume-capable stage once at 2x ----
@@ -5334,7 +5513,9 @@ def tier0_oom(t, s, f):
     true_peak = saved_memory_peak(t, s, c["name"])
     if true_peak is None and len(cs_) == 1:
         true_peak = saved_memory_peak(t, s)
-    peak = true_peak if true_peak is not None else thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted") or now() - 3600)
+    peak = thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted") or now() - 3600)
+    if peak is None:
+        peak = true_peak
     if not lim or peak is None:
         return None
     base = max(peak, lim)                                     # an OOM-killed container reached its limit even if the 30 s samples missed it
@@ -5595,12 +5776,7 @@ def handle_failure(n, a):
     used = len(t["attempts"][since:])
     cls_used = class_retries(t, f)
     if t["mode"] == "watch":
-        # a watch-only task has no ladder: the failure is final, so this is the one `failure` wake (the chat hears it, and so does the owner)
-        if not a.dry_run:
-            task_txn(n, lambda t: queue_task_webhook(t, "failure", summary="NRP task %s (watch-only): stage %s failed [%s] %s. Look: "
-                     "`nrp-monitor task show %s`. The owner is notified too: a watch-only task has no automatic fixes."
-                     % (n, f["stage"], f["cls"], f["detail"][:200], n)))
-        escalate(n, "watch-only task, stage %s failed [%s]: %s" % (f["stage"], f["cls"], f["detail"]), a)
+        to_coordinator(n, "watch-only stage %s failed [%s]: %s" % (f["stage"], f["cls"], f["detail"]), a, deputy=False)
         return
     if f["cls"] == "slow" and not a.dry_run and tier0_timeout(n, f):
         return
@@ -6037,6 +6213,9 @@ def task_pod_flag(st, n, sid, pod, kind, line):
         return
     t = task_load(n)
     stage = tstage(t, sid)
+    if rule == "nrp":
+        utilization_band_action(n, sid, pod, line)
+        return
     evidence = memory_low_evidence(t, stage, pod, working_set_only=rule == "nrp") if kind == "LOW" and any(k == "mem" and int(pct) < 20 for k, use, req, pct, mx in FLAG_RES.findall(line)) else None
     if evidence and evidence["ramp_up"]:
         return
@@ -6070,7 +6249,8 @@ def process_util_event(n, a):
     context = dict(t, failure=event)
     numbers = json.dumps(event.get("evidence"), sort_keys=True)
     if event.get("rule") == "nrp":                                        # below NRP's own floor: the review may not end in "no change"
-        return util_nrp_review(n, t, event, context, numbers, a)
+        task_txn(n, lambda cur: cur.pop("util_event", None))
+        return utilization_band_action(n, event["stage"], event.get("pod", ""), event["detail"])
     prompt = triage_prompt(context) + "\nMemory evidence (GiB): " + numbers + "\n" + MEMORY_RULE
     line, _ = run_task_agent(n, prompt, a, kind="triage")
     if is_unavailable(line):
@@ -6173,7 +6353,7 @@ def memory_low_evidence(t, s, flagged_pod, working_set_only=False):
                 pc = next((c for c in p.get("spec", {}).get("containers", []) if c["name"] == cs.get("name")), {})
                 b = mem_bytes(pc.get("resources", {}).get("limits", {}).get("memory", ""))
                 if b: oom.append(b / 2**30)
-    need = max(list(peaks.values()) + oom + [true_peak / 2**30 if true_peak and not working_set_only else 0])   # memory.peak counts page cache
+    need = max(list(peaks.values()) + oom + [true_peak / 2**30 if true_peak and not peaks else 0])   # memory.peak counts page cache
     right = math.ceil(need * 1.5)
     spread = max(peaks.values()) / statistics.median(peaks.values()) if peaks and statistics.median(peaks.values()) else None
     missing = sorted((set(ages) | {flagged_pod}) - set(peaks))
@@ -7837,6 +8017,16 @@ def cmd_tool(a):
         sys.stderr.write(r.stderr[-2000:])
         return r.returncode
 
+    if c in ("resize", "restart"):
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--stage")
+        parser.add_argument("--cpu")
+        parser.add_argument("--mem")
+        opts = parser.parse_args(rest)
+        opts.name = n
+        ok, message = utilization_restart(n, opts.stage, opts.cpu, opts.mem)
+        print(message)
+        return 0 if ok else 1
     if c == "decide":
         parser = argparse.ArgumentParser(prog="nrp-task decide")
         parser.add_argument("fingerprint")
@@ -8750,6 +8940,14 @@ def main():
     x = tk.add_parser("show")
     x.add_argument("name")
     x.set_defaults(f=cmd_task_show)
+    for command in ("resize", "restart"):
+        x = tk.add_parser(command)
+        x.add_argument("name")
+        x.add_argument("--stage")
+        if command == "resize":
+            x.add_argument("--cpu")
+            x.add_argument("--mem")
+        x.set_defaults(f=cmd_util_restart)
     x = tk.add_parser("watch", help="set one task to watch mode when no monitor pass is running")
     x.add_argument("name")
     x.set_defaults(f=cmd_task_watch)

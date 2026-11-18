@@ -45,9 +45,26 @@ read from its tag).
 
 ## Running task observations
 
-A LOW or HIGH utilization flag is an observation for the triage judge. It never fails a healthy running stage or
-holds a task by itself. The judge returns only `CLOSE: reason` or `ESCALATE: diagnosis`; the fixer makes every change.
-The roles use the runners chosen in each user's `agents.json`, including a single subscribed runner for both roles.
+An NRP CPU or memory band flag (`rule=nrp`, LOW or HIGH) requires action. A resumable
+stage with working-set and CPU measurements is resized and restarted without
+failure or retry use. Otherwise the coordinator is woken once with mean, peak, current and
+proposed requests and a grace deadline; a spiky workload gets a smaller-shard/resumability warning.
+An NRP review cannot close with “no change”. Lab-only observations retain judge/fixer review.
+
+`nrp_violation_grace_minutes` in config.json defaults to 30, from the first NRP flag of
+that Job. A still-violating registered task Job is stopped after grace, or immediately when
+`namespace_offenders` reaches `account_block_after_violating_pods - 1` (normally 3).
+Logs are saved and S3 outputs retained; the task goes to its coordinator and the owner receives
+one safety-stop notice. Other users' Jobs are never stopped by this action. Missing sizing
+measurements defer resizing, never the safety deadline. Multi-container stages use separate measurements for each container.
+
+Use `nrp-monitor task resize NAME [--stage S] [--cpu X] [--mem Y]` or
+`nrp-monitor task restart NAME [--stage S]`. The equivalent fixer commands are
+`NRP_TASK=NAME nrp-task resize [--stage S] [--cpu X] [--mem Y]` and `nrp-task restart [--stage S]`.
+Replacement saves diagnostics, deletes the registered Job and queues submission for the next pass;
+it cancels stale queued wakes and uses no failure/retry/owner notice. Terminal tasks are refused.
+Memory sizing prefers Thanos working-set peak; cgroup peak is fallback only without working-set
+series. Recorded OOM limits remain a minimum; utilization requests use ceil(peak × 1.5).
 
 For memory LOW (NRP band: 20–150% of request), wait until each flagged pod is past ramp-up: 25% of the stage's
 measured runtime, or 30 minutes when no measured history is available. A stage can record measured history as
@@ -64,16 +81,14 @@ Both roles receive per-pod peaks and ages, request and limit, OOM history, need,
 suggested verdict. The judge may disagree with the suggestion but must cite the numbers. It cannot edit files or run
 state-changing task commands. Invalid replies escalate. The fixer alone edits manifests, resubmits or splits inputs.
 
-Worked example: a workload requests 12Gi. A 1.2Gi mean at 17 minutes is ramp-up, so no event. Whole-life peaks of
+Lab-only worked example: a workload requests 12Gi. Ramp-up can defer a lab observation, but never an NRP-band action. Whole-life peaks of
 4.5–7.7Gi and a recorded OOM at 6Gi give need 7.7Gi and right 12Gi. Since 12 <= 1.2*12, the request is sized correctly.
 The peak range is only about 1.7x (max/median cannot exceed that range), so there is no split.
 
-**Below NRP's floor (rule=nrp) is not a sizing opinion.** NRP refuses new pods on the whole account while pods stay
-below its 20% floor, so such an observation skips the judge and may not end in "no change needed". The fixer resizes
-from NRP's Thanos working-set peaks only (never a cgroup `memory.peak` / profile peak: it counts reclaimable page cache;
-the evidence's `need` leaves it out for these events) and restarts the Job if the stage resumes from saved progress
-(no two-hour rule). If the same Job is still running after the review, or the task is watch-only, the coordinator chat
-is woken visibly, never digest-only. Lab-floor (40%) observations keep the flow above.
+NRP bands (`rule=nrp`) use the deterministic action path above for both LOW and HIGH,
+including watch-only tasks. They bypass ramp-up and review cooldowns. Missing measurements
+and spiky workloads require coordinator action before the safety deadline; they cannot be
+closed with “no change”.
 
 For legacy chains and standalone registrations, the existing strike handling remains separate.
 
@@ -100,8 +115,8 @@ flag of that Job is not recorded again; NRP-band and GPU flags are never suppres
 has a handoff a Fix log entry says so. After `until`, a Job that is still running and flagged again goes through the fix agent
 again and may be waived again until the cap; then the owner is asked.
 
-Prefer the helper's saved cgroup true peak over sampled metrics for the same container; retain
-whole-life sampled peaks and OOM evidence as lower bounds. Sizing uses 50% headroom consistently
+Prefer the Thanos working-set peak; fall back to the helper's saved cgroup peak only
+without working-set series. Retain whole-life working-set peaks and OOM evidence as lower bounds. Sizing uses 50% headroom consistently
 with profiling. A recorded OOM limit remains a proven need even if usage is below the band between
 short loading spikes. When the request is within the right-size tolerance, the judge records this
-reason and CLOSES; a low mean alone is no reason to STOP or escalate.
+reason and CLOSES for lab-only flags. NRP band flags always use the action path above.

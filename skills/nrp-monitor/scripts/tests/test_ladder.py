@@ -326,14 +326,14 @@ class LadderTests(Ladder):
         self.assertIn("did not answer", t["reason"])
         self.assertEqual(len(self.pushes()), 1)
 
-    def test_watch_mode_and_gpu_stops_still_go_to_the_owner(self):
+    def test_watch_mode_failure_goes_to_coordinator(self):
         self.add(mode="watch")
         self.webhook()
         self.run_pass()
         self.set_job("t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
         self.run_pass()
-        self.assertEqual(self.task()["status"], "NEEDS_OWNER")
-        self.assertEqual(len(self.pushes()), 1)
+        self.assertEqual(self.task()["status"], "WITH_COORDINATOR")
+        self.assertEqual(len(self.pushes()), 0)
 
     def test_resumable_field_is_validated(self):
         stages = [{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": ["s3://braingeneersdev/x/a"], "resumable": "yes"}]

@@ -1,5 +1,17 @@
 # Log: nrp-monitor rewrite (newest first)
 
+## 2026-11-18 — P utilization patch on main
+- Added a separate utilization-actions section: budget-free resize/restart and stale-wake cancellation;
+  working-set-first sizing (cgroup fallback, OOM minimum); NRP LOW/HIGH actions bypass review/ramp-up.
+- Resumable stages resize/restart from measured CPU/memory; otherwise wake once
+  with numbers, spiky warning and deadline. Stop only registered task Jobs after 30 minutes or at
+  three namespace violators (default four-pod block threshold); logs/S3 retained, coordinator + owner.
+- Zero-node required selector/affinity guard caches node reads per pass, fails open on read errors,
+  routes `unschedulable` directly to coordinator. Watch-only failures now go coordinator-first.
+- Validation: `python3 -m pytest tests -q`: 662 passed (7 existing deprecation warnings).
+- Added `tests/test_util_actions.py`; adjusted red-alert, robustness, sizing, wake, ladder, origin and util-waiver assertions for
+  intentional changes. Config: `nrp_violation_grace_minutes` (default 30). R3 must port these hooks.
+
 ## 2026-11-18 — R1 census + R2 design (stopped for Hunter)
 - 1c7debc verified live: red-alert probe ran 08:52, passed, no new Traceback, launchd.err empty.
 - R1 `CENSUS.md`: ~1,300 lines unused in 7 days (chains 754, night code 399, gemini CLI ~70, gpu-long ~100).
