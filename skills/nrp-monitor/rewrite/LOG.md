@@ -1,5 +1,46 @@
 # Log: nrp-monitor rewrite (newest first)
 
+## 2026-11-18 — R3a package move
+- Commits: baseline `88ef48f` (includes registered C1-C4); package implementation `512a77f`, fixture targets `6805600`, fresh test-package identity `9782a7b`; documentation follows it on the same branch.
+- AST splitter `/tmp/r3a_split.py` assigned original source nodes by DESIGN section and helper overrides; all 350 functions/classes accounted for. Bodies normalize identically except the sibling `nrp-util-check` path and the two retained C2 repairs below.
+- Explicit module-reference imports preserve defining-module monkeypatch behavior. Cycle scan found mutual orchestration edges; commented local imports remove eager cycles. Compile + symtable undefined-name checks are clean; all 36 CLI help paths parse.
+- Thin real-path entry point, adjacent package copy in installer, fake-bin package copy fixture. Test-only isolated package import adapter routes old test patches to defining modules; no production compatibility namespace.
+- Baseline `88ef48f`: 293 passed, 1 failed (stopped at first failure, 134.67 s). Initial worktree baseline was invalidated by the entry-point edit and discarded; this comparison uses an immutable archive including sibling memory_peak.py. The retained failure was C2 accidentally removing bounded completion `s3 cp` and `may_touch` parsing. Restored their original scope/size guards; no night authoring restored. Plan-group regression check: 22 passed.
+- Remaining fixture repairs: stale C1 `chain_names` prepass patch removed (its failed setup leaked a subprocess mock); `WAKE_MAX_TRIES` source-reading helper follows state.py. No assertions changed. Targeted repair verification: 19 passed. A subsequent full run reached 585 passed / 2 webhook fixture failures; UUID package identities repaired repeated loader-name reuse, with all 5 webhook tests passing.
+- Final full suite: 587 passed, 7 warnings in 234.08s (0:03:54). Outputs `/tmp/r3a-full-88ef48f.txt`, `/tmp/r3a-final.txt`.
+- Test changes: `test_agent_runners.py`, `test_followup_tiers.py`, `test_install.py`, `test_ladder.py`, `test_origin.py`, `test_plans.py`, `test_s3_exact.py`, `test_s3_incluster.py`, `test_tasks.py`, `test_v3_tier0.py`, `test_webhooks.py`; added import helper `monitor_imports.py`. Only import/loader/patch-routing and fixture/helper changes (including the constant-source path); no changed assertion lines (`git diff -U0 88ef48f ... | rg '^[+-][[:space:]]*(assert\b|self\.assert)'` empty), all retained assertion ASTs identical.
+- `wc -l` per module (no >800-line exception):
+  - `__init__.py`: 1
+  - `agents.py`: 566
+  - `cli.py`: 406
+  - `cluster.py`: 332
+  - `config.py`: 130
+  - `continuation.py`: 194
+  - `decisions.py`: 248
+  - `ladder.py`: 485
+  - `legacy.py`: 411
+  - `notify.py`: 278
+  - `nrp_task.py`: 332
+  - `plan_commands.py`: 161
+  - `plan_wakes.py`: 315
+  - `plans.py`: 398
+  - `red_alert.py`: 146
+  - `s3.py`: 224
+  - `setup.py`: 254
+  - `sizing.py`: 135
+  - `state.py`: 700
+  - `task/__init__.py`: 1
+  - `task/model.py`: 41
+  - `task/pass_.py`: 483
+  - `task/registry.py`: 693
+  - `task_agents.py`: 151
+  - `task_commands.py`: 354
+  - `tier0.py`: 317
+  - `timeouts.py`: 154
+  - `util.py`: 336
+  - `wake.py`: 775
+- No live install/state changes, main push, R3b implementation or P port. R3b starts from HANDOFF.md; package code map remains a separately planned follow-up.
+
 ## 2026-11-18 — R3a cuts continued, mechanical move still pending
 - C3 `1d34054`, docs/register `2c8dc77`: removed local Gemini CLI, policy/settings and setup selection; agy retained. Generic config/setup/failover tests use agy in place of removed runner; only local-runner tests and valid-thinking loop removed (full register). C2 stale code-authoring / sidecar-copy help corrected in the same script edit.
 - C4 `50d2068`: task failure judge requires config.json `ladder.triage_judge: true`, default false. Existing task fixture explicitly opts in; robustness role test opts in. No existing assertions changed for C4. Added one end-to-end default-off test (passed).
