@@ -7,7 +7,7 @@
 **Entry point:** no — library or imported component
 
 ## Overview
-Owns argparse registration for nrp-monitor and the scoped nrp-task option parsers. monitor_parser binds handlers with set_defaults; origin_edit_args and resource_args share repeated options. Tool command authorization and positional dispatch remain in nrp_task.
+Argparse definition and command dispatch configuration module for nrp-monitor and nrp-task. Builds the complete command tree for run, costs, wake-review, decide, task, plan, tool, digest, add, list, origin, log, status, setup, and agents. Imported by cli.py and nrp_task.py.
 
 ## Connections
 - **Used by:** `skills.nrp-monitor.scripts.nrp_monitor.cli` — import consumer hint; not a proven runtime call.
@@ -22,8 +22,7 @@ Owns argparse registration for nrp-monitor and the scoped nrp-task option parser
 - **Uses:** `registry` from `skills.nrp-monitor.scripts.nrp_monitor.task` — imports (static evidence).
 - **Uses:** `task_commands` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
 - **Uses:** `wake` from `skills.nrp-monitor.scripts.nrp_monitor` — imports (static evidence).
-- **Shared data:** cli.main calls monitor_parser; nrp_task.cmd_tool calls tool_parser.
-- **Shared data:** Handlers remain in cli, task_commands, plan_commands, decisions, notify, setup and task.registry.
+- **Shared data:** Imports handlers from cli, decisions, nrp_task, notify, plan_commands, setup, state, task_commands, wake, and task.registry.
 
 ## Dependencies
 None
@@ -33,30 +32,29 @@ None
 
 ## Functions
 ### `monitor_parser()`
-> Build monitor command tree with handlers and existing defaults.
+> Constructs the root argparse.ArgumentParser and all subparsers for the nrp-monitor CLI suite.
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
 **Source:** `skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:5`
 ### `origin_edit_args(o)`
-> Register shared origin editing options for task and general origin commands.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:128 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:133 (named-call hint). **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:163`
+> Configures shared origin tracking flags (--chat, --link, --harness, --session, --evidence, etc.) on a parser.
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:129 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:134 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:164`
 ### `resource_args(parser, quantities=True)`
-> Register stage selection and, when enabled, CPU/memory quantities.
-> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:196 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:45 (named-call hint). **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:179`
+> Adds --stage, --cpu, --mem options to resource management subparsers.
+> **Called by:** skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:197 (named-call hint); skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:46 (named-call hint). **Side effects:** unclear — see source.
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:180`
 ### `tool_parser(command)`
-> Build the scoped decide or resource parser without changing tool authorization.
+> Scoped nrp-task options; manual commands retain their existing positional syntax.
 > **Called by:** unclear — see source. **Side effects:** unclear — see source.
-**Source:** `skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:186`
+**Source:** `skills/nrp-monitor/scripts/nrp_monitor/cli_args.py:187`
 
 ## Config / CLI
 | Configuration / CLI and meaning |
 | --- |
-| Registers existing monitor commands and defaults, including task, plan, origin, tool, setup and agents. |
-| Scoped tool restart/resize accept resource options; monitor task restart retains stage-only options. |
+| CLI commands and flags for nrp-monitor: `run` (--shadow, --dry-run, --fake-util, --fake-finished, --tasks-only), `costs`, `wake-review`, `decide`, `task` (add, list, show, resize, restart, watch, code, stage, resume, needs-owner, handoff, cancel), `plan` (sync, close, needs-owner, resume, list, show), `tool`, `digest`, `add`, `list`, `origin`, `log`, `status`, `setup`, `agents`. |
 
 ## Data Shapes
-- Returns argparse.ArgumentParser; monitor namespaces carry f for dispatch.
+- Returns configured `argparse.ArgumentParser` instances populated with subcommands, defaults, and option flags.
 
 ## Notes
-- Handler imports are deferred until parser construction to avoid eager cycles.
+- Defers submodule imports inside parser factory functions to avoid circular import issues during startup.
