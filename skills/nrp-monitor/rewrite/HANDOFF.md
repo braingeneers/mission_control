@@ -1,17 +1,17 @@
-# Handoff: nrp-monitor modular rewrite  (2026-11-18, R2 session)
-**Plan and active steps:** PLAN.md (nrpmon-rewrite). R1 and R2 done; **stopped for Hunter** on DESIGN.md §4
-(5 decisions). R3 is not approved yet.
-**Where we are:** CENSUS.md (verified counts) and DESIGN.md (layout, cut list C1-C5, t71 problems U1-U9) are written.
-1c7debc red-alert probe verified live. Nothing deleted or changed in code or state.
-**In flight:** nothing.
+# Handoff: nrp-monitor modular rewrite  (2026-11-18, R2 answers session)
+**Plan and active steps:** PLAN.md (nrpmon-rewrite). Hunter answered DESIGN.md §4 (verbatim in PLAN.md). Running in
+parallel: P (utilization patch, main) and R3a (cuts + package scaffold, branch `nrp-monitor-rewrite`). Stop for Hunter
+before R4 (installing the new package) and before R6.
+**Where we are:** C5 done (state-dir clutter trashed; chains state moved to `S/backup/chains-20261118/`; the running
+monitor tolerates the missing dir). Cut register is in PLAN.md.
+**In flight (T3 delegate tasks, codex gpt-6.1-sol; completion wakes the parent thread):**
+- P: [nrp-monitor utilization patch (P)] — commits to main, installs, reports first live pass.
+- R3a: [nrp-monitor rewrite R3a (branch)] — worktree, pushes branch `nrp-monitor-rewrite`.
+Check from outside: `git log origin/main -3`, `git log origin/nrp-monitor-rewrite -5`, `cat ~/.local/state/nrp-monitor/INSTALLED`.
 **Next:**
-1. Record Hunter's answers verbatim in PLAN.md (decisions 1-5).
-2. If decision 3 = A: patch the current script for U1 (working-set sizing, NRP violation -> resize/restart for
-   resumable stages, else coordinator wake with numbers), U3 (`task resize`/`task restart`), U5 (zero-node check),
-   with tests; install; tell the t71 chat (c38c20f5).
-3. Then R3 module by module per DESIGN.md §1; apply approved cuts first (C5 is state-dir only).
-**Gotchas:** never read the 8.9k-line script whole; grep `^# ----` sections or delegate. Tests live in
-scripts/tests (run from scripts/). Push to main, `git pull --ff-only` before committing. Install = scripts/install.sh.
-gpu-long never logs: check before relying on it for U1.
-**Read first:** PLAN.md, DESIGN.md §2-4, LOG.md top entry.
-**Open questions for Hunter:** DESIGN.md §4, each with a recommendation.
+1. Review P's report: run `python3 -m pytest tests -q`, check live pass, tell the t71 chat (c38c20f5) what changed.
+2. Review R3a: test diff has only import/patch lines; module sizes; then code map (`summarize-codebase` on
+   scripts/nrp_monitor via Gemini delegate).
+3. R3b (state machine, ladder as data, one cluster layer, one runner): Opus-level; then R3c port P.
+**Open for Hunter:** decision 5 (Workflows stage type), explained in chat; recommendation: R6 after the swap.
+**Read first:** PLAN.md, DESIGN.md, LOG.md top entry.
