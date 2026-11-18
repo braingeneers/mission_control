@@ -1,26 +1,13 @@
 """NRP monitor decisions (mechanical extraction; R3a)."""
-import argparse
-import collections
-import contextlib
 import fcntl
-import getpass
 import hashlib
 import json
-import os
 import re
-import shlex
-import shutil
-import stat
-import subprocess
 import sys
-import tempfile
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-import uuid
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+
+from . import notify as _m_notify, s3 as _m_s3, state as _m_state
+from .task import registry as _m_task_registry
+
 
 # ---- failure decisions and cost evidence ---------------------------------------------------------------
 def scaled_retry_cap(stages):
@@ -28,8 +15,6 @@ def scaled_retry_cap(stages):
 
 
 def fingerprint(t, failure):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
     stage = _m_state.tstage(t, failure["stage"])
     def normalize(value):
         value = str(value).lower().replace(stage["job"].lower(), "STAGE")
@@ -68,7 +53,6 @@ def failure_context(t):
 
 
 def cost_event(task, kind, tier, outcome, stage=None, runner=None, model=None, result=None, **extra):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     result = result or {}
     row = dict(ts=_m_state.now(), task=task, stage=stage, kind=kind, tier=tier, runner=runner, model=model,
                cost_usd=result.get("total_cost_usd"), usage=result.get("usage"),
@@ -82,7 +66,6 @@ def cost_event(task, kind, tier, outcome, stage=None, runner=None, model=None, r
 
 
 def cost_rows():
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     rows = []
     try:
         for line in (_m_state.STATE / "costs.jsonl").read_text().splitlines():
@@ -96,8 +79,6 @@ def cost_rows():
 
 
 def decisions(n):
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     return _m_notify.read_json(_m_state.task_dir(n) / "decisions.json", [])
 
 
@@ -106,8 +87,6 @@ def postcheck_failure(f):
 
 
 def record_decision(t, fp, action, why, scope="task", max_uses=None, who="coordinator"):
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     f = t.get("failure") or {}
     if action not in _m_state.DECISION_ACTIONS or scope not in ("stage", "task"):
         raise ValueError("invalid decision action or scope")
@@ -130,12 +109,34 @@ def record_decision(t, fp, action, why, scope="task", max_uses=None, who="coordi
     _m_state.tev(t, "recorded decision %s: %s (%s)" % (fp, action, why))
 
 
+def _decide_escalate(n, t, f, fp, d, a):
+    from . import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
+    _m_ladder.to_coordinator(n, "coordinator decision %s: %s" % (fp, d["why"]), a, deputy=False)
+    return True
+
+
+def _decide_skip_reuse(n, t, f, fp, d, a):
+    stage = _m_state.tstage(t, f["stage"])
+    if not stage.get("done_s3") or not all(_m_s3.s3_exists(uri, t) for uri in stage["done_s3"]):
+        return False
+
+    def done(task):
+        _m_state.tstage(task, f["stage"])["state"] = "done"
+        task["failure"] = None
+    _m_state.task_txn(n, done)
+    return True
+
+
+def _decide_resubmit(n, t, f, fp, d, a):
+    from .task import pass_ as _m_task_pass_  # Local import breaks orchestration cycle; patches stay on the defining module.
+    return _m_task_pass_.do_submit(n, f["stage"], "coordinator decision %s: %s" % (fp, d["why"]), "decision")[0]
+
+
+DECISION_APPLY = {"escalate": _decide_escalate, "skip_reuse": _decide_skip_reuse}   # any other action resubmits the stage
+
+
 def apply_decision(n, a):
     from . import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import s3 as _m_s3  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import pass_ as _m_task_pass_  # Local import breaks orchestration cycle; patches stay on the defining module.
     if _m_ladder.terminal_task(n):
         return False
     t = _m_state.task_load(n)
@@ -159,42 +160,26 @@ def apply_decision(n, a):
         if d.get("max_uses") is not None and d.get("uses", 0) >= d["max_uses"]:
             continue
         action = d["action"]
-        if action == "escalate":
-            _m_ladder.to_coordinator(n, "coordinator decision %s: %s" % (fp, d["why"]), a, deputy=False)
-            ok = True
-        elif action == "skip_reuse":
-            stage = _m_state.tstage(t, f["stage"])
-            if not stage.get("done_s3") or not all(_m_s3.s3_exists(uri, t) for uri in stage["done_s3"]):
-                return False
-            def done(task):
-                _m_state.tstage(task, f["stage"])["state"] = "done"
-                task["failure"] = None
-            _m_state.task_txn(n, done)
-            ok = True
-        else:
-            ok, msg = _m_task_pass_.do_submit(n, f["stage"], "coordinator decision %s: %s" % (fp, d["why"]), "decision")
-            if not ok:
-                return False
-        if ok:
-            def consumed(task):
-                # A coordinator can replace a decision while submit waits on kubectl. Never overwrite that newer log.
-                current = decisions(n)
-                for entry in current:
-                    if (entry["fingerprint"], entry["scope"], entry.get("stage"), entry["ts"]) == (d["fingerprint"], d["scope"], d.get("stage"), d["ts"]):
-                        entry["uses"] = entry.get("uses", 0) + 1
-                        _m_notify.write_json(_m_state.task_dir(n) / "decisions.json", current)
-                        break
-                task.setdefault("decision_streaks", {})[fp] = {"count": count + 1, "progress": progress}
-                _m_state.tev(task, "applied coordinator decision %s" % fp)
-            _m_state.task_txn(n, consumed)
-            cost_event(n, "decision", "0", "escalated" if action == "escalate" else "resolved",
-                       stage=f["stage"], fingerprint=fp)
-            return True
+        if not DECISION_APPLY.get(action, _decide_resubmit)(n, t, f, fp, d, a):
+            return False
+        def consumed(task):
+            # A coordinator can replace a decision while submit waits on kubectl. Never overwrite that newer log.
+            current = decisions(n)
+            for entry in current:
+                if (entry["fingerprint"], entry["scope"], entry.get("stage"), entry["ts"]) == (d["fingerprint"], d["scope"], d.get("stage"), d["ts"]):
+                    entry["uses"] = entry.get("uses", 0) + 1
+                    _m_notify.write_json(_m_state.task_dir(n) / "decisions.json", current)
+                    break
+            task.setdefault("decision_streaks", {})[fp] = {"count": count + 1, "progress": progress}
+            _m_state.tev(task, "applied coordinator decision %s" % fp)
+        _m_state.task_txn(n, consumed)
+        cost_event(n, "decision", "0", "escalated" if action == "escalate" else "resolved",
+                   stage=f["stage"], fingerprint=fp)
+        return True
     return False
 
 
 def cmd_decide(a):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     if not _m_state.task_load(a.name):
         sys.exit("no task %s" % a.name)
     _m_state.task_txn(a.name, lambda t: record_decision(t, a.fingerprint, a.action, a.why, a.scope, a.max_uses))
@@ -208,7 +193,6 @@ def cmd_wake_review(a):
 
 
 def cmd_costs(a):
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     rows = [r for r in cost_rows() if (not a.task or r.get("task") == a.task) and r["ts"] >= _m_state.now() - a.days * 86400]
     counts, costs, resolved, reviews = {}, {}, {}, {}
     by_kind, by_task = {}, {}

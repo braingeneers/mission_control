@@ -36,7 +36,7 @@ def task_prompt(t):
     code = t.get("code") or {}
     rep = {"name": t["name"], "goal": t["goal"], "approved": t["approved"], "origin": _m_wake.origin_plain(t.get("origin")), "ns": t["namespace"], "notes": t["notes"] or "(none)",
            "used": str(len(att[t.get("budget_from", 0):])), "max": str(t["max_retries"]), "cls": f.get("cls", "?"),
-           "cls_used": str(cls_used), "cls_max": str(_m_state.CLASS_BUDGET.get(f.get("cls"), 1)), "stage": f.get("stage", "?"),
+           "cls_used": str(cls_used), "cls_max": str(_m_state.failure_class(f.get("cls"))["budget"]), "stage": f.get("stage", "?"),
            "job": f.get("job", "?"), "sig": f.get("sig", "?"), "rule": f.get("rule") or "not recorded", "waiver_max": str(_m_config.util_waiver_max()), "waiver_hours": "%g" % _m_config.util_waiver_hours(), "detail": f.get("detail", ""), "logs": f.get("logs") or "(none saved)",
            "dir": str(_m_state.task_dir(t["name"])),
            "stages": "\n".join("  - %s job=%s state=%s attempt=%d manifest=%s done_s3=%s" % (s["id"], s["job"], s["state"], s.get("attempt", 1),

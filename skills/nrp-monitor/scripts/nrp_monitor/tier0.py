@@ -1,32 +1,14 @@
 """NRP monitor tier0 (mechanical extraction; R3a)."""
-import argparse
-import collections
-import contextlib
-import fcntl
-import getpass
-import hashlib
 import json
-import os
 import re
-import shlex
-import shutil
-import stat
-import subprocess
-import sys
-import tempfile
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-import uuid
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from . import cluster as _m_cluster, config as _m_config, decisions as _m_decisions, notify as _m_notify, sizing as _m_sizing, state as _m_state
+from .task import model as _m_task_model, registry as _m_task_registry
 
 
 def thanos_peak_mem(ns, job, container, since_ts, per_pod=False):
     """Peak working-set bytes of the Job's pods (one container) since `since_ts`, from NRP's Prometheus; None when unavailable."""
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     window = max(300, int(_m_state.now() - since_ts) + 120)
     expr = 'max(max_over_time(container_memory_working_set_bytes{namespace="%s",pod=~"%s-.*",container="%s"}[%ds]))' % (ns, job, container, window)
     if per_pod:
@@ -47,8 +29,6 @@ def thanos_peak_mem(ns, job, container, since_ts, per_pod=False):
 
 
 def vanished_nodes(t, s):
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     window = max(300, int(_m_state.now() - (s.get("submitted") or _m_state.now() - 86400)) + 120)
     expr = 'max_over_time(kube_pod_info{namespace=%s,pod=~%s}[%ds])' % (
         json.dumps(t["namespace"]), json.dumps(re.escape(s["job"]) + "-.*"), window)
@@ -57,15 +37,6 @@ def vanished_nodes(t, s):
 
 def tier0_oom(t, s, f):
     """(manifest doc, reason, record) raising the OOMKilled container's memory to observed peak x1.3, or None to leave it to the agents."""
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import config as _m_config  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import sizing as _m_sizing  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
-    if not str(f.get("sig", "")).startswith("oom@"):
-        return None
-    if any(x.get("stage") == s["id"] and x.get("rule") == "oom" for x in t.get("tier0") or []):
-        return None                                           # already resized once: a second OOM is not a sizing problem a rule can settle
     cname = None
     for p in _m_cluster.job_pods(t["namespace"], s["job"]):
         for cs in (p.get("status") or {}).get("containerStatuses") or []:
@@ -106,8 +77,6 @@ def tier0_oom(t, s, f):
 
 def node_fault_of(t, s, f):
     """(node, evidence) of a pod of this stage's Job that hit a known node fault, else None. Pod status and conditions plus the saved log tail."""
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     tail = ""
     try:
         tail = Path(f.get("logs") or "").read_text()[-8000:] if f.get("logs") else ""
@@ -159,9 +128,6 @@ def exclude_node(doc, node):
 
 
 def tier0_node(t, s, f):
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
     hit = node_fault_of(t, s, f)
     if not hit:
         return None
@@ -180,10 +146,6 @@ def tier0_node(t, s, f):
 
 def tier0_lost(t, s, f):
     """(unchanged manifest doc, reason, record) for a lost pod; do_submit applies the shared bad-node list and the stage's budget."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
-    if f.get("sig") != _m_state.LOST_SIG:
-        return None
     try:
         doc = _m_task_registry.manifest_doc(s["manifest"])
     except Exception:
@@ -191,21 +153,31 @@ def tier0_lost(t, s, f):
     return doc, "pod lost without an exit or traceback (environment, not code) -> resubmitted unchanged (Tier 0 rule)", {"rule": "lost"}
 
 
+def _oom_matches(t, s, f):            # an OOM, and this stage was not resized by the rule already (a second OOM is not a sizing problem)
+    return str(f.get("sig", "")).startswith("oom@") and not any(
+        x.get("stage") == s["id"] and x.get("rule") == "oom" for x in t.get("tier0") or [])
+
+
+# Tier 0 rules, tried in order for the classes that list them (state.CLASSES). `apply` returns (manifest doc, reason, record) or None.
+RULES = (
+    {"name": "node", "matches": lambda t, s, f: True, "apply": tier0_node},
+    {"name": "oom", "matches": _oom_matches, "apply": tier0_oom},
+    {"name": "lost", "matches": lambda t, s, f: f.get("sig") == _m_state.LOST_SIG, "apply": tier0_lost},
+)
+
+
 def tier0_fix(n, a):
     """True when a Tier 0 rule edited the manifest and resubmitted the failed stage. Never raises, never starts a model; False hands the
     failure to handle_failure unchanged (watch-only tasks, repeats, anything over a cap, no rule matched)."""
-    from . import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .task import pass_ as _m_task_pass_  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
     try:
         if _m_ladder.terminal_task(n):
             return False
         t = _m_state.task_load(n)
         f = (t or {}).get("failure")
-        if not f or t["mode"] != "auto" or a.dry_run or f.get("cls") not in ("resources", "infra", "code", "unknown"):
+        rules = [r for r in RULES if r["name"] in _m_state.failure_class((f or {}).get("cls"))["rules"]]
+        if not f or t["mode"] != "auto" or a.dry_run or not rules:
             return False
         if _m_decisions.apply_decision(n, a):
             return True
@@ -215,8 +187,8 @@ def tier0_fix(n, a):
         node_rule = tier0_node(t, s, f)  # record a fresh fault even if the retry budget is used
         if f["sig"] != _m_state.LOST_SIG and f["sig"] in [x["sig"] for x in t["attempts"] if x["stage"] == f["stage"]]:
             return False                                       # a lost pod may repeat on the same stage; its per-stage infra budget caps it
-        for rule in (tier0_node, tier0_oom, tier0_lost):
-            r = node_rule if rule is tier0_node else rule(t, s, f)
+        for rule in rules:
+            r = rule["matches"](t, s, f) and (node_rule if rule["name"] == "node" else rule["apply"](t, s, f))
             if not r:
                 continue
             doc, reason, rec = r
@@ -246,7 +218,6 @@ def queue_ceiling_seconds(value):
 
 def report_long_pending(n, jobs):
     """Record bounded Pending reports and ask the coordinator before a long queue wait continues. Never raises."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     try:
         _report_long_pending(n, jobs)
     except Exception as e:
@@ -254,12 +225,7 @@ def report_long_pending(n, jobs):
 
 
 def _report_long_pending(n, jobs):
-    from .task import model as _m_task_model  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
     t = _m_state.task_load(n)
     for s in t["stages"]:
         if s["state"] != "running":

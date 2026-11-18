@@ -1,32 +1,16 @@
-"""NRP monitor ladder (mechanical extraction; R3a)."""
+"""The task failure ladder: failure records, the guards and tiers of handle_failure (as data), the deputy and the coordinator."""
 import argparse
 import collections
-import contextlib
-import fcntl
-import getpass
-import hashlib
-import json
-import os
 import re
-import shlex
-import shutil
-import stat
-import subprocess
-import sys
-import tempfile
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-import uuid
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+import types
+
+from . import agents as _m_agents, cluster as _m_cluster, decisions as _m_decisions, notify as _m_notify, plans as _m_plans
+from . import s3 as _m_s3, sizing as _m_sizing, state as _m_state, task_agents as _m_task_agents, timeouts as _m_timeouts
+from . import util as _m_util, wake as _m_wake
+from .task import model as _m_task_model, pass_ as _m_task_pass_, registry as _m_task_registry
 
 
 def deputy_prompt(t, reason):
-    from . import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import plans as _m_plans  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import task_agents as _m_task_agents  # Local import breaks orchestration cycle; patches stay on the defining module.
     plan = "(none)"
     if (t.get("on_done") or {}).get("plan"):
         path = _m_plans.plan_dir(t["on_done"]["plan"]) / "plan.md"
@@ -46,8 +30,6 @@ def deputy_prompt(t, reason):
 
 def terminal_task(n, detail=None):
     """Late failures of done/cancelled tasks are audit-only, including queued work."""
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     t = _m_state.task_load(n) or {}
     if t.get("status") not in ("done", "cancelled"):
         return False
@@ -69,9 +51,6 @@ def terminal_task(n, detail=None):
 
 def settled_outcome(n, line, a, kind):
     """Accept DONE/RESOLVED only when recovery passes the existing script checks."""
-    from . import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     if terminal_task(n):
         return True
     t = _m_state.task_load(n)
@@ -95,10 +74,6 @@ def settled_outcome(n, line, a, kind):
 
 
 def task_fail(n, sid, cls, sig, detail, logs=None, extra=None):
-    from . import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import sizing as _m_sizing  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
     if terminal_task(n, "stage %s [%s] %s" % (sid, cls, detail[:200])):
         return False
     def f(t):
@@ -129,8 +104,7 @@ def class_retries(t, f):
 def systemic_failure(t, f):
     """A reason string when the current code/unknown/outputs failure has the same signature as failures on other stages (one bug
     hitting the fan-out), else None. Environment failures (infra, resources, queue) never count: dead nodes are not a bug."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    if f.get("cls") not in _m_state.SYSTEMIC_CLASSES:
+    if not _m_state.failure_class(f.get("cls"))["systemic"]:
         return None
     stages = {x.get("stage") for x in t.get("attempts", [])[t.get("budget_from", 0):]
               if x.get("cls") == f.get("cls") and x.get("sig") == f.get("sig")} | {f.get("stage")}
@@ -142,9 +116,6 @@ def systemic_failure(t, f):
 
 
 def escalate(n, reason, a=None):
-    from .task import model as _m_task_model  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     out = {}
 
     def f(t):
@@ -161,8 +132,6 @@ def escalate(n, reason, a=None):
 
 def coordinator_summary(t, reason):
     """The short text a Tier 3 wake carries: what happened, and where to look. No logs, no secrets."""
-    from . import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     n, f = t["name"], t.get("failure") or {}
     bits = ["NRP task %s needs its coordinator chat (the owner is NOT notified unless you say so): %s" % (n, reason)]
     if f:
@@ -183,12 +152,6 @@ def to_coordinator(n, reason, a=None, deputy=True):
     The task goes to WITH_COORDINATOR, not NEEDS_OWNER: the owner is told only if the chat runs `task needs-owner`. With no webhook
     configured for the task there is nobody to wake, so the owner is told instead (NEEDS_OWNER) and nothing is lost. A wake that cannot
     be delivered (wake_failed) or an answer that never comes (check_coordinator_waits) falls back the same way."""
-    from .task import model as _m_task_model  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import task_agents as _m_task_agents  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import wake as _m_wake  # Local import breaks orchestration cycle; patches stay on the defining module.
     t = _m_state.task_load(n)
     if terminal_task(n) or t["status"] in _m_state.TASK_HELD:
         return
@@ -228,7 +191,6 @@ def to_coordinator(n, reason, a=None, deputy=True):
 
 def check_coordinator_waits(a):
     """A WITH_COORDINATOR task whose wake was delivered but never answered for COORD_STALE_S goes to the owner."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     if a.dry_run:
         return
     for n in _m_state.task_names():
@@ -239,7 +201,6 @@ def check_coordinator_waits(a):
 
 def triage_verdict(text):
     """(verdict, text) from the LAST verdict line of the judge's answer. Anything else fails closed to ESCALATE."""
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     ms = list(_m_state.TRIAGE_VERDICT_RE.finditer((text or "").strip().splitlines()[-1] if (text or "").strip() else ""))
     if not ms or not ms[-1].group(2).strip():
         return "ESCALATE", "no verdict line in the triage answer"
@@ -250,17 +211,12 @@ def triage_wanted(t, f):
     """Tier 1 looks at an event when a benign answer is possible: the Job is still alive or finished, or the class is one the script cannot
     pin down (unknown, slow). A plain terminal failure the rules already classified (OOM, traceback, image pull) goes straight to Tier 2.
     Util observations always receive a judge before a fixer."""
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     if f.get("cls") == "util":
         return True
-    return f.get("cls") in _m_state.TRIAGE_CLASSES_ALWAYS or _m_cluster.job_state(f["job"], t["namespace"]) in ("running", "pending", "ok")
+    return _m_state.failure_class(f.get("cls"))["triage"] or _m_cluster.job_state(f["job"], t["namespace"]) in ("running", "pending", "ok")
 
 
 def triage_prompt(t):
-    from . import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import wake as _m_wake  # Local import breaks orchestration cycle; patches stay on the defining module.
     f = t["failure"] or {}
     tpl = (_m_state.TPL / "task_triage.md").read_text()
     rep = {"name": t["name"], "goal": t["goal"], "origin": _m_wake.origin_plain(t.get("origin")), "ns": t["namespace"], "notes": t["notes"] or "(none)",
@@ -276,11 +232,6 @@ def triage_prompt(t):
 def close_failure(n, f, why, kind="Tier 1 triage"):
     """Close a triaged event as benign. The script decides, not the verdict: the Job must be alive or done, or the stage's outputs present.
     Returns (ok, refusal)."""
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import s3 as _m_s3  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     if terminal_task(n):
         return False, "task is terminal"
     t = _m_state.task_load(n)
@@ -312,13 +263,6 @@ def close_failure(n, f, why, kind="Tier 1 triage"):
 
 
 def observe_task(n, jobs):
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import s3 as _m_s3  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import sizing as _m_sizing  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import timeouts as _m_timeouts  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import pass_ as _m_task_pass_  # Local import breaks orchestration cycle; patches stay on the defining module.
     if terminal_task(n):
         return
     t = _m_state.task_load(n)
@@ -372,20 +316,166 @@ def observe_task(n, jobs):
             task_fail(n, sid, cls, sig, detail, p)
 
 
+# ---- the failure ladder as data ----------------------------------------------------------------------------------
+# handle_failure runs LADDER in order. A guard returns the reason it stops the climb (or None); a strategy tries one tier and
+# returns a Decision (or None to go on). `act` carries the Decision out: STOP means the step settled the failure or must wait.
+Decision = collections.namedtuple("Decision", "action reason")
+STOP = Decision("stop", "")
+
+
+def guard(action):
+    def wrap(check):
+        def step(c):
+            why = check(c)
+            return Decision(action, why) if why else None
+        step.__name__ = check.__name__
+        return step
+    return wrap
+
+
+@guard("coordinator-only")
+def postcheck_guard(c):
+    return _m_decisions.postcheck_failure(c.f) and ("postcheck failed: the coordinator must fix the acceptance script; "
+                                                    "skip_reuse cannot resolve it. " + c.f["detail"])
+
+
+def recorded_decision(c):
+    return STOP if _m_decisions.apply_decision(c.n, c.a) else None
+
+
+@guard("watch")
+def watch_only(c):                      # a watch-only task has no ladder: the failure is final
+    return c.t["mode"] == "watch" and "watch-only task, stage %s failed [%s]: %s" % (c.f["stage"], c.f["cls"], c.f["detail"])
+
+
+def deadline_rule(c):                   # Tier 0 timeout rule (the other Tier 0 rules run first, in tier0.tier0_fix)
+    ok = "timeout" in _m_state.failure_class(c.f["cls"])["rules"] and not c.a.dry_run and _m_timeouts.tier0_timeout(c.n, c.f)
+    return STOP if ok else None
+
+
+@guard("coordinator")
+def same_signature(c):
+    prior = [x["sig"] for x in c.t["attempts"] if x["stage"] == c.f["stage"]]
+    return c.f["sig"] in prior and c.f["sig"] != _m_state.LOST_SIG and \
+        "stage %s failed the same way again after a retry [%s]: %s" % (c.f["stage"], c.f["cls"], c.f["detail"])
+
+
+@guard("coordinator")
+def retry_cap(c):
+    return len(c.t["attempts"][c.t.get("budget_from", 0):]) >= c.t["max_retries"] and \
+        "retry cap %d reached; last failure [%s]: %s" % (c.t["max_retries"], c.f["cls"], c.f["detail"])
+
+
+@guard("coordinator")
+def class_budget(c):
+    used = class_retries(c.t, c.f)
+    return used >= _m_state.failure_class(c.f["cls"])["budget"] and \
+        "%s retries used (%d) on stage %s; last failure: %s" % (c.f["cls"], used, c.f["stage"], c.f["detail"])
+
+
+@guard("coordinator")
+def systemic(c):
+    return systemic_failure(c.t, c.f)
+
+
+@guard("owner")
+def gpu_expired(c):
+    gx = _m_task_registry.gpu_expired(_m_state.tstage(c.t, c.f["stage"]))
+    return gx and not c.a.dry_run and "stage %s failed [%s] %s | %s" % (c.f["stage"], c.f["cls"], c.f["detail"][:150], gx.split(" (`nrp-monitor")[0])
+
+
+def dry_run(c):
+    if c.a.dry_run:
+        print("[dry-run] task %s: would run Tier 1 triage / start a fix agent for [%s] %s" % (c.n, c.f["cls"], c.f["detail"][:120]))
+        return STOP
+
+
+def agents_wait(c):
+    if not _m_agents.agents_available():
+        _m_state.log("task %s: fix agent waits: %s" % (c.n, _m_agents.unavailable_text()))
+        return STOP
+
+
+def triage_judge(c):
+    """Tier 1 (config `ladder.triage_judge`, default off): a read-only judge, once per failure; 'no fix needed' closes the event."""
+    f = c.f
+    if not (_m_state.OWNER.get("ladder", {}).get("triage_judge", False) and not f.get("triaged") and triage_wanted(c.t, f)):
+        return None
+    _m_state.PASS["agents"] = _m_state.PASS.get("agents", 0) + 1
+    line, _ = _m_task_agents.run_task_agent(c.n, triage_prompt(c.t), c.a, kind="triage")
+    if _m_agents.is_unavailable(line):
+        return STOP
+    run = (_m_state.task_load(c.n).get("agent_runs") or [{}])[-1]
+    verdict, vtext = run.get("verdict") or "ESCALATE", run.get("verdict_text") or line
+
+    def mark(t):
+        cur = t.get("failure")
+        if not cur or cur.get("ts") != f.get("ts"):
+            return False
+        cur["triaged"], cur["triage_text"] = _m_state.now(), "%s: %s" % (verdict, vtext)
+        _m_state.tev(t, "Tier 1 triage: %s: %s" % (verdict, vtext[:200]))
+    _m_state.task_txn(c.n, mark)
+    if verdict in _m_state.TRIAGE_CLOSE:
+        ok, refused = close_failure(c.n, f, vtext)
+        if ok:
+            return STOP
+        _m_state.task_txn(c.n, lambda t: _m_state.tev(t, "Tier 1 said no fix needed but the script refused to close it: " + refused))
+    c.t = _m_state.task_load(c.n)
+    if terminal_task(c.n) or not c.t.get("failure"):
+        return STOP
+    c.f = c.t["failure"]
+
+
+def fixer(c):
+    """Tier 2: the fix agent. Anything it leaves unresolved goes to Tier 3, the coordinator chat."""
+    f = c.f
+    _m_state.PASS["agents"] = _m_state.PASS.get("agents", 0) + 1
+    line, den = _m_task_agents.run_task_agent(c.n, _m_task_agents.task_prompt(c.t), c.a)
+    if _m_agents.is_unavailable(line) or settled_outcome(c.n, line, c.a, "fixer"):
+        return STOP
+    t = _m_state.task_load(c.n)
+    rep = t.get("report") or {}
+    if t["status"] == "blocked":
+        return STOP
+    if t.get("failure") is None:
+        _m_notify.digest("retry", "%s [%s] -> %s" % (f["job"], f["cls"], (t["attempts"][-1]["fix"] if t["attempts"] else line)[:250]), c.n)
+        return STOP
+    if den and not rep:
+        line = "the fix agent was denied %d tool call(s) (monitor fault): %s" % (len(den), line)
+    claim = t.get("util_ok_claim")
+    if claim is None and rep.get("status") == "UTIL_OK":
+        claim = rep.get("line") or ""
+    if claim is not None and rep.get("status") in (None, "UTIL_OK"):          # a STOPPED report stays a stop
+        ok, why = _m_util.util_waive(c.n, f, claim, c.a)
+        if ok:
+            return STOP
+        _m_state.log("task %s: util waiver refused: %s" % (c.n, why))
+        _m_state.task_txn(c.n, lambda t: (t.pop("util_ok_claim", None), _m_state.tev(t, "util waiver refused: " + why)))
+        return Decision("coordinator", "fix agent did not resubmit: %s [util waiver refused: %s]" % (((rep.get("line") or line)[:200]), why[:110]))
+    return Decision("coordinator", "fix agent did not resubmit: %s" % ((rep.get("line") or line)[:300]))
+
+
+LADDER = (postcheck_guard, recorded_decision, watch_only, deadline_rule, same_signature, retry_cap, class_budget, systemic,
+          gpu_expired, dry_run, agents_wait, triage_judge, fixer)
+
+
+def act(c, d):
+    if d.action == "watch" and not c.a.dry_run:      # the one `failure` wake: the chat hears it, and so does the owner
+        f = c.f
+        _m_state.task_txn(c.n, lambda t: _m_wake.queue_task_webhook(t, "failure", summary="NRP task %s (watch-only): stage %s failed [%s] %s. Look: "
+                          "`nrp-monitor task show %s`. The owner is notified too: a watch-only task has no automatic fixes."
+                          % (c.n, f["stage"], f["cls"], f["detail"][:200], c.n)))
+    if d.action in ("owner", "watch"):
+        escalate(c.n, d.reason, c.a)
+    elif d.action.startswith("coordinator"):
+        to_coordinator(c.n, d.reason, c.a, deputy=d.action == "coordinator")
+
+
 def handle_failure(n, a):
-    """The task escalation ladder. Tier 0: script rules (classification in observe_task, deadline rules, `tier0_timeout`). Tier 1: read-only
+    """The task escalation ladder (LADDER). Tier 0: script rules (classification in observe_task, deadline rules, `tier0_timeout`). Tier 1: read-only
     triage, where a benign answer is possible; 'no fix needed' CLOSES the event. Tier 2: the fixer. Tier 3: the task's
     coordinator chat (`to_coordinator`). The owner is told (NEEDS_OWNER + one DM) only by the chat (`task needs-owner`), or when a person's
     decision is the only way on (watch-only task, GPU approval), or when the chat cannot be woken."""
-    from . import agents as _m_agents  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import task_agents as _m_task_agents  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import timeouts as _m_timeouts  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import util as _m_util  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import wake as _m_wake  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
     if terminal_task(n):
         return
     t = _m_state.task_load(n)
@@ -393,94 +483,8 @@ def handle_failure(n, a):
     if not f.get("fingerprint"):
         f["fingerprint"] = _m_decisions.fingerprint(t, f)
         _m_state.task_txn(n, lambda task: task["failure"].update(fingerprint=f["fingerprint"]))
-    if _m_decisions.postcheck_failure(f):
-        to_coordinator(n, "postcheck failed: the coordinator must fix the acceptance script; skip_reuse cannot resolve it. " + f["detail"], a, deputy=False)
-        return
-    if _m_decisions.apply_decision(n, a):
-        return
-    since = t.get("budget_from", 0)
-    prior = [x["sig"] for x in t["attempts"] if x["stage"] == f["stage"]]
-    used = len(t["attempts"][since:])
-    cls_used = class_retries(t, f)
-    if t["mode"] == "watch":
-        # a watch-only task has no ladder: the failure is final, so this is the one `failure` wake (the chat hears it, and so does the owner)
-        if not a.dry_run:
-            _m_state.task_txn(n, lambda t: _m_wake.queue_task_webhook(t, "failure", summary="NRP task %s (watch-only): stage %s failed [%s] %s. Look: "
-                     "`nrp-monitor task show %s`. The owner is notified too: a watch-only task has no automatic fixes."
-                     % (n, f["stage"], f["cls"], f["detail"][:200], n)))
-        escalate(n, "watch-only task, stage %s failed [%s]: %s" % (f["stage"], f["cls"], f["detail"]), a)
-        return
-    if f["cls"] == "slow" and not a.dry_run and _m_timeouts.tier0_timeout(n, f):
-        return
-    why = None
-    if f["sig"] in prior and f["sig"] != _m_state.LOST_SIG:
-        why = "stage %s failed the same way again after a retry [%s]: %s" % (f["stage"], f["cls"], f["detail"])
-    elif used >= t["max_retries"]:
-        why = "retry cap %d reached; last failure [%s]: %s" % (t["max_retries"], f["cls"], f["detail"])
-    elif cls_used >= _m_state.CLASS_BUDGET.get(f["cls"], 1):
-        why = "%s retries used (%d) on stage %s; last failure: %s" % (f["cls"], cls_used, f["stage"], f["detail"])
-    else:
-        why = systemic_failure(t, f)
-    if why:
-        to_coordinator(n, why, a)
-        return
-    gx = _m_task_registry.gpu_expired(_m_state.tstage(t, f["stage"]))
-    if gx and not a.dry_run:
-        escalate(n, "stage %s failed [%s] %s | %s" % (f["stage"], f["cls"], f["detail"][:150], gx.split(" (`nrp-monitor")[0]), a)
-        return
-    if a.dry_run:
-        print("[dry-run] task %s: would run Tier 1 triage / start a fix agent for [%s] %s" % (n, f["cls"], f["detail"][:120]))
-        return
-    if not _m_agents.agents_available():
-        _m_state.log("task %s: fix agent waits: %s" % (n, _m_agents.unavailable_text()))
-        return
-    if _m_state.OWNER.get("ladder", {}).get("triage_judge", False) and not f.get("triaged") and triage_wanted(t, f):                       # Tier 1: once per failure
-        _m_state.PASS["agents"] = _m_state.PASS.get("agents", 0) + 1
-        line, _ = _m_task_agents.run_task_agent(n, triage_prompt(t), a, kind="triage")
-        if _m_agents.is_unavailable(line):
-            return
-        run = (_m_state.task_load(n).get("agent_runs") or [{}])[-1]
-        verdict, vtext = run.get("verdict") or "ESCALATE", run.get("verdict_text") or line
-
-        def mark(t):
-            cur = t.get("failure")
-            if not cur or cur.get("ts") != f.get("ts"):
-                return False
-            cur["triaged"], cur["triage_text"] = _m_state.now(), "%s: %s" % (verdict, vtext)
-            _m_state.tev(t, "Tier 1 triage: %s: %s" % (verdict, vtext[:200]))
-        _m_state.task_txn(n, mark)
-        if verdict in _m_state.TRIAGE_CLOSE:
-            ok, refused = close_failure(n, f, vtext)
-            if ok:
-                return
-            _m_state.task_txn(n, lambda t: _m_state.tev(t, "Tier 1 said no fix needed but the script refused to close it: " + refused))
-        t = _m_state.task_load(n)
-        if terminal_task(n) or not t.get("failure"):
-            return
-        f = t["failure"]
-    _m_state.PASS["agents"] = _m_state.PASS.get("agents", 0) + 1
-    line, den = _m_task_agents.run_task_agent(n, _m_task_agents.task_prompt(t), a)                       # Tier 2
-    if _m_agents.is_unavailable(line) or settled_outcome(n, line, a, "fixer"):
-        return
-    t = _m_state.task_load(n)
-    rep = (t.get("report") or {})
-    if t["status"] == "blocked":
-        return
-    if t.get("failure") is None:
-        _m_notify.digest("retry", "%s [%s] -> %s" % (f["job"], f["cls"], (t["attempts"][-1]["fix"] if t["attempts"] else line)[:250]), n)
-        return
-    if den and not rep:
-        line = "the fix agent was denied %d tool call(s) (monitor fault): %s" % (len(den), line)
-    claim = t.get("util_ok_claim")
-    if claim is None and rep.get("status") == "UTIL_OK":
-        claim = rep.get("line") or ""
-    if claim is not None and rep.get("status") in (None, "UTIL_OK"):          # a STOPPED report stays a stop
-        ok, why = _m_util.util_waive(n, f, claim, a)
-        if ok:
-            return
-        _m_state.log("task %s: util waiver refused: %s" % (n, why))
-        _m_state.task_txn(n, lambda t: (t.pop("util_ok_claim", None), _m_state.tev(t, "util waiver refused: " + why)))
-        to_coordinator(n, "fix agent did not resubmit: %s [util waiver refused: %s]" % (((rep.get("line") or line)[:200]), why[:110]), a)
-        return
-    to_coordinator(n, "fix agent did not resubmit: %s" % ((rep.get("line") or line)[:300]), a)                    # Tier 3
-
+    c = types.SimpleNamespace(n=n, a=a, t=t, f=f)
+    for step in LADDER:
+        d = step(c)
+        if d:
+            return act(c, d)

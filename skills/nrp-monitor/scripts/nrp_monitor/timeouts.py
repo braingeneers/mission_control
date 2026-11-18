@@ -1,37 +1,20 @@
 """NRP monitor timeouts (mechanical extraction; R3a)."""
-import argparse
-import collections
-import contextlib
-import fcntl
-import getpass
 import hashlib
 import json
-import os
 import re
-import shlex
-import shutil
-import stat
-import subprocess
-import sys
-import tempfile
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-import uuid
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from . import cluster as _m_cluster, decisions as _m_decisions, notify as _m_notify, state as _m_state
+from .task import registry as _m_task_registry
 
 # ---- Tier 0 timeouts (no model): extend a progressing Job in place, credit queue time, resubmit a resume-capable stage once at 2x ----
 def patch_deadline(ns, job, secs):
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
     r = _m_cluster.kubectl("-n", ns, "patch", "job", job, "--type=merge", "-p", json.dumps({"spec": {"activeDeadlineSeconds": int(secs)}}))
     return r.returncode == 0, (r.stderr or r.stdout).strip()[:150]
 
 
 def log_signature(ns, job):
     """Hash of the Job's last log lines: it changes between two passes only when the pod is still writing."""
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
     r = _m_cluster.kubectl("-n", ns, "logs", "job/" + job, "--all-containers", "--tail=20", timeout=60)
     lines = [l for l in (r.stdout or "").splitlines() if l.strip()][-20:] if r.returncode == 0 else []
     return hashlib.sha1("\n".join(lines).encode()).hexdigest()[:16] if lines else None
@@ -39,7 +22,6 @@ def log_signature(ns, job):
 
 def pod_waiting_error(ns, job):
     """A pod stuck on an error (image pull, bad config) is not queueing: its deadline is not extended."""
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
     r = _m_cluster.kubectl("-n", ns, "get", "pods", "-l", "job-name=" + job, "-o", "json")
     for p in json.loads(r.stdout or "{}").get("items", []) if r.returncode == 0 else []:
         for cs in p.get("status", {}).get("containerStatuses", []) or []:
@@ -55,8 +37,6 @@ def deadline_watch(n, s, info):
     is still Pending near its deadline is kept alive (deadline = elapsed + original), a limited number of times, unless it is stuck on an
     error; (3) a pod that is still progressing near its deadline (its log tail changed between two passes) gets one more original
     deadline in place, at most DEADLINE_EXT_MAX times. A Job that is not progressing is left to expire and enters the ladder."""
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     dl, js = info.get("deadline"), info.get("start")
     if not dl or not js:
         return
@@ -123,11 +103,7 @@ def stage_resumable(s):
 def tier0_timeout(n, f):
     """A stage died of DeadlineExceeded while running. If it resumes by skipping finished items, resubmit it once with 2x deadline
     (the task's manifest copy is edited); otherwise (or when that was already done) False: the failure enters the ladder at Tier 1."""
-    from . import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import notify as _m_notify  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     from .task import pass_ as _m_task_pass_  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
     t = _m_state.task_load(n)
     s = _m_state.tstage(t, f["stage"])
     done = (s.get("dl") or {}).get("resubmits", 0)

@@ -389,13 +389,31 @@ TASK_CACHE = Path(os.environ.get("NRP_TASK_CACHE") or Path.home() / ".cache/nrp-
 
 TASK_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 
-SYSTEMIC_CLASSES = ("code", "unknown", "outputs")     # the same one of these on several stages is one bug, not several bad shards
+# Failure classes: per-stage retry budget; Tier 0 rules that may settle it (tier0.RULES, the deadline rule); `systemic`: the same
+# signature on several stages is one bug, not several bad shards; `triage`: the Tier 1 judge always looks (others only while the
+# Job is alive or done). Whether a stage may be resubmitted to resume is per stage (timeouts.stage_resumable), not per class.
+CLASS_DEFAULT = {"budget": 1, "rules": (), "systemic": False, "triage": False}
+TIER0_RULES = ("node", "oom", "lost")
+CLASSES = {
+    "resources": {"budget": 3, "rules": TIER0_RULES},
+    "infra": {"budget": 2, "rules": TIER0_RULES},
+    "code": {"budget": 3, "rules": TIER0_RULES, "systemic": True},
+    "unknown": {"budget": 1, "rules": TIER0_RULES, "systemic": True, "triage": True},
+    "outputs": {"budget": 1, "systemic": True},
+    "util": {"budget": 3},
+    "queue": {"budget": 2},
+    "slow": {"rules": ("timeout",), "triage": True},
+}
+
+
+def failure_class(cls):
+    return dict(CLASS_DEFAULT, **CLASSES.get(cls, {}))
+
 
 SYSTEMIC_STAGES = 3                                   # ... on this many distinct stages (or 10% of a fan-out, whichever is larger)
 
 LOST_SIG = "lost-pod"                                 # the container never reported an exit and there is no traceback: our code did not fail
 
-CLASS_BUDGET = {"resources": 3, "util": 3, "code": 3, "queue": 2, "infra": 2, "outputs": 1, "unknown": 1}
 
 TASK_LIVE = ("running", "retrying", "blocked")
 
@@ -414,7 +432,6 @@ DEADLINE_CREDIT_MIN_S = 10 * 60                      # Pending time shorter than
 
 DEADLINE_RESUBMITS_MAX = 1                           # a dead stage is resubmitted with 2x deadline this many times (resume-capable stages only)
 
-TRIAGE_CLASSES_ALWAYS = ("unknown", "slow")          # Tier 1 (Haiku) always looks at these; other classes only while the Job is alive or done
 
 TASK_MODEL, TASK_TURNS, TASK_BUDGET, TASK_TIMEOUT = "sonnet", "60", "6.00", 2700   # alias "sonnet" followed the newest Sonnet: claude-sonnet-5-5 under this scrubbed env on 2026-11-05
 

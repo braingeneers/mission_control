@@ -161,7 +161,7 @@ def do_submit(n, sid, reason, by):
         cls_used = _m_ladder.class_retries(t, f)
         if used >= t["max_retries"]:
             return False, "RETRY CAP REACHED (%d of %d). Do not resubmit; report STOPPED with the diagnosis." % (used, t["max_retries"])
-        if cls_used >= _m_state.CLASS_BUDGET.get(f["cls"], 1):
+        if cls_used >= _m_state.failure_class(f["cls"])["budget"]:
             return False, "%s RETRY BUDGET USED (%d). Report STOPPED with the diagnosis." % (f["cls"], cls_used)
     checkpoint = _m_state.task_dir(n) / "agent-manifests.json"
     if checkpoint.exists():
