@@ -7,25 +7,6 @@ from . import cluster as _m_cluster, config as _m_config, decisions as _m_decisi
 from .task import model as _m_task_model, registry as _m_task_registry
 
 
-def thanos_peak_mem(ns, job, container, since_ts, per_pod=False):
-    """Peak working-set bytes of the Job's pods (one container) since `since_ts`, from NRP's Prometheus; None when unavailable."""
-    window = max(300, int(_m_state.now() - since_ts) + 120)
-    expr = 'max(max_over_time(container_memory_working_set_bytes{namespace="%s",pod=~"%s-.*",container="%s"}[%ds]))' % (ns, job, container, window)
-    if per_pod:
-        expr = expr.replace("max(max_over_time", "max by (pod) (max_over_time", 1)
-    res = _m_cluster.thanos_query(expr)
-    if per_pod:
-        import math
-        peaks = {}
-        for r in res:
-            try:
-                value = float(r["value"][1])
-                if math.isfinite(value) and value >= 0:
-                    peaks[r["metric"]["pod"]] = value
-            except (KeyError, ValueError, TypeError, IndexError):
-                continue
-        return peaks
-    return float(res[0]["value"][1]) if res else None
 
 
 def vanished_nodes(t, s):
@@ -53,10 +34,8 @@ def tier0_oom(t, s, f):
         return None
     res = c.setdefault("resources", {})
     lim = _m_sizing.mem_bytes((res.get("limits") or {}).get("memory") or (res.get("requests") or {}).get("memory") or "")
-    true_peak = _m_sizing.saved_memory_peak(t, s, c["name"])
-    if true_peak is None and len(cs_) == 1:
-        true_peak = _m_sizing.saved_memory_peak(t, s)
-    peak = thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted") or _m_state.now() - 3600)
+    true_peak = _m_sizing.container_memory_peak(t, s, c["name"], single=len(cs_) == 1)
+    peak = _m_sizing.thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted") or _m_state.now() - 3600)
     if peak is None:
         peak = true_peak
     if not lim or peak is None:

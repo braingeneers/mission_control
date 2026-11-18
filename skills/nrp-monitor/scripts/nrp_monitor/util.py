@@ -1,6 +1,7 @@
 """NRP monitor util (mechanical extraction; R3a)."""
 import json
 import re
+from . import sizing as _m_sizing
 from datetime import datetime, timezone
 
 
@@ -151,7 +152,7 @@ def task_pod_flag(st, n, sid, pod, kind, line):
     if rule == "nrp":
         utilization_band_action(n, sid, pod, line)
         return
-    evidence = memory_low_evidence(t, stage, pod, working_set_only=rule == "nrp") if kind == "LOW" and any(k == "mem" and int(pct) < 20 for k, use, req, pct, mx in _m_state.FLAG_RES.findall(line)) else None
+    evidence = _m_sizing.memory_low_evidence(t, stage, pod, working_set_only=rule == "nrp") if kind == "LOW" and any(k == "mem" and int(pct) < 20 for k, use, req, pct, mx in _m_state.FLAG_RES.findall(line)) else None
     if evidence and evidence["ramp_up"]:
         return
     if stage["state"] != "running":
@@ -243,57 +244,6 @@ def util_nrp_review(n, t, event, context, numbers, a):
         _m_notify.digest("util-review", "NRP violation not fixed by the review; coordinator chat woken: " + event["detail"][:200], n)
 
 
-def memory_low_evidence(t, s, flagged_pod, working_set_only=False):
-    from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import sizing as _m_sizing  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from . import tier0 as _m_tier0  # Local import breaks orchestration cycle; patches stay on the defining module.
-    from .task import registry as _m_task_registry  # Local import breaks orchestration cycle; patches stay on the defining module.
-    import math
-    import statistics
-    doc = _m_task_registry.manifest_doc(s["manifest"])
-    containers = doc["spec"]["template"]["spec"]["containers"]
-    resources = containers[0].get("resources", {})
-    request = (_m_sizing.mem_bytes(resources.get("requests", {}).get("memory", "")) or 0) / 2**30
-    limit = (_m_sizing.mem_bytes(resources.get("limits", {}).get("memory", "")) or 0) / 2**30
-    runtime = s.get("measured_runtime_seconds")
-    threshold = float(runtime) * .25 if runtime else 1800
-    pods = _m_cluster.job_pods(t["namespace"], s["job"])
-    ages = {p["metadata"]["name"]: max(0, _m_state.now() - (_m_state.parse_ts(p.get("status", {}).get("startTime") or p["metadata"].get("creationTimestamp", "")) or _m_state.now())) for p in pods}
-    age = ages.get(flagged_pod, max(0, _m_state.now() - s.get("pod_started", _m_state.now())))
-    since = min(s.get("memory_since", _m_state.now()), t.get("created", _m_state.now()), s.get("submitted", _m_state.now()),
-                *(_m_state.now() - age for age in ages.values()))
-    peaks = _m_tier0.thanos_peak_mem(t["namespace"], s["job"], containers[0]["name"], since, per_pod=True)
-    true_peak = _m_sizing.saved_memory_peak(t, s, containers[0]["name"], all_attempts=True)
-    if true_peak is None and len(containers) == 1:
-        true_peak = _m_sizing.saved_memory_peak(t, s, all_attempts=True)
-    previous = s.get("memory_peaks_gi", {})
-    peaks = {k: max(v / 2**30, previous.get(k, 0)) for k, v in peaks.items()} | {k: v for k, v in previous.items() if k not in peaks}
-    for name in peaks:
-        ages.setdefault(name, None)
-    oom = list(s.get("oom_limits_gi", []))
-    for attempt in t.get("attempts", []):
-        if attempt.get("stage") == s["id"] and str(attempt.get("sig", "")).startswith("oom@"):
-            b = _m_sizing.mem_bytes(attempt["sig"].split("@", 1)[1])
-            if b: oom.append(b / 2**30)
-    for p in pods:
-        for cs in p.get("status", {}).get("containerStatuses", []) or []:
-            if any((cs.get(k, {}).get("terminated") or {}).get("reason") == "OOMKilled" for k in ("state", "lastState")):
-                pc = next((c for c in p.get("spec", {}).get("containers", []) if c["name"] == cs.get("name")), {})
-                b = _m_sizing.mem_bytes(pc.get("resources", {}).get("limits", {}).get("memory", ""))
-                if b: oom.append(b / 2**30)
-    need = max(list(peaks.values()) + oom + [true_peak / 2**30 if true_peak and not peaks else 0])   # memory.peak counts page cache
-    right = math.ceil(need * 1.5)
-    spread = max(peaks.values()) / statistics.median(peaks.values()) if peaks and statistics.median(peaks.values()) else None
-    missing = sorted((set(ages) | {flagged_pod}) - set(peaks))
-    verdict = "missing peaks: review" if not peaks or missing else ("sized correctly" if request <= 1.2 * right else "oversized")
-    finished = set(s.get("memory_completed_pods", [])) | {p["metadata"]["name"] for p in pods if p.get("status", {}).get("phase") == "Succeeded"}
-    low_whole_life = sorted(k for k, v in peaks.items() if k in finished and v < .2 * request)
-    if spread and spread > 3 and low_whole_life and not missing: verdict = "inputs differ in size"
-    _m_state.task_txn(t["name"], lambda t: _m_state.tstage(t, s["id"]).update(memory_peaks_gi=peaks, oom_limits_gi=sorted(set(oom)), memory_since=since, memory_completed_pods=sorted(finished)))
-    return dict(peaks_gi=peaks, ages_seconds=ages, request_gi=request, limit_gi=limit, oom_limits_gi=oom,
-                true_peak_gi=true_peak / 2**30 if true_peak else None, need_gi=need, right_gi=right, spread=spread, suggested_verdict=verdict, ramp_up=age < threshold,
-                missing_peak_pods=missing, low_whole_life=low_whole_life, measured_runtime_seconds=runtime, remaining_seconds=max(0, runtime-age) if runtime else None)
 
 
 def check_orphans(a, st):
@@ -383,7 +333,6 @@ def utilization_band_action(n, sid, pod, line):
     from . import state as _m_state
     from .task import pass_ as _m_task_pass_
     from .task import registry as _m_task_registry
-    from . import tier0 as _m_tier0
     from . import timeouts as _m_timeouts
     from . import wake as _m_wake
     import math
@@ -416,12 +365,10 @@ def utilization_band_action(n, sid, pod, line):
         return
     doc = _m_task_registry.manifest_doc(s["manifest"])
     cs = doc["spec"]["template"]["spec"]["containers"]
-    evidence = memory_low_evidence(t, s, pod, working_set_only=True)
-    window = max(300, int(_m_state.now() - s.get("submitted", first)) + 120)
-    rows = _m_cluster.thanos_query('max(max_over_time(rate(container_cpu_usage_seconds_total{namespace=%s,pod=~%s,container=%s}[5m])[%ds:30s]))' % (json.dumps(t["namespace"]), json.dumps(re.escape(s["job"]) + "-.*"), json.dumps(cs[0]["name"]), window))
-    peak_cpu = float(rows[0]["value"][1]) if rows else None
+    evidence = _m_sizing.memory_low_evidence(t, s, pod, working_set_only=True)
+    peak_cpu = _m_sizing.thanos_peak_cpu(t["namespace"], s["job"], cs[0]["name"], s.get("submitted", first))
     small = _m_config.util_policy().get("small_pod_exempt") or {"cpu": 1, "memory_bytes": 2000000000}
-    cpu = str(max(float(small.get("cpu", 1)), math.ceil(peak_cpu * 1500) / 1000)) if peak_cpu is not None else None
+    cpu = _m_sizing.cpu_request(peak_cpu, small)
     mem = str(max(int(small.get("memory_bytes", 2000000000)), evidence["right_gi"] * 2**30)) if (evidence["need_gi"] or evidence.get("peaks_gi") or evidence.get("true_peak_gi") is not None) else None
     details = '"No change" is not an allowed answer. mean/request: %s; memory peak=%sGi proposed=%s bytes; CPU peak=%s proposed=%s; grace deadline=%s' % (line, evidence["need_gi"], mem, peak_cpu, cpu, _m_state.iso(first + grace))
     for key, use, req, pct, mx in _m_state.FLAG_RES.findall(line):
@@ -431,14 +378,13 @@ def utilization_band_action(n, sid, pod, line):
             details += "; spiky: constant request cannot fit this band; use smaller shards or make the stage resumable"
     sizes = {cs[0]["name"]: {"cpu": cpu, "memory": mem}}
     for c in cs[1:]:
-        peak = _m_tier0.thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted", first))
+        peak = _m_sizing.thanos_peak_mem(t["namespace"], s["job"], c["name"], s.get("submitted", first))
         if peak is None:
             peak = _m_sizing.saved_memory_peak(t, s, c["name"], all_attempts=True)
         oom = max(s.get("oom_limits_gi", []) or [0]) * 2**30
-        rows = _m_cluster.thanos_query('max(max_over_time(rate(container_cpu_usage_seconds_total{namespace=%s,pod=~%s,container=%s}[5m])[%ds:30s]))' % (json.dumps(t["namespace"]), json.dumps(re.escape(s["job"]) + "-.*"), json.dumps(c["name"]), window))
-        cp = float(rows[0]["value"][1]) if rows else None
+        cp = _m_sizing.thanos_peak_cpu(t["namespace"], s["job"], c["name"], s.get("submitted", first))
         sizes[c["name"]] = {
-            "cpu": str(max(float(small.get("cpu", 1)), math.ceil(cp * 1500) / 1000)) if cp is not None else None,
+            "cpu": _m_sizing.cpu_request(cp, small),
             "memory": str(max(int(small.get("memory_bytes", 2000000000)), math.ceil(max(peak or 0, oom) * 1.5 / 2**30) * 2**30)) if peak is not None or oom else None}
         details += "; container %s peak memory=%s CPU=%s proposed=%s" % (c["name"], peak, cp, sizes[c["name"]])
     if _m_timeouts.stage_resumable(s) and all(v["cpu"] and v["memory"] for v in sizes.values()):
