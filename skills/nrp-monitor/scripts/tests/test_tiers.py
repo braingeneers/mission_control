@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_agent_runners as TA  # noqa: E402
 
 HERE = Path(__file__).resolve().parents[1]
-TIERS = {"triage": [{"runner": "gemini", "model": "gemini-3.8-flash", "thinking": "lowest"}, {"runner": "claude", "model": "haiku"}],
+TIERS = {"triage": [{"runner": "agy", "model": "gemini-3.8-flash-low"}, {"runner": "claude", "model": "haiku"}],
          "task": [{"runner": "claude", "model": "sonnet"}]}
 
 
@@ -46,16 +46,16 @@ class Config(Base):
         self.cfg({"tiers": TIERS})
         cfg, problem = self.w.load_agent_cfg()
         self.assertIsNone(problem)
-        self.assertEqual([b["runner"] for b in self.w.tier_backends("triage")], ["gemini", "claude"])
-        self.assertEqual(self.w.tier_backends("triage")[0], {"runner": "gemini", "model": "gemini-3.8-flash", "thinking": "lowest"})
+        self.assertEqual([b["runner"] for b in self.w.tier_backends("triage")], ["agy", "claude"])
+        self.assertEqual(self.w.tier_backends("triage")[0], {"runner": "agy", "model": "gemini-3.8-flash-low"})
         self.assertEqual(self.w.tier_backends("task"), [{"runner": "claude", "model": "sonnet"}])
-        self.assertEqual(cfg["runners"][:2], ["gemini", "claude"], "the runners the tiers name come first")
+        self.assertEqual(cfg["runners"][:2], ["agy", "claude"], "the runners the tiers name come first")
 
     def test_gemini_is_limited_to_the_read_only_tier_and_bad_entries_fall_back_to_defaults(self):
-        for bad in ({"tiers": {"task": [{"runner": "gemini", "model": "m"}]}}, {"tiers": {"repair": [{"runner": "gemini"}]}},
+        for bad in ({"tiers": {"task": [{"runner": "agy", "model": "m"}]}}, {"tiers": {"repair": [{"runner": "agy"}]}},
                     {"tiers": {"triage": [{"runner": "claude", "thinking": "low"}]}},
-                    {"tiers": {"triage": [{"runner": "gemini", "thinking": "extreme"}]}},
-                    {"tiers": {"triage": [{"runner": "gemini", "thinking": True}]}},
+                    {"tiers": {"triage": [{"runner": "agy", "thinking": "extreme"}]}},
+                    {"tiers": {"triage": [{"runner": "agy", "thinking": True}]}},
                     {"tiers": {"triage": [{"runner": "vim"}]}}, {"tiers": {"triage": []}}, {"tiers": {"nope": [{"runner": "claude"}]}},
                     {"tiers": {"triage": [{"runner": "claude", "model": "a b"}]}}, {"tiers": {"triage": [{"runner": "claude", "color": 1}]}},
                     {"tiers": [1]}):
@@ -63,11 +63,8 @@ class Config(Base):
             cfg, problem = self.w.load_agent_cfg()
             self.assertTrue(problem, bad)
             self.assertEqual(cfg, self.w.default_agent_cfg())
-        self.cfg({"tiers": {"task": [{"runner": "gemini"}]}})
+        self.cfg({"tiers": {"task": [{"runner": "agy"}]}})
         self.assertIn("limited to the triage tier", self.w.load_agent_cfg()[1])
-        for th in ("lowest", "low", "medium", "high", 0, 512):
-            self.cfg({"tiers": {"triage": [{"runner": "gemini", "thinking": th}]}})
-            self.assertIsNone(self.w.load_agent_cfg()[1], th)
 
     def test_old_format_still_loads_and_means_the_same_ordered_list(self):
         self.cfg({"runners": ["claude", "codex"], "models": {"triage": {"claude": "opus", "codex": "gpt-x"}, "task": {"claude": "sonnet"}}})
@@ -77,8 +74,8 @@ class Config(Base):
         self.assertEqual(self.w.tier_backends("task")[0], {"runner": "claude", "model": "sonnet"})
         self.assertEqual(self.w.tier_backends("task")[1], {"runner": "codex"}, "no model configured: the CLI default")
         self.assertEqual(list(self.w.agent_cmd("triage", ["A"]))[3], "opus")
-        self.cfg({"runners": ["gemini", "claude"]})                     # old-style list naming gemini: it only serves the read-only tier
-        self.assertEqual([b["runner"] for b in self.w.tier_backends("triage")], ["gemini", "claude"])
+        self.cfg({"runners": ["agy", "claude"]})                     # old-style list naming gemini: it only serves the read-only tier
+        self.assertEqual([b["runner"] for b in self.w.tier_backends("triage")], ["agy", "claude"])
         self.assertEqual([b["runner"] for b in self.w.tier_backends("task")], ["claude"])
 
     def test_no_file_is_claude_only_as_before(self):
@@ -92,81 +89,6 @@ class Config(Base):
         self.assertEqual(self.w.agent_cmd("task", ["A"])[3], "sonnet", "the plain command keeps the tier default")
 
 
-class GeminiRunner(Base):
-    def run_gemini(self, stdout="", stderr="", rc=0, tier="triage", backend=None, allowed=None, **kw):
-        seen = {}
-
-        def fake_run(argv, **k):
-            seen["argv"], seen["input"], seen["env"], seen["cwd"] = argv, k.get("input"), k.get("env"), k.get("cwd")
-            seen["policy"] = Path(argv[argv.index("--admin-policy") + 1]).read_text()
-            seen["settings"] = json.loads(Path(k["env"]["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).read_text())
-            return subprocess.CompletedProcess(argv, rc, stdout, stderr)
-        spec = {"tier": tier, "allowed": allowed if allowed is not None else ["Bash(nrp-task show:*)", "Bash(nrp-task logs:*)",
-                "Read(//tmp/state/tasks/t1/**)", "Edit(//tmp/state/tasks/t1/**)"], "json": kw.get("json", False), "deny": [],
-                "backend": backend or {"runner": "gemini", "model": "gemini-3.8-flash", "thinking": "lowest"}}
-        with patch.object(self.w.subprocess, "run", fake_run):
-            res = self.w.exec_gemini(spec, "the prompt", self.tmp, 60, {"PATH": "/bin"})
-        return res, seen
-
-    def test_argv_is_headless_json_default_approval_with_an_admin_policy_and_the_alias(self):
-        res, seen = self.run_gemini(stdout=json.dumps({"response": "CLOSE: pod started", "stats": {}}))
-        argv = seen["argv"]
-        self.assertEqual(argv[0], "gemini")
-        self.assertIn("-p", argv)
-        self.assertEqual(argv[argv.index("--approval-mode") + 1], "default", "nothing unlisted is approved; headless ask_user is deny")
-        self.assertEqual(argv[argv.index("-o") + 1], "json")
-        self.assertIn("--skip-trust", argv)
-        self.assertEqual(argv[argv.index("-m") + 1], "nrp-monitor-triage", "the alias carries the thinking setting")
-        for bad in ("--yolo", "-y", "--sandbox", "-s"):
-            self.assertNotIn(bad, argv)
-        self.assertEqual(seen["input"], "the prompt", "the prompt travels on stdin, not in argv")
-        self.assertEqual(res[:2], ("ok", "CLOSE: pod started"))
-        al = seen["settings"]["modelConfigs"]["customAliases"]["nrp-monitor-triage"]
-        self.assertEqual(al["modelConfig"]["model"], "gemini-3.8-flash")
-        self.assertEqual(al["modelConfig"]["generateContentConfig"]["thinkingConfig"], {"thinkingLevel": "MINIMAL"})
-        self.assertEqual(seen["settings"]["mcp"], {"allowed": []})
-        self.assertNotIn("GEMINI_API_KEY", seen["env"])
-
-    def test_policy_denies_everything_then_allows_only_the_allowlist_and_never_edits(self):
-        _, seen = self.run_gemini(stdout=json.dumps({"response": "ESCALATE: x"}))
-        import tomllib
-        rules = tomllib.loads(seen["policy"])["rule"]
-        self.assertEqual(rules[0], {"toolName": "*", "decision": "deny", "priority": 1})
-        shell = next(r for r in rules if r.get("toolName") == "run_shell_command")
-        self.assertEqual((shell["commandPrefix"], shell["decision"]), (["nrp-task show", "nrp-task logs"], "allow"))
-        reads = [r for r in rules if r.get("toolName") == "read_file" and r["decision"] == "allow"]
-        self.assertEqual(len(reads), 1)
-        self.assertIn("/tmp/state/tasks/t1/", reads[0]["argsPattern"])
-        self.assertTrue(any(r["decision"] == "deny" and r["priority"] > 100 and r["toolName"] == "read_file" for r in rules), "no ../ escape")
-        self.assertFalse(any(r["toolName"] in ("write_file", "replace") and r["decision"] == "allow" for r in rules), "Edit rules are not translated")
-
-    def test_thinking_budget_and_no_thinking(self):
-        _, seen = self.run_gemini(stdout="{}", backend={"runner": "gemini", "model": "gemini-2.5-flash", "thinking": 0})
-        self.assertEqual(seen["settings"]["modelConfigs"]["customAliases"]["nrp-monitor-triage"]["modelConfig"]["generateContentConfig"]["thinkingConfig"],
-                         {"thinkingBudget": 0})
-        _, seen = self.run_gemini(stdout="{}", backend={"runner": "gemini", "model": "gemini-3.8-flash"})
-        self.assertNotIn("modelConfigs", seen["settings"])
-        self.assertEqual(seen["argv"][seen["argv"].index("-m") + 1], "gemini-3.8-flash")
-
-    def test_json_mode_wraps_the_answer_like_the_other_runners(self):
-        res, _ = self.run_gemini(stdout=json.dumps({"response": "CLOSE: finished"}), json=True)
-        j = json.loads(res[1])
-        self.assertEqual((j["result"], j["is_error"], j["runner"]), ("CLOSE: finished", False, "gemini"))
-
-    def test_only_the_triage_tier_may_run_on_gemini(self):
-        for tier in ("task", "repair", "pod", "repair_auth"):
-            res = self.w.exec_gemini({"tier": tier, "allowed": [], "json": False, "deny": []}, "p", self.tmp, 5, {})
-            self.assertEqual(res[0], "error", tier)
-
-    def test_limit_and_auth_are_reported_as_such_but_a_bad_answer_is_not(self):
-        res, _ = self.run_gemini(stdout=json.dumps({"error": {"message": "429 RESOURCE_EXHAUSTED: quota exceeded"}}), rc=1)
-        self.assertEqual(res[0], "limit")
-        res, _ = self.run_gemini(stderr="Error: Please set an Auth method in settings or GEMINI_API_KEY", rc=1)
-        self.assertEqual(res[0], "auth")
-        res, _ = self.run_gemini(stdout=json.dumps({"response": "I think it is fine"}))
-        self.assertEqual(res[0], "ok", "a wrong answer is not a failover reason")
-        res, _ = self.run_gemini(stderr="Traceback (most recent call last): KeyError", rc=1)
-        self.assertEqual(res[0], "ok", "an unrelated crash is returned to the caller as an error, not hidden by a failover")
 
 
 class Failover(Base):
@@ -179,35 +101,35 @@ class Failover(Base):
                 calls.append((name, spec["backend"].get("model")))
                 return results[name] if not isinstance(results[name], list) else results[name].pop(0)
             return f
-        with patch.dict(self.w.RUNNER_EXEC, {n: fake(n) for n in ("claude", "codex", "gemini")}):
+        with patch.dict(self.w.RUNNER_EXEC, {n: fake(n) for n in ("claude", "codex", "agy")}):
             res = self.w.dispatch_agent(self.w.agent_cmd(tier, ["A"]).spec, "p", self.tmp / "cwd", on_failover=on)
         return res, calls
 
     def test_usage_limit_moves_to_the_next_backend_and_is_logged(self):
         seen = []
-        res, calls = self.run_dispatch({"gemini": ("limit", "RESOURCE_EXHAUSTED quota exceeded", "", 1), "claude": ("ok", "CLOSE: x", "", 0)}, on=seen.append)
+        res, calls = self.run_dispatch({"agy": ("limit", "RESOURCE_EXHAUSTED quota exceeded", "", 1), "claude": ("ok", "CLOSE: x", "", 0)}, on=seen.append)
         self.assertEqual((res[0], res[1]), ("claude", "ok"))
-        self.assertEqual(calls, [("gemini", "gemini-3.8-flash"), ("claude", "haiku")], "each backend gets its own configured model")
+        self.assertEqual(calls, [("agy", "gemini-3.8-flash-low"), ("claude", "haiku")], "each backend gets its own configured model")
         self.assertEqual(len(seen), 1)
-        self.assertIn("gemini/gemini-3.8-flash unavailable (usage limit)", seen[0])
+        self.assertIn("agy/gemini-3.8-flash-low unavailable (usage limit)", seen[0])
         self.assertIn("using claude/haiku", seen[0])
-        self.assertTrue(self.w.runner_blocked("gemini"))
+        self.assertTrue(self.w.runner_blocked("agy"))
 
     def test_auth_failure_and_missing_cli_also_fail_over(self):
         seen = []
-        res, calls = self.run_dispatch({"gemini": ("auth", "", "not signed in", 1), "claude": ("ok", "x", "", 0)}, on=seen.append)
+        res, calls = self.run_dispatch({"agy": ("auth", "", "not signed in", 1), "claude": ("ok", "x", "", 0)}, on=seen.append)
         self.assertEqual(res[0], "claude")
         self.assertIn("not signed in", seen[0])
         st = self.w.read_json(self.w.RUNNER_STATE, {})
-        self.assertEqual(st["gemini"]["kind"], "auth")
-        self.assertTrue(3000 < st["gemini"]["until"] - time.time() <= self.w.AUTH_BLOCK_S + 5)
+        self.assertEqual(st["agy"]["kind"], "auth")
+        self.assertTrue(3000 < st["agy"]["until"] - time.time() <= self.w.AUTH_BLOCK_S + 5)
         # now gemini is set aside: the next run skips it and says so
         seen.clear()
         res, calls = self.run_dispatch({"claude": ("ok", "x", "", 0)}, on=seen.append)
         self.assertEqual(calls, [("claude", "haiku")])
         self.assertIn("set aside", seen[0])
         self.w.RUNNER_STATE.write_text("{}")
-        with patch.object(self.w, "runner_ready", lambda r: r != "gemini"):
+        with patch.object(self.w, "runner_ready", lambda r: r != "agy"):
             seen.clear()
             res, calls = self.run_dispatch({"claude": ("ok", "x", "", 0)}, on=seen.append)
         self.assertEqual(calls, [("claude", "haiku")])
@@ -217,37 +139,37 @@ class Failover(Base):
         for first in (("ok", "ESCALATE: nonsense", "", 0), ("timeout", "", "", None), ("ok", "", "Traceback", 1), ("error", "", "boom", 1)):
             self.w.RUNNER_STATE.write_text("{}")
             seen = []
-            res, calls = self.run_dispatch({"gemini": first, "claude": ("ok", "must not run", "", 0)}, on=seen.append)
-            self.assertEqual(res[0], "gemini", first)
-            self.assertEqual([c[0] for c in calls], ["gemini"], first)
+            res, calls = self.run_dispatch({"agy": first, "claude": ("ok", "must not run", "", 0)}, on=seen.append)
+            self.assertEqual(res[0], "agy", first)
+            self.assertEqual([c[0] for c in calls], ["agy"], first)
             self.assertEqual(seen, [])
 
     def test_every_backend_unavailable_waits_without_using_a_retry(self):
         seen = []
-        res, calls = self.run_dispatch({"gemini": ("limit", "quota exceeded", "", 1), "claude": ("auth", "", "please run /login", 1)}, on=seen.append)
+        res, calls = self.run_dispatch({"agy": ("limit", "quota exceeded", "", 1), "claude": ("auth", "", "please run /login", 1)}, on=seen.append)
         self.assertEqual(res[1], "unavailable")
         self.assertTrue(self.w.is_unavailable(res[2]))
         self.assertEqual(len(seen), 2)
         self.assertIn("no backend left", seen[1])
 
     def test_tiers_are_independent(self):
-        res, calls = self.run_dispatch({"claude": ("ok", "fixed", "", 0), "gemini": ("limit", "quota exceeded", "", 1)}, tier="task")
+        res, calls = self.run_dispatch({"claude": ("ok", "fixed", "", 0), "agy": ("limit", "quota exceeded", "", 1)}, tier="task")
         self.assertEqual((res[0], calls), ("claude", [("claude", "sonnet")]), "the fixer never tries gemini")
 
     def test_failovers_land_in_the_tasks_events_through_run_task_agent(self):
         self.cfg({"tiers": TIERS})
         w = self.w
         w.task_write({"name": "t1", "label": "t1", "stages": [], "events": [], "status": "running", "failure": {}, "origin": {}})
-        results = {"gemini": ("limit", "RESOURCE_EXHAUSTED", "", 1),
+        results = {"agy": ("limit", "RESOURCE_EXHAUSTED", "", 1),
                    "claude": ("ok", json.dumps({"result": "CLOSE: fine", "is_error": False, "permission_denials": []}), "", 0)}
 
         def fake(name):
             return lambda spec, prompt, cwd, timeout, env: results[name]
-        with patch.dict(w.RUNNER_EXEC, {n: fake(n) for n in ("claude", "codex", "gemini")}):
+        with patch.dict(w.RUNNER_EXEC, {n: fake(n) for n in ("claude", "codex", "agy")}):
             line, _ = w.run_task_agent("t1", "triage prompt", SimpleNamespace(dry_run=False), kind="triage")
         self.assertEqual(line, "CLOSE: fine")
         t = w.task_load("t1")
-        self.assertTrue(any("backend failover (tier triage): gemini/gemini-3.8-flash unavailable" in e for e in t["events"]), t["events"])
+        self.assertTrue(any("backend failover (tier triage): agy/gemini-3.8-flash-low unavailable" in e for e in t["events"]), t["events"])
         self.assertEqual(t["agent_runs"][-1]["runner"], "claude")
         self.assertEqual(t["agent_runs"][-1]["verdict"], "CLOSE")
 
@@ -258,7 +180,7 @@ class Setup(Base):
         d.update(kw)
         return SimpleNamespace(**d)
 
-    def run_setup(self, installed=("claude", "codex", "gemini"), **kw):
+    def run_setup(self, installed=("claude", "codex", "agy"), **kw):
         import io
         from contextlib import redirect_stdout
         out = io.StringIO()
@@ -270,10 +192,10 @@ class Setup(Base):
         rc, out = self.run_setup()
         self.assertEqual(rc, 0)
         cfg = json.loads(self.w.AGENTS_CFG.read_text())
-        self.assertEqual(cfg["tiers"]["triage"][0], {"runner": "gemini", "model": "gemini-3.8-flash", "thinking": "lowest"})
+        self.assertEqual(cfg["tiers"]["triage"][0], {"runner": "agy", "model": "gemini-3.8-flash-low"})
         self.assertEqual(cfg["tiers"]["task"][0], {"runner": "claude", "model": "sonnet"})
         self.assertEqual(cfg["tiers"]["task"][1]["runner"], "codex", "the other subscription is the failover")
-        self.assertIn("gemini", cfg["runners"], "setup records tier-only runners too")
+        self.assertIn("agy", cfg["runners"], "setup records tier-only runners too")
         self.assertIsNone(self.w.load_agent_cfg()[1], "what setup writes loads cleanly")
         self.assertIn("(new file)", out)
         self.assertIn("+++ agents.json (proposed)", out)
@@ -290,16 +212,16 @@ class Setup(Base):
         self.run_setup(subscriptions="claude,t3")
         cfg = json.loads(self.w.AGENTS_CFG.read_text())
         self.assertEqual([b["runner"] for b in cfg["tiers"]["triage"]], ["claude"])
-        _, out = self.run_setup(subscriptions="gemini,claude", installed=("claude",), dry_run=True)
-        self.assertIn("gemini but its CLI is not on PATH", out)
+        _, out = self.run_setup(subscriptions="agy,claude", installed=("claude",), dry_run=True)
+        self.assertIn("agy but its CLI is not on PATH", out)
 
     def test_explicit_flags_win_and_are_validated(self):
-        self.run_setup(triage="gemini:gemini-3.8-flash:lowest,claude:haiku", fixer="codex:gpt-6.1-sol")
+        self.run_setup(triage="agy:gemini-3.8-flash-low,claude:haiku", fixer="codex:gpt-6.1-sol")
         cfg = json.loads(self.w.AGENTS_CFG.read_text())
         self.assertEqual(cfg["tiers"]["triage"], TIERS["triage"])
         self.assertEqual(cfg["tiers"]["task"], [{"runner": "codex", "model": "gpt-6.1-sol"}])
         with self.assertRaises(SystemExit) as e:
-            self.run_setup(fixer="gemini:gemini-3.8-flash")
+            self.run_setup(fixer="agy:gemini-3.8-flash-low")
         self.assertIn("limited to the triage tier", str(e.exception))
         with self.assertRaises(SystemExit):
             self.run_setup(triage="gemini:m:extreme")
@@ -335,14 +257,14 @@ class Setup(Base):
     def test_interactive_walkthrough_with_defaults_and_a_custom_answer(self):
         import io
         from contextlib import redirect_stdout
-        answers = iter(["claude,gemini", "", "claude:opus", "y"])
+        answers = iter(["claude,agy", "", "claude:opus", "y"])
         out = io.StringIO()
-        with patch.object(self.w.shutil, "which", lambda r, **k: "/fake/bin/" + r if r in ("claude", "gemini") else None), \
+        with patch.object(self.w.shutil, "which", lambda r, **k: "/fake/bin/" + r if r in ("claude", "agy") else None), \
                 patch("builtins.input", lambda prompt="": next(answers)), patch.object(self.w.sys.stdin, "isatty", lambda: True), redirect_stdout(out):
             rc = self.w.cmd_setup(self.args(non_interactive=False))
         self.assertEqual(rc, 0)
         cfg = json.loads(self.w.AGENTS_CFG.read_text())
-        self.assertEqual(cfg["tiers"]["triage"][0]["runner"], "gemini")
+        self.assertEqual(cfg["tiers"]["triage"][0]["runner"], "agy")
         self.assertEqual(cfg["tiers"]["task"], [{"runner": "claude", "model": "opus"}])
         self.assertIn("no separate Opus tier", out.getvalue())
         self.assertIn("Tier 1 triage", out.getvalue())
@@ -381,7 +303,7 @@ class InstallSh(unittest.TestCase):
         self.home.mkdir()
         self.bin = self.tmp / "bin"
         self.bin.mkdir()
-        for n in ("claude", "gemini"):
+        for n in ("claude", "agy"):
             (self.bin / n).write_text("#!/bin/sh\nexit 0\n")
             (self.bin / n).chmod(0o755)
         self.env = dict(os.environ, HOME=str(self.home), NRP_MONITOR_LABEL="test.nrp-monitor", PATH="%s:%s" % (self.bin, os.environ["PATH"]))
@@ -424,10 +346,10 @@ class InstallSh(unittest.TestCase):
         self.assertFalse((self.state / "agents.json").exists())
 
     def test_with_a_terminal_it_runs_setup_once_and_then_leaves_the_file_alone(self):
-        rc, out = self.tty("claude,gemini\n\n\n\n")                                  # accept: subscriptions, Tier 1, Tier 2, write
+        rc, out = self.tty("claude,agy\n\n\n\n")                                  # accept: subscriptions, Tier 1, Tier 2, write
         self.assertEqual(rc, 0, out)
         cfg = json.loads((self.state / "agents.json").read_text())
-        self.assertEqual(cfg["tiers"]["triage"][0]["runner"], "gemini")
+        self.assertEqual(cfg["tiers"]["triage"][0]["runner"], "agy")
         self.assertEqual(cfg["tiers"]["task"][0], {"runner": "claude", "model": "sonnet"})
         self.assertIn("Tier 1 triage", out)
         before = (self.state / "agents.json").read_text()

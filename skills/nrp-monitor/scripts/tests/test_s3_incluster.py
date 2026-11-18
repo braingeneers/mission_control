@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the in-cluster S3 check fallback (2026-11-07: both public S3 endpoints returned 503 to the laptop while pods still reached
 the internal endpoint). No cluster, no S3: subprocess/kubectl are mocked. Run: python3 tests/test_s3_incluster.py  (or pytest)"""
-import importlib.machinery
+from monitor_imports import machinery
 import importlib.util
 import io
 import json
@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent.parent
 os.environ["NRP_MONITOR_STATE"] = tempfile.mkdtemp(prefix="wds3_incl_")
-WD = importlib.machinery.SourceFileLoader("wd_s3_incl_under_test", str(HERE / "nrp-monitor")).load_module()
+WD = machinery.SourceFileLoader("wd_s3_incl_under_test", str(HERE / "nrp-monitor")).load_module()
 A, B, C, D = ("s3://braingeneersdev/alice/x/%s/DONE" % n for n in "abcd")
 E503 = "An error occurred (503) when calling the HeadObject operation (reached max retries: 2): Service Unavailable"
 E404 = "An error occurred (404) when calling the HeadObject operation: Not Found"
@@ -160,7 +160,7 @@ class Prepass(unittest.TestCase):
 
     def run_prepass(self, cl, **env):
         jobs = {"j-full": {"state": "ok"}, "j-busy": {"state": "running"}}
-        ps = list(patched(cl, **env)) + [patch.object(WD, "chain_names", return_value=[]), patch.object(WD, "task_names", return_value=["t"]),
+        ps = list(patched(cl, **env)) + [patch.object(WD, "task_names", return_value=["t"]),
                                           patch.object(WD, "task_load", side_effect=lambda n: self.task), patch.object(WD, "fetch_jobs", return_value=jobs)]
         for p in ps:
             p.start()
@@ -202,7 +202,7 @@ class Prepass(unittest.TestCase):
 
 class S3Read(unittest.TestCase):
     def setUp(self):
-        self.m = importlib.machinery.SourceFileLoader("nrp_s3_read_t", str(HERE / "nrp-s3-read")).load_module()
+        self.m = machinery.SourceFileLoader("nrp_s3_read_t", str(HERE / "nrp-s3-read")).load_module()
 
     def run_main(self, argv, proc, job):
         out, err = io.StringIO(), io.StringIO()

@@ -171,6 +171,7 @@ fi
 
 mkdir -p "$HOME/.local/bin" "$state/templates" "$HOME/Library/LaunchAgents"
 for f in nrp-monitor nrp-util-check nrp-s3-read; do python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$here/$f"; done; sh -n "$here/nrp-task"   # syntax check without writing bytecode into the skill
+cp -R "$here/nrp_monitor" "$HOME/.local/bin/"
 install -m 755 "$here/nrp-monitor" "$HOME/.local/bin/nrp-monitor.new" && mv "$HOME/.local/bin/nrp-monitor.new" "$HOME/.local/bin/nrp-monitor"
 # `nrp-watchdog` (the former name) stays a working, quiet command for old handoffs and hooks: a tiny wrapper (a copy, never a symlink into ~/Desktop) that execs the sibling nrp-monitor.
 printf '%s\n' '#!/bin/sh' '# former name of nrp-monitor; kept so existing handoffs and hooks keep working.' 'exec "$(dirname "$0")/nrp-monitor" "$@"' > "$HOME/.local/bin/nrp-watchdog.new"

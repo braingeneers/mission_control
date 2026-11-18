@@ -1,1171 +1,2220 @@
 {
-  "commit": "775a1d79c860b23ddbbf59f5a1ddd1dfc237b3b7",
-  "generated": "2026-11-18",
-  "mode": "all",
-  "files_refreshed": 83,
-  "source_roots": [
-    "<all project directories>"
-  ],
-  "hash_normalization": "CRLF to LF",
-  "files": {
-    "data-lifecycle/skills/backup-reprocess-check/scripts/analyze_two_run_check.py": {
-      "sha256": "34112ce1405c0359ec8d31ec73b66c17da3956921305cfb17cc1ab7a5a2d8280",
-      "tier": "full",
-      "symbols": [
-        "MISSING_SOURCE_RE",
-        "RunSummary",
-        "SOURCE_ACCESS_ISSUE",
-        "SOURCE_ERROR_MARKERS",
-        "SUMMARY_MISSING_SOURCE_RE",
-        "analyze",
-        "artifact_line",
-        "build_report",
-        "duplicates",
-        "interesting_log_lines",
-        "load_run",
-        "main",
-        "manifest_uri",
-        "md_list",
-        "parse_args",
-        "parse_missing_sources",
-        "read_activity",
-        "read_badkeys",
-        "read_json",
-        "read_lines",
-        "read_puts",
-        "read_text",
-        "strip_source_error",
-        "write_badkey_list",
-        "write_list"
-      ],
-      "uses": []
-    },
-    "data-lifecycle/skills/backup-reprocess-check/scripts/run_two_run_check.py": {
-      "sha256": "9d345909283926d23341d332fc7783e18086e945fb7c78c0d1fddc45368680c5",
-      "tier": "full",
-      "symbols": [
-        "DATE_RE",
-        "DEFAULT_BUCKET",
-        "DEFAULT_PREFIX",
-        "DEFAULT_PROFILE",
-        "REPO_ROOT",
-        "SCRIPT_DIR",
-        "analyze",
-        "build_image",
-        "head_manifest",
-        "latest_manifest_date",
-        "main",
-        "manifest_key",
-        "manifest_uri",
-        "next_manifest_date",
-        "parse_args",
-        "parse_manifest_uri",
-        "run_backup_once",
-        "run_command",
-        "utc_now",
-        "utc_stamp",
-        "wait_for_manifest",
-        "write_repo_metadata"
-      ],
-      "uses": []
-    },
-    "data-lifecycle/src/badkeys.py": {
-      "sha256": "97deb945908e853d701ca59678bdee061ae86fc2e500cff30ba4a9b3efc64417",
-      "tier": "full",
-      "symbols": [
-        "BadKeyRecord",
-        "CONTROL_CHARACTER_ISSUE",
-        "ISSUE_DESCRIPTIONS",
-        "SOURCE_GET_FAILED_AFTER_HEAD_SUCCESS",
-        "append_source_get_failed_slack_section",
-        "dedupe_badkey_records",
-        "describe_issue",
-        "escape_bucket_key",
-        "make_badkey_record",
-        "merge_badkey_records",
-        "parse_badkeys_tsv_text",
-        "read_badkeys_tsv",
-        "render_source_get_failed_slack_section",
-        "source_get_failed_records",
-        "unescape_bucket_key",
-        "write_badkeys_tsv"
-      ],
-      "uses": []
-    },
-    "data-lifecycle/src/generate_cleanup_report.py": {
-      "sha256": "0349abf549f37a39399f129ee6a2c00762e43b2d6d5df6b7eada0498bf9864ff",
-      "tier": "full",
-      "symbols": [
-        "MAX_PDF_CANDIDATES",
-        "MAX_SLACK_TEXT_CHARS",
-        "PDF_INK",
-        "PDF_MUTED",
-        "PDF_NAVY",
-        "PDF_ORANGE",
-        "PDF_PALE",
-        "PDF_ROWS_PER_PAGE",
-        "PDF_RULE",
-        "PDF_TEAL",
-        "SOURCE_IDS",
-        "_candidate_path_parts",
-        "_candidate_source",
-        "_display_date",
-        "_iso",
-        "_object_count_label",
-        "_pdf_footer",
-        "_shorten_middle",
-        "_slack_link",
-        "_slack_text",
-        "build_candidates",
-        "candidate_identifier",
-        "compact_candidate_names",
-        "cost_appendix",
-        "deep_link",
-        "main",
-        "parse_args",
-        "render_html",
-        "render_pdf",
-        "render_slack_summary",
-        "write_candidates_csv"
-      ],
-      "uses": [
-        "data-lifecycle.src.generate_puts_deletes.apply_last_modified_updates",
-        "data-lifecycle.src.generate_puts_deletes.build_cleanup_window_entries",
-        "data-lifecycle.src.generate_puts_deletes.load_config_file",
-        "data-lifecycle.src.generate_puts_deletes.load_inventories",
-        "data-lifecycle.src.glacier_cost_analysis_plot.DEFAULT_COST_PER_GB_MONTH",
-        "data-lifecycle.src.glacier_cost_analysis_plot.DEFAULT_PER_OBJECT_OVERHEAD_BYTES",
-        "data-lifecycle.src.glacier_cost_analysis_plot.build_retention_points",
-        "data-lifecycle.src.glacier_cost_analysis_plot.parse_inventory_summary"
-      ]
-    },
-    "data-lifecycle/src/generate_puts_deletes.py": {
-      "sha256": "b369d93b25b28d94e136851d6a44341421dde50706c09e659af09f8199b3cbeb",
-      "tier": "full",
-      "symbols": [
-        "CONTROL_CHAR_PATTERN",
-        "DEFAULT_PROGRESS_INTERVAL_SECONDS",
-        "Stage3ProgressReporter",
-        "apply_last_modified_updates",
-        "build_cleanup_slack_message",
-        "build_cleanup_summary",
-        "build_cleanup_window_entries",
-        "build_comparison_summary",
-        "calculate_expire_date",
-        "derive_atomic_group_info",
-        "derive_folder_group",
-        "find_no_backup_prefixes",
-        "generate_put_and_delete_lists",
-        "get_required_config_value",
-        "load_config_file",
-        "load_inventories",
-        "main",
-        "output_puts_deletes_and_notifications",
-        "parse_arguments",
-        "parse_days",
-        "read_process_memory_mib",
-        "write_comparison_summary"
-      ],
-      "uses": [
-        "data-lifecycle.src.badkeys.make_badkey_record",
-        "data-lifecycle.src.badkeys.write_badkeys_tsv",
-        "data-lifecycle.src.lifecycle_controls.apply_effective_last_modified",
-        "data-lifecycle.src.lifecycle_controls.is_retention_marker",
-        "data-lifecycle.src.lifecycle_controls.lifecycle_control_mask",
-        "data-lifecycle.src.lifecycle_controls.marker_upload_mask",
-        "data-lifecycle.src.lifecycle_controls.normalize_atomic_directories",
-        "data-lifecycle.src.lifecycle_controls.scientific_inventory",
-        "data-lifecycle.src.stage4_keys.normalize_bucket_object_key"
-      ]
-    },
-    "data-lifecycle/src/glacier_cost_analysis_plot.py": {
-      "sha256": "1d7c50375cca52bf9bf988454db2afd1177ec99426602361486ef5e4442c9039",
-      "tier": "full",
-      "symbols": [
-        "DEFAULT_COST_PER_GB_MONTH",
-        "DEFAULT_INVENTORY_S3_URI",
-        "DEFAULT_NRP_ENDPOINT",
-        "DEFAULT_OUTPUT_CSV",
-        "DEFAULT_OUTPUT_PNG",
-        "DEFAULT_PER_OBJECT_OVERHEAD_BYTES",
-        "DEFAULT_POLICY_CONFIG",
-        "InventorySummary",
-        "RetentionPoint",
-        "build_retention_points",
-        "coerce_as_of_date",
-        "compute_single_retention_point",
-        "download_inventory_from_s3",
-        "fmt_tib",
-        "fmt_usd",
-        "list_inventory_candidates",
-        "load_cold_storage_expire_days",
-        "main",
-        "make_s3_client",
-        "open_inventory_text",
-        "parse_args",
-        "parse_inventory_summary",
-        "parse_inventory_timestamp",
-        "parse_local_inventory_timestamp",
-        "parse_s3_uri",
-        "plot_retention_analysis",
-        "resolve_nrp_endpoint",
-        "write_summary_csv"
-      ],
-      "uses": []
-    },
-    "data-lifecycle/src/lifecycle_constants.py": {
-      "sha256": "e92a628b8f77822b5ca15671c97f2388f7bc6714985ff6e34aa7a25566b94c7b",
-      "tier": "full",
-      "symbols": [
-        "FILE_RETENTION_SUFFIX",
-        "NOBACKUP_MARKER_NAME",
-        "RETENTION_MARKER_NAME"
-      ],
-      "uses": []
-    },
-    "data-lifecycle/src/lifecycle_controls.py": {
-      "sha256": "3dab0d7dce76646cea29e0266d94101ec724e46b154d2a655413eda734da52a8",
-      "tier": "full",
-      "symbols": [
-        "apply_effective_last_modified",
-        "atomic_group_for_key",
-        "atomic_retention_marker",
-        "file_retention_marker",
-        "is_lifecycle_control_key",
-        "is_nobackup_marker",
-        "is_retention_marker",
-        "lifecycle_control_mask",
-        "marker_upload_mask",
-        "normalize_atomic_directories",
-        "retention_marker_mask",
-        "retention_marker_target",
-        "scientific_inventory"
-      ],
-      "uses": [
-        "data-lifecycle.src.lifecycle_constants.FILE_RETENTION_SUFFIX",
-        "data-lifecycle.src.lifecycle_constants.NOBACKUP_MARKER_NAME",
-        "data-lifecycle.src.lifecycle_constants.RETENTION_MARKER_NAME"
-      ]
-    },
-    "data-lifecycle/src/stage4_keys.py": {
-      "sha256": "2c49ad211f8aa85ccb9e91f8a68d6a663bce1f920cada3b223e6208ae9b9caf1",
-      "tier": "full",
-      "symbols": [
-        "EMBEDDED_S3_SCHEME_CANONICAL_RE",
-        "EMBEDDED_S3_SCHEME_RE",
-        "RCLONE_DOT_DOT_SEGMENT",
-        "RCLONE_DOT_SEGMENT",
-        "build_source_lookup_candidates",
-        "collapse_embedded_s3_scheme",
-        "denormalize_rclone_dot_segments",
-        "load_put_keys",
-        "normalize_bucket_object_key",
-        "normalize_object_key",
-        "normalize_put_key",
-        "normalize_rclone_dot_segments",
-        "restore_embedded_s3_scheme"
-      ],
-      "uses": []
-    },
-    "data-lifecycle/src/stage4_process_puts_deletes.py": {
-      "sha256": "64cfc398aa07068d55e3e104425a57cb23c5076bd485bd54ea72c818ab33e6bc",
-      "tier": "full",
-      "symbols": [
-        "AWS_PROFILE",
-        "ActivityLogger",
-        "COPY_CHUNK_BYTES",
-        "DEFAULT_AWS_MAX_ATTEMPTS",
-        "DEFAULT_AWS_MAX_POOL_CONNECTIONS",
-        "DEFAULT_AWS_REGION",
-        "DEFAULT_AWS_RETRY_MODE",
-        "DEFAULT_MAX_PENDING_TASKS",
-        "DEFAULT_NRP_ENDPOINT",
-        "DEFAULT_PROGRESS_INTERVAL_SECONDS",
-        "DEFAULT_PROGRESS_STALL_ALERT_SECONDS",
-        "DEFAULT_RETRIES",
-        "DEFAULT_RETRY_BASE_SECONDS",
-        "DEFAULT_RETRY_MAX_SECONDS",
-        "DEFAULT_WORKERS",
-        "EXIT_STAGE4_PUTS_LOAD_FAILURE",
-        "EXIT_STAGE4_RUNTIME_FAILURE",
-        "EXIT_STAGE4_UPLOAD_FRACTION_GUARD",
-        "EXIT_SUCCESS",
-        "GLACIER_BUCKET",
-        "LOCAL_SCRATCH_DIR",
-        "MULTIPART_PART_SIZE_BYTES",
-        "NRP_ENDPOINT",
-        "ProgressStats",
-        "UploadFractionGuardError",
-        "_s3_client",
-        "_source_s3_client",
-        "build_s3_client",
-        "build_source_s3_client",
-        "classify_error",
-        "compact_key",
-        "copy_file",
-        "env_float",
-        "env_int",
-        "find_head_visible_source_key",
-        "format_duration",
-        "get_s3_client",
-        "get_source_s3_client",
-        "head_object_exists",
-        "is_missing_source_error",
-        "is_retryable_error",
-        "main",
-        "open_source_object",
-        "process_files",
-        "progress_reporter",
-        "source_head_object_exists",
-        "split_s3_uri",
-        "stream_upload",
-        "update_source_access_artifacts",
-        "upload_primary_inventory_artifact",
-        "utc_now_iso",
-        "validate_upload_fraction_guard"
-      ],
-      "uses": [
-        "data-lifecycle.src.badkeys.SOURCE_GET_FAILED_AFTER_HEAD_SUCCESS",
-        "data-lifecycle.src.badkeys.append_source_get_failed_slack_section",
-        "data-lifecycle.src.badkeys.make_badkey_record",
-        "data-lifecycle.src.badkeys.merge_badkey_records",
-        "data-lifecycle.src.badkeys.read_badkeys_tsv",
-        "data-lifecycle.src.badkeys.source_get_failed_records",
-        "data-lifecycle.src.badkeys.write_badkeys_tsv",
-        "data-lifecycle.src.lifecycle_controls.is_retention_marker",
-        "data-lifecycle.src.stage4_keys.build_source_lookup_candidates",
-        "data-lifecycle.src.stage4_keys.load_put_keys",
-        "data-lifecycle.src.stage4_keys.normalize_bucket_object_key"
-      ]
-    },
-    "data-lifecycle/src/stage4_upload_poc.py": {
-      "sha256": "14117488a22591ea5070b1205aa63d8464f7521d7a392b075a1f04364ab98e59",
-      "tier": "full",
-      "symbols": [
-        "DEFAULT_AWS_PROFILE",
-        "DEFAULT_AWS_REGION",
-        "DEFAULT_CHUNK_SIZE_MIB",
-        "DEFAULT_MULTIPART_UPLOAD",
-        "DEFAULT_PART_SIZE_MIB",
-        "DEFAULT_RCLONE_CHUNK_SIZE_MIB",
-        "DEFAULT_RCLONE_DISABLE_CHECKSUM",
-        "DEFAULT_RCLONE_S3_PROVIDER",
-        "DEFAULT_RCLONE_UPLOAD_CONCURRENCY",
-        "DEFAULT_RCLONE_USE_PRESIGNED_REQUEST",
-        "DEFAULT_RCLONE_USE_UNSIGNED_PAYLOAD",
-        "DEFAULT_UPLOADER",
-        "build_client",
-        "main",
-        "parse_args",
-        "parse_s3_url",
-        "upload_with_aws_cli",
-        "upload_with_rclone",
-        "upload_with_smart_open"
-      ],
-      "uses": []
-    },
-    "docker-maintenance/maintenance.py": {
-      "sha256": "c294f29378eca487593a169b946ded33243a133706b4febed415ba8366c9164b",
-      "tier": "full",
-      "symbols": [
-        "Config",
-        "DAY",
-        "GIB",
-        "HOUR",
-        "INTERVAL",
-        "LOG",
-        "Maintenance",
-        "NoRedirect",
-        "State",
-        "disk_critical",
-        "docker",
-        "health_reasons",
-        "load_state",
-        "main",
-        "measure_disk",
-        "notify",
-        "observe_daemon",
-        "prune_images",
-        "save_state"
-      ],
-      "uses": []
-    },
-    "experiment-dash/assets/style.css": {
-      "sha256": "119f9f9c184b37bfd68356f104ddecd34a3f8dd2fcab4ead1704d18525116ce7",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "experiment-dash/dashboard_helpers.py": {
-      "sha256": "168d4ccd9d44cf63cdad2fabd36ebef48430645dbb679dc9e0e6fdc87f2c65ce",
-      "tier": "full",
-      "symbols": [
-        "ROOT_TOPIC",
-        "check_uuid_format",
-        "command",
-        "create_uuid",
-        "end",
-        "generate_topic",
-        "logging_token",
-        "mb",
-        "pause",
-        "ping",
-        "resume",
-        "s3_basepath",
-        "sched_add",
-        "sched_clear",
-        "send_message",
-        "send_to_all_teammates",
-        "start",
-        "status",
-        "stop"
-      ],
-      "uses": []
-    },
-    "experiment-dash/experiment-plotly-app.py": {
-      "sha256": "2f63b6bf2331caa65b2745e53aad684eff3d9a9110138c4a19904bcd58cebabc",
-      "tier": "full",
-      "symbols": [
-        "allow_duplicate",
-        "app",
-        "handle_command_button",
-        "handle_end_button",
-        "handle_pause_button",
-        "handle_ping_button",
-        "handle_resume_button",
-        "handle_sched_add_button",
-        "handle_sched_clear_button",
-        "handle_start_end_button",
-        "handle_status_button",
-        "handle_stop_button",
-        "load_json",
-        "populate_device_checklist",
-        "toggle_collapse",
-        "update_device_states",
-        "update_output",
-        "update_time",
-        "update_value"
-      ],
-      "uses": [
-        "experiment-dash.dashboard_helpers.*"
-      ]
-    },
-    "job-h5repack/get_task.py": {
-      "sha256": "23fb480976107225f82d87ba0c0918e0d95f5eef38b5f4355274adb2191fcfe3",
-      "tier": "full",
-      "symbols": [
-        "q",
-        "queue_name",
-        "uuid"
-      ],
-      "uses": []
-    },
-    "job-h5repack/init.py": {
-      "sha256": "cc135cf0dbed859e46bf41ba46e746d9dffc94a986d98ab431dbb5a41bdd2ce6",
-      "tier": "full",
-      "symbols": [
-        "main"
-      ],
-      "uses": []
-    },
-    "job-h5repack/update_metadata.py": {
-      "sha256": "c9dcb901180842a18aa7d069c5f92d8863c8ca2955463613307127105bd93124",
-      "tier": "full",
-      "symbols": [
-        "main",
-        "save_metadata"
-      ],
-      "uses": []
-    },
-    "logging-s3-aggregator/log_aggregator.py": {
-      "sha256": "8cc6135dc60f2cee30e24c9abcc598475a871a6a53f5605881199f6b09c1b468",
-      "tier": "full",
-      "symbols": [
-        "batch_100_logs",
-        "combine_logs",
-        "delete_s3_object",
-        "format_log_entries",
-        "log_to_stderr",
-        "main",
-        "s3_client"
-      ],
-      "uses": []
-    },
-    "logging-s3/log.py": {
-      "sha256": "21c40f1cf7660dfce12e8cfef06eed6080b58c7510b509718b3cb2196e33f4af",
-      "tier": "full",
-      "symbols": [
-        "main"
-      ],
-      "uses": []
-    },
-    "nginx-reverse-proxy/static/index.html": {
-      "sha256": "c0f85f9deeb17343f3bff2df6cef4d7b19fb1f7b792551554a782b06922c8213",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "oauth2-proxy/error.html": {
-      "sha256": "74cb0f0171e41658b73d5f7c25e0d91ff594387e467373048b00c08976a3012e",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "plotly-dash-picroscope-control-console/Experiment_Metadata_SQL.py": {
-      "sha256": "998142e6f0b3fd6a533588bf258b9f2f77801c6915e0514df40ba6f4b0406ae4",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "plotly-dash-picroscope-control-console/app.py": {
-      "sha256": "d4e658c35c4b096cc1260f06e52694163ecb5189e9d5a0f86491a89d0cb67175",
-      "tier": "full",
-      "symbols": [
-        "app",
-        "base_path"
-      ],
-      "uses": [
-        "plotly-dash-picroscope-control-console.app_elements.experiment_panel",
-        "plotly-dash-picroscope-control-console.app_elements.imaging_panel",
-        "plotly-dash-picroscope-control-console.app_elements.livestream_panel",
-        "plotly-dash-picroscope-control-console.callbacks.db_interactor",
-        "plotly-dash-picroscope-control-console.callbacks.get_callbacks"
-      ]
-    },
-    "plotly-dash-picroscope-control-console/app_elements/experiment_panel.py": {
-      "sha256": "f4073fe66c6c01954e206e46db769e1702bd3ae40c8053da707906d4643385d3",
-      "tier": "full",
-      "symbols": [
-        "EXPERIMENT_PANEL",
-        "get_callbacks"
-      ],
-      "uses": [
-        "plotly-dash-picroscope-control-console.callbacks.*"
-      ]
-    },
-    "plotly-dash-picroscope-control-console/app_elements/imaging_panel.py": {
-      "sha256": "c0be7aebfc81eff13500b54183e94c907b0302f143b0e0939cd0d21c1d36bd48",
-      "tier": "full",
-      "symbols": [
-        "IMAGING_PANEL",
-        "alert",
-        "base_path",
-        "url"
-      ],
-      "uses": [
-        "plotly-dash-picroscope-control-console.callbacks.db_interactor"
-      ]
-    },
-    "plotly-dash-picroscope-control-console/app_elements/livestream_panel.py": {
-      "sha256": "9a366de90112c6999abb588e23693d578a79f2ac963e842a071f8de321af0fc6",
-      "tier": "full",
-      "symbols": [
-        "LIVESTREAM_PANEL"
-      ],
-      "uses": []
-    },
-    "plotly-dash-picroscope-control-console/assets/resizing_script.js": {
-      "sha256": "f210ea99563318895242834e7e1058ff689aa7eb5a94633ff1d1a08caa6ba702",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "plotly-dash-picroscope-control-console/assets/styles.css": {
-      "sha256": "4797946f214b84d95590889d8283d116e14d34d57b7e59b5f44d9aeb2b520ab1",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "plotly-dash-picroscope-control-console/callbacks.py": {
-      "sha256": "6992457ab15ff4b514c3e6d65b27a2a40107c9cceeac9fbf959ee635956f769b",
-      "tier": "full",
-      "symbols": [
-        "brokerString",
-        "db_interactor",
-        "endpoint",
-        "get_callbacks",
-        "gh",
-        "mb",
-        "repo",
-        "shadows_api_key"
-      ],
-      "uses": [
-        "plotly-dash-picroscope-control-console.Experiment_Metadata_SQL.*"
-      ]
-    },
-    "service-accounts/app/token_service.py": {
-      "sha256": "c76d1177321204ecc7aa5c65324c593cf48d03bc93425c4f94c1c079be8e7cd4",
-      "tier": "full",
-      "symbols": [
-        "AUTH0_API_AUDIENCE",
-        "AUTH0_CLIENT_ID",
-        "AUTH0_CLIENT_SECRET",
-        "AUTH0_DOMAIN",
-        "DEFAULT_SERVICE_ACCOUNT_EXPIRATION_DAYS",
-        "_format_utc",
-        "_json_response",
-        "_parse_requested_days",
-        "_service_account_token",
-        "_utcnow",
-        "app",
-        "generate_token",
-        "healthz"
-      ],
-      "uses": []
-    },
-    "shadows_vue/babel.config.js": {
-      "sha256": "3e9eacd9013b5c4ce3a71e8d1d84fbb78ebe79a68855a6de54d3a16670bbf8e0",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "shadows_vue/public/index.html": {
-      "sha256": "4627e56114e37a2f3b57a01fc01c344d887fa6a76a73fbe43f4cc597b9f821ad",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "shadows_vue/src/assets/css/styles.css": {
-      "sha256": "186419c47e46d1688974fe6d1d4688d7234f1790113a0c1e933526b522c9a04c",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "shadows_vue/src/auth/auth0-plugin.js": {
-      "sha256": "b21bc321f55230269722d75cfd3e29db462ff58b429d2661d11ca1ef3a60e80f",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "shadows_vue/src/main.js": {
-      "sha256": "d74abe5e7be0cf9e1073cea1404d1021d0ef4bbdcc166df210698bdd7fb0229d",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "shadows_vue/src/router/index.js": {
-      "sha256": "20229fd097f3aa0bdf3a8977d1ca81422c49acf3237b930a1f856bf48b72bd50",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "shadows_vue/vue.config.js": {
-      "sha256": "dd6cde29732538d16901011777ba40da678b2997461014d6872c4e0a6542c30d",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/__init__.py": {
-      "sha256": "b19dfcc333d6a75dfd73073901164507252f271b41d3b5f7d85510033a0547a7",
-      "tier": "full",
-      "symbols": [
-        "YAMLObject",
-        "YAMLObjectMetaclass",
-        "__version__",
-        "add_constructor",
-        "add_implicit_resolver",
-        "add_multi_constructor",
-        "add_multi_representer",
-        "add_path_resolver",
-        "add_representer",
-        "compose",
-        "compose_all",
-        "dump",
-        "dump_all",
-        "emit",
-        "full_load",
-        "full_load_all",
-        "load",
-        "load_all",
-        "parse",
-        "safe_dump",
-        "safe_dump_all",
-        "safe_load",
-        "safe_load_all",
-        "scan",
-        "serialize",
-        "serialize_all",
-        "unsafe_load",
-        "unsafe_load_all",
-        "warnings"
-      ],
-      "uses": [
-        "skills.braingeneers-one.scripts._vendor.yaml.dumper.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.error.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.events.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.loader.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.nodes.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.tokens.*"
-      ]
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/composer.py": {
-      "sha256": "fcaa37d16afa783594794a5ab94193dcb720f503c19ce3d59539c8311189f453",
-      "tier": "full",
-      "symbols": [
-        "Composer",
-        "ComposerError",
-        "__all__"
-      ],
-      "uses": [
-        "skills.braingeneers-one.scripts._vendor.yaml.error.MarkedYAMLError",
-        "skills.braingeneers-one.scripts._vendor.yaml.events.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.nodes.*"
-      ]
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/constructor.py": {
-      "sha256": "90d8247da78b524c10618fd0e857f54f3d97570fe91b5c5513d024ef3faf88b0",
-      "tier": "full",
-      "symbols": [
-        "BaseConstructor",
-        "Constructor",
-        "ConstructorError",
-        "FullConstructor",
-        "SafeConstructor",
-        "UnsafeConstructor",
-        "__all__"
-      ],
-      "uses": [
-        "skills.braingeneers-one.scripts._vendor.yaml.error.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.nodes.*"
-      ]
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/dumper.py": {
-      "sha256": "3cb72d66563064ba7b5e679477046ebf89d8399d940670c8532f3e94a7cb17ea",
-      "tier": "full",
-      "symbols": [
-        "BaseDumper",
-        "Dumper",
-        "SafeDumper",
-        "__all__"
-      ],
-      "uses": [
-        "skills.braingeneers-one.scripts._vendor.yaml.emitter.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.representer.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.resolver.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.serializer.*"
-      ]
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/emitter.py": {
-      "sha256": "8e086d694ede170837d5b1b407b45979aff6f40762f422a65eafd08e04290a44",
-      "tier": "full",
-      "symbols": [
-        "Emitter",
-        "EmitterError",
-        "ScalarAnalysis",
-        "__all__"
-      ],
-      "uses": [
-        "skills.braingeneers-one.scripts._vendor.yaml.error.YAMLError",
-        "skills.braingeneers-one.scripts._vendor.yaml.events.*"
-      ]
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/error.py": {
-      "sha256": "021f73fada072546c4f63f8cf18a7181244ce4280b09cc15cc980b2d1176171a",
-      "tier": "full",
-      "symbols": [
-        "Mark",
-        "MarkedYAMLError",
-        "YAMLError",
-        "__all__"
-      ],
-      "uses": []
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/events.py": {
-      "sha256": "e74fd392c810884e2ea7e94aa3f57e9c1cbeb402319083d0c58e6a0e1282787c",
-      "tier": "full",
-      "symbols": [
-        "AliasEvent",
-        "CollectionEndEvent",
-        "CollectionStartEvent",
-        "DocumentEndEvent",
-        "DocumentStartEvent",
-        "Event",
-        "MappingEndEvent",
-        "MappingStartEvent",
-        "NodeEvent",
-        "ScalarEvent",
-        "SequenceEndEvent",
-        "SequenceStartEvent",
-        "StreamEndEvent",
-        "StreamStartEvent"
-      ],
-      "uses": []
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/loader.py": {
-      "sha256": "5156becc8aa6905482218abf3e04869b835226db4763645fff3438fdbd5f1cdd",
-      "tier": "full",
-      "symbols": [
-        "BaseLoader",
-        "FullLoader",
-        "Loader",
-        "SafeLoader",
-        "UnsafeLoader",
-        "__all__"
-      ],
-      "uses": [
-        "skills.braingeneers-one.scripts._vendor.yaml.composer.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.constructor.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.parser.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.reader.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.resolver.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.scanner.*"
-      ]
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/nodes.py": {
-      "sha256": "80f28d8fca4a09d87677882bde021820d9cf39a3b11a12405226211919cf13ce",
-      "tier": "full",
-      "symbols": [
-        "CollectionNode",
-        "MappingNode",
-        "Node",
-        "ScalarNode",
-        "SequenceNode"
-      ],
-      "uses": []
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/parser.py": {
-      "sha256": "8a55a9e6fbe0a07146cef3990c8b45a068c3e83e369e1959ad9ca30306b4a09a",
-      "tier": "full",
-      "symbols": [
-        "Parser",
-        "ParserError",
-        "__all__"
-      ],
-      "uses": [
-        "skills.braingeneers-one.scripts._vendor.yaml.error.MarkedYAMLError",
-        "skills.braingeneers-one.scripts._vendor.yaml.events.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.scanner.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.tokens.*"
-      ]
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/reader.py": {
-      "sha256": "d1d9b38ab3a20c6e17a38d519ee412ecaf6b918df18c78956ac7c330d4ea08dc",
-      "tier": "full",
-      "symbols": [
-        "Reader",
-        "ReaderError",
-        "__all__"
-      ],
-      "uses": [
-        "skills.braingeneers-one.scripts._vendor.yaml.error.Mark",
-        "skills.braingeneers-one.scripts._vendor.yaml.error.YAMLError"
-      ]
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/representer.py": {
-      "sha256": "22e58ff9c016f6c1ca1274b4802a926bcf78935060e1c813c5a0f021c6d143e6",
-      "tier": "full",
-      "symbols": [
-        "BaseRepresenter",
-        "Representer",
-        "RepresenterError",
-        "SafeRepresenter",
-        "__all__"
-      ],
-      "uses": [
-        "skills.braingeneers-one.scripts._vendor.yaml.error.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.nodes.*"
-      ]
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/resolver.py": {
-      "sha256": "f4bf9561f9b89961f1503d558385fbae30d12bfed565de9bf76c33abb63620a6",
-      "tier": "full",
-      "symbols": [
-        "BaseResolver",
-        "Resolver",
-        "ResolverError",
-        "__all__"
-      ],
-      "uses": [
-        "skills.braingeneers-one.scripts._vendor.yaml.error.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.nodes.*"
-      ]
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/scanner.py": {
-      "sha256": "60433788b652690c17710460da5d91e0c753d3318fd85f5e1e42862a71f25906",
-      "tier": "full",
-      "symbols": [
-        "Scanner",
-        "ScannerError",
-        "SimpleKey",
-        "__all__"
-      ],
-      "uses": [
-        "skills.braingeneers-one.scripts._vendor.yaml.error.MarkedYAMLError",
-        "skills.braingeneers-one.scripts._vendor.yaml.tokens.*"
-      ]
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/serializer.py": {
-      "sha256": "0a1b85826854d35863e31808f0668abfabdf33606e8f06bd8bb7761401e3edc0",
-      "tier": "full",
-      "symbols": [
-        "Serializer",
-        "SerializerError",
-        "__all__"
-      ],
-      "uses": [
-        "skills.braingeneers-one.scripts._vendor.yaml.error.YAMLError",
-        "skills.braingeneers-one.scripts._vendor.yaml.events.*",
-        "skills.braingeneers-one.scripts._vendor.yaml.nodes.*"
-      ]
-    },
-    "skills/braingeneers-one/scripts/_vendor/yaml/tokens.py": {
-      "sha256": "953408cd2570f0c83dc2fe39f7e4e388e41eeb05738aa69196a5f6ffcf6ba79e",
-      "tier": "full",
-      "symbols": [
-        "AliasToken",
-        "AnchorToken",
-        "BlockEndToken",
-        "BlockEntryToken",
-        "BlockMappingStartToken",
-        "BlockSequenceStartToken",
-        "DirectiveToken",
-        "DocumentEndToken",
-        "DocumentStartToken",
-        "FlowEntryToken",
-        "FlowMappingEndToken",
-        "FlowMappingStartToken",
-        "FlowSequenceEndToken",
-        "FlowSequenceStartToken",
-        "KeyToken",
-        "ScalarToken",
-        "StreamEndToken",
-        "StreamStartToken",
-        "TagToken",
-        "Token",
-        "ValueToken"
-      ],
-      "uses": []
-    },
-    "skills/braingeneers-one/scripts/suite.py": {
-      "sha256": "f130d3a538d2ea942aa50a6f323b337c690e1afe5114f41638ec4b6fc79781ec",
-      "tier": "full",
-      "symbols": [
-        "Failure",
-        "ONE",
-        "Suite",
-        "TRACKING",
-        "_previous_dont_write_bytecode",
-        "_yaml_spec",
-        "api",
-        "blob_sha",
-        "command",
-        "files_at",
-        "fingerprint",
-        "frontmatter",
-        "load_catalog",
-        "main",
-        "without_tracking",
-        "yaml"
-      ],
-      "uses": []
-    },
-    "skills/mission-control-services-management/scripts/authenticate.py": {
-      "sha256": "8f4237da50642c62fa40ca35dd290ccb92f303d6a3f4f2e90eed797a262719ea",
-      "tier": "full",
-      "symbols": [
-        "LOGIN_URL",
-        "MAX_RESPONSE",
-        "SignInError",
-        "check_response",
-        "collect_response",
-        "load_response",
-        "main",
-        "read_private_response",
-        "save_response",
-        "select_path",
-        "validate_response"
-      ],
-      "uses": []
-    },
-    "skills/nrp-cluster/references/memory_peak.py": {
-      "sha256": "5b90bf4064c2e7a14f4cfc0cf2537c7350c5eaf328c4021d63adb242462b5ddc",
-      "tier": "full",
-      "symbols": [
-        "main",
-        "measure"
-      ],
-      "uses": []
-    },
-    "slack-bridge/slack_bridge.py": {
-      "sha256": "8226766900ff4ebdae25a4f810116ae5aae5fc531441d0bea0c639e5ad7c468a",
-      "tier": "full",
-      "symbols": [
-        "_graceful_shutdown",
-        "_handler",
-        "_post_message_with_retry",
-        "_retry_after",
-        "_upload_file_with_retry",
-        "app",
-        "config",
-        "get_channel_name",
-        "handle_slack_event",
-        "healthz",
-        "mb",
-        "mqtt_to_slack_callback",
-        "safe_publish",
-        "shutdown_flag",
-        "slack_client",
-        "slack_signing_secret",
-        "slack_token"
-      ],
-      "uses": []
-    },
-    "smartplug-dash/smartplug-dashboard.py": {
-      "sha256": "e7e3dc865a7260ef02f238d0f5c631e905c062fff4f4628d8092c5ca45d8d4df",
-      "tier": "full",
-      "symbols": [
-        "smartplug",
-        "smartplugs_list",
-        "toggle_smartplugs"
-      ],
-      "uses": []
-    },
-    "strapi-shadows-db/config/admin.js": {
-      "sha256": "14f783d275cd745bf8afe36c411a6357a52d1a113fbe842e8a4d870c99caf1e1",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/config/api.js": {
-      "sha256": "f5a0f53aa2765795bc67eefcaa1c49a5f72d38767793088d30a7b79ee8f08514",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/config/database.js": {
-      "sha256": "fb7cc3b65b8d8265532632930755144ff884f632cd8fba7efbe11838be251cd5",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/config/middlewares.js": {
-      "sha256": "ba74e657785469080d773b90087a0ff1e17c78b680f65139c0f38764c7024e59",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/config/plugins.js": {
-      "sha256": "34265b48f45fd7be5d12959f663a4ba40126f14e8a36219c4e0bc6c83634ffc7",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/config/server.js": {
-      "sha256": "d3bd2d60d3183724b43e044e407734291f8756d406add4170b0012ff811fa90b",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/admin/app.example.js": {
-      "sha256": "a6a94b7d06936ddbc6275309c298afb9633c90359f72c86e333f11f408b2657d",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/admin/webpack.config.example.js": {
-      "sha256": "080582486fae5d28aefd86cee5a9a01622976ba6d53c94795ca20e4c22f5e1ad",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/experiment/controllers/experiment.js": {
-      "sha256": "e75e323a21e1edc57f79ac9365f7a753fa42af0b2791fa54985407faa70173d4",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/experiment/routes/experiment.js": {
-      "sha256": "5333218ee2653985a70c3f5052da5cef51ace9e914ab38696be178fef0f8424c",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/experiment/services/experiment.js": {
-      "sha256": "029e295f9438984c1067d195c2f90b18d282fc6e9f5636c47062ad30f6251dc0",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/interaction-thing/controllers/interaction-thing.js": {
-      "sha256": "b5b619c1428ba8953186946bdc0466004438013d56b80b4ed5a253affe51b075",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/interaction-thing/routes/interaction-thing.js": {
-      "sha256": "c4544b59e9fe57712ddd96cc5607987ddbe248172ef0ba34d71842d6132311b8",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/interaction-thing/services/interaction-thing.js": {
-      "sha256": "8e18bef511a035931ff3fa262f6febe3757d4c0046f1fb0b89fcca714f354141",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/plate/controllers/plate.js": {
-      "sha256": "f5b426a0935bcec4d545613e0e5ef05de0111f7dce2b56b917e3d4c9e8bbfea0",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/plate/routes/plate.js": {
-      "sha256": "67e570f0c76593ba5c11bd3043e0fc04e75c01cc9eb0cd02b35120323fca3ee3",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/plate/services/plate.js": {
-      "sha256": "453f9545534b91880aef372b9afeedf6cda23a6f78de84367c9333a0a38a2ab1",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/sample/controllers/sample.js": {
-      "sha256": "58430299cdcaa73f324784eea88bd73f3678bf41cd0e26bdadceb72ccf766d7b",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/sample/routes/sample.js": {
-      "sha256": "da5d96e0216acbe2fd66fe8c23b1839cdbd8510ed1e7b80e7b62e94069acde35",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/sample/services/sample.js": {
-      "sha256": "0bf1d0891a2c433ab99b82692ba2736fc914765cb022daf1d8f509ba0557de2d",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/well/controllers/well.js": {
-      "sha256": "ba7b061f9462800dd593beb4eb8362e7b9df1a325cf27582398e82cf809e678d",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/well/routes/well.js": {
-      "sha256": "b8999d8fc1cded883da3e80d4229a75a4d229c254df799c42a1f498b59308251",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/api/well/services/well.js": {
-      "sha256": "3c04bb9faa37b92c1d72bc0c04abbab01afc06a713391a7b49dd40a4f101fb90",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    },
-    "strapi-shadows-db/src/index.js": {
-      "sha256": "a725d91dee24be33d3e4a0f4749b801972a0c23c752a1482e8a4167eaa115e87",
-      "tier": "full",
-      "symbols": [],
-      "uses": []
-    }
+ "commit": "775a1d79c860b23ddbbf59f5a1ddd1dfc237b3b7",
+ "generated": "2026-11-18",
+ "mode": "all",
+ "files_refreshed": 83,
+ "source_roots": [
+  "<all project directories>"
+ ],
+ "hash_normalization": "CRLF to LF",
+ "files": {
+  "skills/nrp-monitor/scripts/nrp_monitor/agents.py": {
+   "sha256": "f331e1181d45b92d8977b59ee976eda18b9bda6d7030c0f722869fa5223d3db1",
+   "tier": "full",
+   "symbols": [
+    "AgentCmd",
+    "BACKENDS",
+    "RUNNER_EXEC",
+    "Result",
+    "_answer",
+    "agent_cfg",
+    "agent_cmd",
+    "agents_available",
+    "agy_command",
+    "agy_parse",
+    "agy_workspace",
+    "auth_allowed",
+    "auth_hit",
+    "available_runners",
+    "backend_name",
+    "block_runner",
+    "check_backend",
+    "claude_argv",
+    "clean_env",
+    "codex_auth",
+    "codex_command",
+    "codex_parse",
+    "codex_rules",
+    "codex_writable",
+    "default_agent_cfg",
+    "dispatch_agent",
+    "exec_agy",
+    "exec_backend",
+    "exec_claude",
+    "exec_codex",
+    "is_unavailable",
+    "job_prompt",
+    "kube_read_allow",
+    "limit_hit",
+    "load_agent_cfg",
+    "note_failover",
+    "parse_agent_cfg",
+    "pod_allowed",
+    "pod_prompt",
+    "reset_time",
+    "run_agent",
+    "runner_blocked",
+    "runner_ready",
+    "scratch_home",
+    "spec_model",
+    "tier_backends",
+    "tier_settings",
+    "unavailable_text"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.legacy",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
   },
-  "stale_files": [],
-  "include_tests": false,
-  "trivial_files": {}
+  "skills/nrp-monitor/scripts/nrp_monitor/cli.py": {
+   "sha256": "df89c822345d1b767c6e476b6612e6a1b2b8855f31342c5eca3bbb696681ac7e",
+   "tier": "full",
+   "symbols": [
+    "cmd_add",
+    "cmd_list",
+    "cmd_log",
+    "cmd_run",
+    "cmd_run_pass",
+    "cmd_status",
+    "main",
+    "run_pass",
+    "save_merged",
+    "snapshot_code"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.cli_args",
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.legacy",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.plan_wakes",
+    "skills.nrp-monitor.scripts.nrp_monitor.red_alert",
+    "skills.nrp-monitor.scripts.nrp_monitor.s3",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.pass_",
+    "skills.nrp-monitor.scripts.nrp_monitor.util",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/cli_args.py": {
+   "sha256": "ccf6f8a2181832e111abf1a56f1a528fc52eb43f67eeaa75d99f761aec0ae3cb",
+   "tier": "full",
+   "symbols": [
+    "monitor_parser",
+    "origin_edit_args",
+    "resource_args",
+    "tool_parser"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.cli",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.nrp_task",
+    "skills.nrp-monitor.scripts.nrp_monitor.plan_commands",
+    "skills.nrp-monitor.scripts.nrp_monitor.setup",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
+    "skills.nrp-monitor.scripts.nrp_monitor.task_commands",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/cluster.py": {
+   "sha256": "3c7c27499258048771c7eeac29d8fb362f3a8c178fe537082b915e8e824fc5c8",
+   "tier": "full",
+   "symbols": [
+    "MUTATING",
+    "SNAPSHOT",
+    "_cached",
+    "apply_manifest",
+    "bad_node_lines",
+    "bad_nodes",
+    "block_episode",
+    "block_should_reapply",
+    "block_wake_text",
+    "classify_job",
+    "fetch_jobs",
+    "job_complete",
+    "job_pods",
+    "job_state",
+    "jobs_in",
+    "kubectl",
+    "my_pods",
+    "namespace_offenders",
+    "offender_text",
+    "pass_snapshot",
+    "pending_reason",
+    "pod_gpu_request",
+    "record_bad_node",
+    "thanos_query"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.red_alert",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
+    "skills.nrp-monitor.scripts.nrp_monitor.util",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/config.py": {
+   "sha256": "8a575402490e111e9bee67c1cd0b9de800f99b8c3d11b4864ae77ff4f9d5191f",
+   "tier": "full",
+   "symbols": [
+    "_skip_limit",
+    "aws_env",
+    "gpu_floor",
+    "max_jobs",
+    "skip_limit_text",
+    "step_env",
+    "util_policy",
+    "util_waiver_hours",
+    "util_waiver_max"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.state"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/continuation.py": {
+   "sha256": "d880cadcab1e4459e707bb36b44ed196fc76b307bfd42a4af0d43800a8f1d182",
+   "tier": "full",
+   "symbols": [
+    "close_continuation",
+    "continue_prompt",
+    "continue_task",
+    "person_resolution_context"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.plan_wakes",
+    "skills.nrp-monitor.scripts.nrp_monitor.plans",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task_agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/decisions.py": {
+   "sha256": "48816c32e0fde7cf4e86589763eab2f4fcb659d9f1a6631f9dba37fcc4e6b4d5",
+   "tier": "full",
+   "symbols": [
+    "DECISION_APPLY",
+    "_decide_escalate",
+    "_decide_resubmit",
+    "_decide_skip_reuse",
+    "apply_decision",
+    "cmd_costs",
+    "cmd_decide",
+    "cmd_wake_review",
+    "cost_event",
+    "cost_rows",
+    "decisions",
+    "failure_context",
+    "fingerprint",
+    "postcheck_failure",
+    "record_decision",
+    "scaled_retry_cap"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.ladder",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.s3",
+    "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/ladder.py": {
+   "sha256": "a7b2535e2a629ee8ccc68abc4c4be88cde042576350951139553190ef8158507",
+   "tier": "full",
+   "symbols": [
+    "Decision",
+    "LADDER",
+    "STOP",
+    "act",
+    "agents_wait",
+    "check_coordinator_waits",
+    "class_budget",
+    "class_retries",
+    "close_failure",
+    "coordinator_summary",
+    "deadline_rule",
+    "deputy_prompt",
+    "dry_run",
+    "escalate",
+    "fixer",
+    "gpu_expired",
+    "guard",
+    "handle_failure",
+    "observe_task",
+    "postcheck_guard",
+    "recorded_decision",
+    "retry_cap",
+    "same_signature",
+    "settled_outcome",
+    "systemic",
+    "systemic_failure",
+    "task_fail",
+    "terminal_task",
+    "to_coordinator",
+    "triage_judge",
+    "triage_prompt",
+    "triage_verdict",
+    "triage_wanted",
+    "watch_only"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.plans",
+    "skills.nrp-monitor.scripts.nrp_monitor.s3",
+    "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.model",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.pass_",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
+    "skills.nrp-monitor.scripts.nrp_monitor.task_agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.timeouts",
+    "skills.nrp-monitor.scripts.nrp_monitor.util",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/legacy.py": {
+   "sha256": "f556537ee2a63ef05b7f7b1c6907f93432f98a17c0959a720d8efb0aeb029e90",
+   "tier": "full",
+   "symbols": [
+    "_gpu_low",
+    "acct_alarm",
+    "check_jobs",
+    "check_pods",
+    "followup_solved",
+    "gpu_long_actions",
+    "gpu_long_pass",
+    "record_resize",
+    "tiered_job_followup"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.config",
+    "skills.nrp-monitor.scripts.nrp_monitor.ladder",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.model",
+    "skills.nrp-monitor.scripts.nrp_monitor.util",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/notify.py": {
+   "sha256": "9b856e105a23d4322eb06561f917d217fa7d9385126e2f3b7c7bd3c3c96ec099",
+   "tier": "full",
+   "symbols": [
+    "banner",
+    "claude_push",
+    "cmd_digest",
+    "coordinating",
+    "daily_digest",
+    "digest",
+    "jwt_days_left",
+    "needs_owner",
+    "notify",
+    "push",
+    "push_clear",
+    "read_json",
+    "ref_label",
+    "render_digest",
+    "slack_dm",
+    "write_json"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.plan_commands",
+    "skills.nrp-monitor.scripts.nrp_monitor.plans",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/nrp_task.py": {
+   "sha256": "ca47b47b7ff52660e201c93c50f72c5b31a83b52459b762ddc940a8a25e88c66",
+   "tier": "full",
+   "symbols": [
+    "cmd_tool",
+    "reship_dirs"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.cli_args",
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.config",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.ladder",
+    "skills.nrp-monitor.scripts.nrp_monitor.plans",
+    "skills.nrp-monitor.scripts.nrp_monitor.s3",
+    "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.pass_",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
+    "skills.nrp-monitor.scripts.nrp_monitor.task_commands",
+    "skills.nrp-monitor.scripts.nrp_monitor.timeouts"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/plan_commands.py": {
+   "sha256": "03cacf3ea719fc27b0a08fe17d3ecb5d08c8b367068381dafab3d435aad38003",
+   "tier": "full",
+   "symbols": [
+    "cmd_plan_close",
+    "cmd_plan_list",
+    "cmd_plan_needs_owner",
+    "cmd_plan_resume",
+    "cmd_plan_show",
+    "cmd_plan_sync",
+    "plan_line",
+    "plan_names"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.plan_wakes",
+    "skills.nrp-monitor.scripts.nrp_monitor.plans",
+    "skills.nrp-monitor.scripts.nrp_monitor.state"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/plan_wakes.py": {
+   "sha256": "41d0010a9d744de43cc3fdb349ebf25a2578270b6903e99b655056232f55defe",
+   "tier": "full",
+   "symbols": [
+    "FALLBACK_SINCE",
+    "completion_policy",
+    "continuation_covers",
+    "group_members",
+    "group_ready",
+    "process_continuations",
+    "process_group_wakes",
+    "process_plan_fallbacks",
+    "skip_closed_continuation",
+    "step_done_summary",
+    "step_mates",
+    "step_siblings",
+    "task_group",
+    "terminal_wake"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.continuation",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.plan_commands",
+    "skills.nrp-monitor.scripts.nrp_monitor.plans",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/plans.py": {
+   "sha256": "b3b72550817d709019bf91aadbe9dd02476aa993a6367a327565ea7cac0d7b72",
+   "tier": "full",
+   "symbols": [
+    "approved_pos",
+    "check_on_done",
+    "ledger_add",
+    "next_steps",
+    "on_done_enabled",
+    "parse_run_block",
+    "pev",
+    "plan_dir",
+    "plan_gpu_cover",
+    "plan_header",
+    "plan_section",
+    "plan_set",
+    "plan_state",
+    "plan_sync",
+    "plan_txn",
+    "resolve_plan_path",
+    "split_list",
+    "step_pos",
+    "tool_next_add"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/red_alert.py": {
+   "sha256": "0cbaf61735ef9b5412660351cef7aaadd63c43c67eb4052c3a48c395a11eeb9e",
+   "tier": "full",
+   "symbols": [
+    "process_red_alert",
+    "red_alert",
+    "red_alert_enter",
+    "red_alert_notify",
+    "red_alert_text",
+    "red_probe"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.ladder",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/s3.py": {
+   "sha256": "df87b68359b9647cda19a94b43a624dff3876f0ef3dbc049343882a6efbdff52",
+   "tier": "full",
+   "symbols": [
+    "incluster_job",
+    "s3_check_job_manifest",
+    "s3_check_many",
+    "s3_exists",
+    "s3_incluster",
+    "s3_incluster_on",
+    "s3_prepass",
+    "s3_split",
+    "save_logs"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.config",
+    "skills.nrp-monitor.scripts.nrp_monitor.state"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/setup.py": {
+   "sha256": "2a4809afb4628e6c2e327fb5d08cd9e0a7972e78e0f014a85f1d895468f56f0e",
+   "tier": "full",
+   "symbols": [
+    "backend_label",
+    "cmd_agents",
+    "cmd_setup",
+    "installed_runners",
+    "parse_backend_list",
+    "parse_backend_spec",
+    "setup_ask",
+    "setup_config",
+    "suggest_tiers",
+    "write_agents_cfg"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.state"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/sizing.py": {
+   "sha256": "278e818ee86ad110dc6c14b0825b48862bb2ff379198037c3e087deb367f0ee7",
+   "tier": "full",
+   "symbols": [
+    "UTIL_NODE_CACHE",
+    "container_memory_peak",
+    "cpu_quantity",
+    "cpu_request",
+    "mem_bytes",
+    "mem_text",
+    "memory_low_evidence",
+    "saved_memory_peak",
+    "thanos_peak_cpu",
+    "thanos_peak_mem",
+    "true_memory_peak",
+    "zero_node_reason"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/stage_jobs.py": {
+   "sha256": "1e2ddae549ba4c1422d948212094e78fe1af0eeae920f02901f3f6f396f25478",
+   "tier": "full",
+   "symbols": [
+    "delete_stage_job",
+    "do_submit",
+    "propagate_resources",
+    "resource_template",
+    "resource_values",
+    "save_task_logs",
+    "utilization_restart"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.ladder",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.red_alert",
+    "skills.nrp-monitor.scripts.nrp_monitor.sizing",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.model",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
+    "skills.nrp-monitor.scripts.nrp_monitor.tier0"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/state.py": {
+   "sha256": "6254c4b4902900e38177a5f455d6759ded2f4cc6a0acda4868b9c6044da32426",
+   "tier": "full",
+   "symbols": [
+    "ACCT",
+    "AGENTS_CFG",
+    "AGE_RE",
+    "AGY_GATE",
+    "APPROVED",
+    "AUTH_ANY",
+    "AUTH_BLOCK_S",
+    "AUTH_BUDGET",
+    "AUTH_TIMEOUT",
+    "AUTH_TURNS",
+    "BLOCK_ESCALATE_S",
+    "BLOCK_RE",
+    "BLOCK_RECHECK_S",
+    "CHAINS",
+    "CLASSES",
+    "CLASS_DEFAULT",
+    "CLONE_MAX_FILE",
+    "CLONE_SUFFIXES",
+    "CODE_PYTHON",
+    "CODE_SKIP",
+    "CODE_SKIP_EXT",
+    "CODE_SNAPSHOT_MAX",
+    "CONT_STALE_S",
+    "COORD_STALE_S",
+    "ChainError",
+    "DEADLINE_CREDIT_MIN_S",
+    "DEADLINE_EXT_MAX",
+    "DEADLINE_PEND_EXT_MAX",
+    "DEADLINE_RESUBMITS_MAX",
+    "DECISION_ACTIONS",
+    "DECISION_NO_PROGRESS_LIMIT",
+    "DEFAULT_MAX_JOBS",
+    "DEFAULT_S3",
+    "DIGEST",
+    "EXC_RE",
+    "FLAG",
+    "FLAG_RES",
+    "FLAG_RULE_RE",
+    "FOLLOWUP_REPAIR_ATTEMPTS",
+    "GIT_ID",
+    "GPU_ENFORCE_WINDOW_MIN",
+    "GPU_PCT_RE",
+    "GPU_USE_RE",
+    "GPU_WARN_DEDUPE_S",
+    "GPU_WARN_WINDOW_MIN",
+    "HANDOFF_APPEND",
+    "HANDOFF_COMMENT",
+    "HANDOFF_ENTRY_MAX",
+    "HANDOFF_ENTRY_RE",
+    "HANDOFF_ESC_ASK",
+    "HANDOFF_ESC_RE",
+    "HANDOFF_HEADS",
+    "HANDOFF_MAX_FILE",
+    "HANDOFF_MAX_REG",
+    "HANDOFF_MIN_REG",
+    "HANDOFF_NONE",
+    "HANDOFF_OWNER_MAX",
+    "HANDOFF_OWNER_RE",
+    "HANDOFF_PROMPT_MAX",
+    "HEART",
+    "HEART_STALL_S",
+    "HEART_WARN_S",
+    "JOBS",
+    "JOB_BUDGET",
+    "JOB_GRACE_S",
+    "JOB_MODEL",
+    "JOB_RE",
+    "JOB_TURNS",
+    "JWT_FILE",
+    "KNOWN_RUNNERS",
+    "LADDER_STEPS",
+    "LAST_BLOCK",
+    "LIMIT_ANY",
+    "LIMIT_START",
+    "LOCK",
+    "LOG",
+    "LOST_SIG",
+    "MAX_POD_AGENTS",
+    "MEMORY_RULE",
+    "MISSING_GRACE_S",
+    "NODE_EXCLUDE_MAX",
+    "NODE_FAULT_RE",
+    "NOTIFY_DEDUPE_S",
+    "NRP_UTIL_RULE",
+    "NS",
+    "ON_DONE_FLAG",
+    "OOM_FACTOR",
+    "OOM_MAX_GI_DEFAULT",
+    "ORIGIN_FIELDS",
+    "ORIGIN_HARNESSES",
+    "ORIGIN_LINK_RE",
+    "ORIGIN_MISSING",
+    "ORIGIN_SESSION_RE",
+    "ORPHANS",
+    "OWNER",
+    "OWNER_LABEL",
+    "OWNER_NAME",
+    "PASS",
+    "PENDING_REPORT_S",
+    "PENDING_REREPORT_S",
+    "PLANS",
+    "PLAN_FILES_MAX",
+    "PLAN_ID_RE",
+    "PLAN_KEYS",
+    "PLAN_MAX",
+    "POD_BUDGET",
+    "POD_DEDUPE_S",
+    "POD_MODEL",
+    "POD_TURNS",
+    "PUSHED",
+    "READ_ONLY_TIERS",
+    "RED_ALERT",
+    "RED_PROBE_JOB",
+    "RED_PROBE_S",
+    "RED_REUSE_S",
+    "RESIZE_LOG",
+    "RESUME_DIR",
+    "RESUME_MAX",
+    "RUNNER_STATE",
+    "S3_JOB_ENDPOINT",
+    "S3_JOB_IMAGE",
+    "S3_JOB_POLL_S",
+    "S3_JOB_SCRIPT",
+    "S3_JOB_WAIT_S",
+    "S3_PASS",
+    "SESSION_ENV",
+    "SETUP_DEFAULT_MODEL",
+    "SETUP_TIERS",
+    "SLACK_URL",
+    "SLACK_USER",
+    "SLOCK",
+    "STATE",
+    "STEP_ID_RE",
+    "STRIKE_GAP_S",
+    "SUBMIT_TIMEOUT_S",
+    "SUBSCRIPTIONS",
+    "SYSTEMIC_STAGES",
+    "TASKS",
+    "TASK_BUDGET",
+    "TASK_CACHE",
+    "TASK_EXCEPTION_LIMIT",
+    "TASK_HELD",
+    "TASK_LIVE",
+    "TASK_MODEL",
+    "TASK_RE",
+    "TASK_TIMEOUT",
+    "TASK_TURNS",
+    "THANOS_URL",
+    "TIER0_RULES",
+    "TIERS",
+    "TPL",
+    "TRANSIENT_RE",
+    "TRIAGE_BUDGET",
+    "TRIAGE_CLOSE",
+    "TRIAGE_MODEL",
+    "TRIAGE_TIMEOUT",
+    "TRIAGE_TURNS",
+    "TRIAGE_VERDICT_RE",
+    "UNAVAILABLE",
+    "USER_ANN",
+    "UTIL_OK_RE",
+    "UTIL_OK_REASON_MAX",
+    "WAIT_POLL_S",
+    "WAKE_GIT",
+    "WAKE_MAX_TRIES",
+    "WAKE_TIMEOUT_S",
+    "WAKE_TOOLS",
+    "WEBHOOK_USER_AGENT",
+    "WORK",
+    "_MEM_UNITS",
+    "_UTIL",
+    "_owner_cfg",
+    "ago",
+    "default_state_dir",
+    "failure_class",
+    "heartbeat_age",
+    "iso",
+    "iso_at",
+    "json_txn",
+    "load",
+    "log",
+    "norm_sig",
+    "now",
+    "one_line",
+    "parse_ts",
+    "save",
+    "slack_esc",
+    "state_lock",
+    "task_dir",
+    "task_load",
+    "task_names",
+    "task_of_job",
+    "task_txn",
+    "task_write",
+    "tev",
+    "today_iso",
+    "tstage",
+    "write_heartbeat"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.plan_wakes"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/task/model.py": {
+   "sha256": "ef1b7255cf689913bceb5cab0af2c53918fe0e7cdedd73199bea3587f301d3ed",
+   "tier": "full",
+   "symbols": [
+    "HELD",
+    "IllegalTransition",
+    "LIVE",
+    "TERMINAL",
+    "TRANSITIONS",
+    "_MOVES",
+    "can",
+    "resize_advice",
+    "transition"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.state"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/task/pass_.py": {
+   "sha256": "566cf351abf750b38db5966573b57ba9995552ff18b04d3d6ec8e8d7fa88724d",
+   "tier": "full",
+   "symbols": [
+    "advance_task",
+    "classify",
+    "note_waiting",
+    "pod_started",
+    "process_task",
+    "process_tasks",
+    "recover_held_completion",
+    "run_postcheck",
+    "s3_gate"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.continuation",
+    "skills.nrp-monitor.scripts.nrp_monitor.ladder",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.red_alert",
+    "skills.nrp-monitor.scripts.nrp_monitor.s3",
+    "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.model",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
+    "skills.nrp-monitor.scripts.nrp_monitor.task_agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.tier0",
+    "skills.nrp-monitor.scripts.nrp_monitor.util",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/task/registry.py": {
+   "sha256": "5b2819e4f6682ebfcf85c4e519a94372f0f009ba62d2c6e8f6cb1cb7082df167",
+   "tier": "full",
+   "symbols": [
+    "agent_manifest_checkpoint",
+    "aws_cmd",
+    "clone_code",
+    "cmd_task_add",
+    "code_dir_problem",
+    "code_dirs_check",
+    "git",
+    "gpu_expired",
+    "load_chain_file",
+    "manifest_check",
+    "manifest_doc",
+    "manifest_error",
+    "manifest_gpu",
+    "manifest_mem",
+    "manifest_structure",
+    "manifest_write",
+    "protected_dirs",
+    "pv3_spec_uri",
+    "s3_bucket_ok",
+    "task_add_raw",
+    "under_protected",
+    "validate_agent_manifests",
+    "validate_task"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.config",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.plans",
+    "skills.nrp-monitor.scripts.nrp_monitor.s3",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.tier0",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/task_agents.py": {
+   "sha256": "475a47fecd1a95c15108c24674d397c335bc1e519d35a4ac5021d94c660580f8",
+   "tier": "full",
+   "symbols": [
+    "run_task_agent",
+    "task_prompt"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.config",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.ladder",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.plans",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
+    "skills.nrp-monitor.scripts.nrp_monitor.util",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/task_commands.py": {
+   "sha256": "5e70ca4b6674d8efd45a11df92ffb9b2ba6544e94fe427e147ae4edf6ffad6f1",
+   "tier": "full",
+   "symbols": [
+    "cmd_origin",
+    "cmd_task_cancel",
+    "cmd_task_code",
+    "cmd_task_handoff",
+    "cmd_task_list",
+    "cmd_task_needs_owner",
+    "cmd_task_resume",
+    "cmd_task_show",
+    "cmd_task_stage",
+    "cmd_task_watch",
+    "cmd_util_restart"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.config",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.ladder",
+    "skills.nrp-monitor.scripts.nrp_monitor.nrp_task",
+    "skills.nrp-monitor.scripts.nrp_monitor.plan_commands",
+    "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.model",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
+    "skills.nrp-monitor.scripts.nrp_monitor.tier0",
+    "skills.nrp-monitor.scripts.nrp_monitor.util",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/tier0.py": {
+   "sha256": "3dbb6556150e3fcd92ded3b3d74f9c606409d1faea0a7389c3e53db34d1d5bbb",
+   "tier": "full",
+   "symbols": [
+    "RULES",
+    "_oom_matches",
+    "_report_long_pending",
+    "exclude_node",
+    "node_fault_of",
+    "queue_ceiling_seconds",
+    "report_long_pending",
+    "tier0_fix",
+    "tier0_lost",
+    "tier0_node",
+    "tier0_oom",
+    "vanished_nodes"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.config",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.ladder",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.sizing",
+    "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.model",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/timeouts.py": {
+   "sha256": "3dde9343899ee569ebd56ccd3487f4d61a9c4408b7dfecdade516a52fd0e2882",
+   "tier": "full",
+   "symbols": [
+    "deadline_watch",
+    "log_signature",
+    "patch_deadline",
+    "pod_waiting_error",
+    "stage_resumable",
+    "tier0_timeout"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/util.py": {
+   "sha256": "dad7dab3ab443a08f92c68e718f14418b9e93383f473f977f475cb188191ccf8",
+   "tier": "full",
+   "symbols": [
+    "active_waiver",
+    "check_orphans",
+    "flag_rule",
+    "process_util_event",
+    "task_pod_flag",
+    "util_nrp_review",
+    "util_ok_extract",
+    "util_waive",
+    "util_waiver_check",
+    "utilization_band_action",
+    "waiver_active",
+    "waiver_stage"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.cluster",
+    "skills.nrp-monitor.scripts.nrp_monitor.config",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.ladder",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.sizing",
+    "skills.nrp-monitor.scripts.nrp_monitor.stage_jobs",
+    "skills.nrp-monitor.scripts.nrp_monitor.state",
+    "skills.nrp-monitor.scripts.nrp_monitor.task.registry",
+    "skills.nrp-monitor.scripts.nrp_monitor.task_agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.timeouts",
+    "skills.nrp-monitor.scripts.nrp_monitor.wake"
+   ]
+  },
+  "skills/nrp-monitor/scripts/nrp_monitor/wake.py": {
+   "sha256": "775d566cba978a811cec9e3bf3fbf1983fc041093d0e200a605eb9c765666f2e",
+   "tier": "full",
+   "symbols": [
+    "NoWebhookRedirect",
+    "WAKE_EXEC",
+    "WakeError",
+    "add_origin_args",
+    "claude_session_open",
+    "detect_session",
+    "handoff_append",
+    "handoff_attach",
+    "handoff_body",
+    "handoff_chars",
+    "handoff_clean",
+    "handoff_escalation_missing",
+    "handoff_extract",
+    "handoff_join",
+    "handoff_load",
+    "handoff_path",
+    "handoff_prompt",
+    "handoff_record",
+    "handoff_set",
+    "handoff_sha",
+    "handoff_split",
+    "handoff_write",
+    "lookup_origin",
+    "norm_origin",
+    "origin_overlay",
+    "origin_plain",
+    "origin_slack",
+    "origin_tag",
+    "owner_of_job",
+    "process_task_webhooks",
+    "queue_task_webhook",
+    "require_origin_note",
+    "short_tag",
+    "slack_text",
+    "wake_argv",
+    "wake_binary",
+    "wake_failed",
+    "wake_session",
+    "wake_t3",
+    "wake_target",
+    "wake_test_mode",
+    "wake_text",
+    "wake_tools",
+    "webhook_config"
+   ],
+   "uses": [
+    "skills.nrp-monitor.scripts.nrp_monitor.agents",
+    "skills.nrp-monitor.scripts.nrp_monitor.decisions",
+    "skills.nrp-monitor.scripts.nrp_monitor.ladder",
+    "skills.nrp-monitor.scripts.nrp_monitor.notify",
+    "skills.nrp-monitor.scripts.nrp_monitor.state"
+   ]
+  },
+  "data-lifecycle/skills/backup-reprocess-check/scripts/analyze_two_run_check.py": {
+   "sha256": "34112ce1405c0359ec8d31ec73b66c17da3956921305cfb17cc1ab7a5a2d8280",
+   "tier": "full",
+   "symbols": [
+    "MISSING_SOURCE_RE",
+    "RunSummary",
+    "SOURCE_ACCESS_ISSUE",
+    "SOURCE_ERROR_MARKERS",
+    "SUMMARY_MISSING_SOURCE_RE",
+    "analyze",
+    "artifact_line",
+    "build_report",
+    "duplicates",
+    "interesting_log_lines",
+    "load_run",
+    "main",
+    "manifest_uri",
+    "md_list",
+    "parse_args",
+    "parse_missing_sources",
+    "read_activity",
+    "read_badkeys",
+    "read_json",
+    "read_lines",
+    "read_puts",
+    "read_text",
+    "strip_source_error",
+    "write_badkey_list",
+    "write_list"
+   ],
+   "uses": []
+  },
+  "data-lifecycle/skills/backup-reprocess-check/scripts/run_two_run_check.py": {
+   "sha256": "9d345909283926d23341d332fc7783e18086e945fb7c78c0d1fddc45368680c5",
+   "tier": "full",
+   "symbols": [
+    "DATE_RE",
+    "DEFAULT_BUCKET",
+    "DEFAULT_PREFIX",
+    "DEFAULT_PROFILE",
+    "REPO_ROOT",
+    "SCRIPT_DIR",
+    "analyze",
+    "build_image",
+    "head_manifest",
+    "latest_manifest_date",
+    "main",
+    "manifest_key",
+    "manifest_uri",
+    "next_manifest_date",
+    "parse_args",
+    "parse_manifest_uri",
+    "run_backup_once",
+    "run_command",
+    "utc_now",
+    "utc_stamp",
+    "wait_for_manifest",
+    "write_repo_metadata"
+   ],
+   "uses": []
+  },
+  "data-lifecycle/src/badkeys.py": {
+   "sha256": "97deb945908e853d701ca59678bdee061ae86fc2e500cff30ba4a9b3efc64417",
+   "tier": "full",
+   "symbols": [
+    "BadKeyRecord",
+    "CONTROL_CHARACTER_ISSUE",
+    "ISSUE_DESCRIPTIONS",
+    "SOURCE_GET_FAILED_AFTER_HEAD_SUCCESS",
+    "append_source_get_failed_slack_section",
+    "dedupe_badkey_records",
+    "describe_issue",
+    "escape_bucket_key",
+    "make_badkey_record",
+    "merge_badkey_records",
+    "parse_badkeys_tsv_text",
+    "read_badkeys_tsv",
+    "render_source_get_failed_slack_section",
+    "source_get_failed_records",
+    "unescape_bucket_key",
+    "write_badkeys_tsv"
+   ],
+   "uses": []
+  },
+  "data-lifecycle/src/generate_cleanup_report.py": {
+   "sha256": "0349abf549f37a39399f129ee6a2c00762e43b2d6d5df6b7eada0498bf9864ff",
+   "tier": "full",
+   "symbols": [
+    "MAX_PDF_CANDIDATES",
+    "MAX_SLACK_TEXT_CHARS",
+    "PDF_INK",
+    "PDF_MUTED",
+    "PDF_NAVY",
+    "PDF_ORANGE",
+    "PDF_PALE",
+    "PDF_ROWS_PER_PAGE",
+    "PDF_RULE",
+    "PDF_TEAL",
+    "SOURCE_IDS",
+    "_candidate_path_parts",
+    "_candidate_source",
+    "_display_date",
+    "_iso",
+    "_object_count_label",
+    "_pdf_footer",
+    "_shorten_middle",
+    "_slack_link",
+    "_slack_text",
+    "build_candidates",
+    "candidate_identifier",
+    "compact_candidate_names",
+    "cost_appendix",
+    "deep_link",
+    "main",
+    "parse_args",
+    "render_html",
+    "render_pdf",
+    "render_slack_summary",
+    "write_candidates_csv"
+   ],
+   "uses": [
+    "data-lifecycle.src.generate_puts_deletes.apply_last_modified_updates",
+    "data-lifecycle.src.generate_puts_deletes.build_cleanup_window_entries",
+    "data-lifecycle.src.generate_puts_deletes.load_config_file",
+    "data-lifecycle.src.generate_puts_deletes.load_inventories",
+    "data-lifecycle.src.glacier_cost_analysis_plot.DEFAULT_COST_PER_GB_MONTH",
+    "data-lifecycle.src.glacier_cost_analysis_plot.DEFAULT_PER_OBJECT_OVERHEAD_BYTES",
+    "data-lifecycle.src.glacier_cost_analysis_plot.build_retention_points",
+    "data-lifecycle.src.glacier_cost_analysis_plot.parse_inventory_summary"
+   ]
+  },
+  "data-lifecycle/src/generate_puts_deletes.py": {
+   "sha256": "b369d93b25b28d94e136851d6a44341421dde50706c09e659af09f8199b3cbeb",
+   "tier": "full",
+   "symbols": [
+    "CONTROL_CHAR_PATTERN",
+    "DEFAULT_PROGRESS_INTERVAL_SECONDS",
+    "Stage3ProgressReporter",
+    "apply_last_modified_updates",
+    "build_cleanup_slack_message",
+    "build_cleanup_summary",
+    "build_cleanup_window_entries",
+    "build_comparison_summary",
+    "calculate_expire_date",
+    "derive_atomic_group_info",
+    "derive_folder_group",
+    "find_no_backup_prefixes",
+    "generate_put_and_delete_lists",
+    "get_required_config_value",
+    "load_config_file",
+    "load_inventories",
+    "main",
+    "output_puts_deletes_and_notifications",
+    "parse_arguments",
+    "parse_days",
+    "read_process_memory_mib",
+    "write_comparison_summary"
+   ],
+   "uses": [
+    "data-lifecycle.src.badkeys.make_badkey_record",
+    "data-lifecycle.src.badkeys.write_badkeys_tsv",
+    "data-lifecycle.src.lifecycle_controls.apply_effective_last_modified",
+    "data-lifecycle.src.lifecycle_controls.is_retention_marker",
+    "data-lifecycle.src.lifecycle_controls.lifecycle_control_mask",
+    "data-lifecycle.src.lifecycle_controls.marker_upload_mask",
+    "data-lifecycle.src.lifecycle_controls.normalize_atomic_directories",
+    "data-lifecycle.src.lifecycle_controls.scientific_inventory",
+    "data-lifecycle.src.stage4_keys.normalize_bucket_object_key"
+   ]
+  },
+  "data-lifecycle/src/glacier_cost_analysis_plot.py": {
+   "sha256": "1d7c50375cca52bf9bf988454db2afd1177ec99426602361486ef5e4442c9039",
+   "tier": "full",
+   "symbols": [
+    "DEFAULT_COST_PER_GB_MONTH",
+    "DEFAULT_INVENTORY_S3_URI",
+    "DEFAULT_NRP_ENDPOINT",
+    "DEFAULT_OUTPUT_CSV",
+    "DEFAULT_OUTPUT_PNG",
+    "DEFAULT_PER_OBJECT_OVERHEAD_BYTES",
+    "DEFAULT_POLICY_CONFIG",
+    "InventorySummary",
+    "RetentionPoint",
+    "build_retention_points",
+    "coerce_as_of_date",
+    "compute_single_retention_point",
+    "download_inventory_from_s3",
+    "fmt_tib",
+    "fmt_usd",
+    "list_inventory_candidates",
+    "load_cold_storage_expire_days",
+    "main",
+    "make_s3_client",
+    "open_inventory_text",
+    "parse_args",
+    "parse_inventory_summary",
+    "parse_inventory_timestamp",
+    "parse_local_inventory_timestamp",
+    "parse_s3_uri",
+    "plot_retention_analysis",
+    "resolve_nrp_endpoint",
+    "write_summary_csv"
+   ],
+   "uses": []
+  },
+  "data-lifecycle/src/lifecycle_constants.py": {
+   "sha256": "e92a628b8f77822b5ca15671c97f2388f7bc6714985ff6e34aa7a25566b94c7b",
+   "tier": "full",
+   "symbols": [
+    "FILE_RETENTION_SUFFIX",
+    "NOBACKUP_MARKER_NAME",
+    "RETENTION_MARKER_NAME"
+   ],
+   "uses": []
+  },
+  "data-lifecycle/src/lifecycle_controls.py": {
+   "sha256": "3dab0d7dce76646cea29e0266d94101ec724e46b154d2a655413eda734da52a8",
+   "tier": "full",
+   "symbols": [
+    "apply_effective_last_modified",
+    "atomic_group_for_key",
+    "atomic_retention_marker",
+    "file_retention_marker",
+    "is_lifecycle_control_key",
+    "is_nobackup_marker",
+    "is_retention_marker",
+    "lifecycle_control_mask",
+    "marker_upload_mask",
+    "normalize_atomic_directories",
+    "retention_marker_mask",
+    "retention_marker_target",
+    "scientific_inventory"
+   ],
+   "uses": [
+    "data-lifecycle.src.lifecycle_constants.FILE_RETENTION_SUFFIX",
+    "data-lifecycle.src.lifecycle_constants.NOBACKUP_MARKER_NAME",
+    "data-lifecycle.src.lifecycle_constants.RETENTION_MARKER_NAME"
+   ]
+  },
+  "data-lifecycle/src/stage4_keys.py": {
+   "sha256": "2c49ad211f8aa85ccb9e91f8a68d6a663bce1f920cada3b223e6208ae9b9caf1",
+   "tier": "full",
+   "symbols": [
+    "EMBEDDED_S3_SCHEME_CANONICAL_RE",
+    "EMBEDDED_S3_SCHEME_RE",
+    "RCLONE_DOT_DOT_SEGMENT",
+    "RCLONE_DOT_SEGMENT",
+    "build_source_lookup_candidates",
+    "collapse_embedded_s3_scheme",
+    "denormalize_rclone_dot_segments",
+    "load_put_keys",
+    "normalize_bucket_object_key",
+    "normalize_object_key",
+    "normalize_put_key",
+    "normalize_rclone_dot_segments",
+    "restore_embedded_s3_scheme"
+   ],
+   "uses": []
+  },
+  "data-lifecycle/src/stage4_process_puts_deletes.py": {
+   "sha256": "64cfc398aa07068d55e3e104425a57cb23c5076bd485bd54ea72c818ab33e6bc",
+   "tier": "full",
+   "symbols": [
+    "AWS_PROFILE",
+    "ActivityLogger",
+    "COPY_CHUNK_BYTES",
+    "DEFAULT_AWS_MAX_ATTEMPTS",
+    "DEFAULT_AWS_MAX_POOL_CONNECTIONS",
+    "DEFAULT_AWS_REGION",
+    "DEFAULT_AWS_RETRY_MODE",
+    "DEFAULT_MAX_PENDING_TASKS",
+    "DEFAULT_NRP_ENDPOINT",
+    "DEFAULT_PROGRESS_INTERVAL_SECONDS",
+    "DEFAULT_PROGRESS_STALL_ALERT_SECONDS",
+    "DEFAULT_RETRIES",
+    "DEFAULT_RETRY_BASE_SECONDS",
+    "DEFAULT_RETRY_MAX_SECONDS",
+    "DEFAULT_WORKERS",
+    "EXIT_STAGE4_PUTS_LOAD_FAILURE",
+    "EXIT_STAGE4_RUNTIME_FAILURE",
+    "EXIT_STAGE4_UPLOAD_FRACTION_GUARD",
+    "EXIT_SUCCESS",
+    "GLACIER_BUCKET",
+    "LOCAL_SCRATCH_DIR",
+    "MULTIPART_PART_SIZE_BYTES",
+    "NRP_ENDPOINT",
+    "ProgressStats",
+    "UploadFractionGuardError",
+    "_s3_client",
+    "_source_s3_client",
+    "build_s3_client",
+    "build_source_s3_client",
+    "classify_error",
+    "compact_key",
+    "copy_file",
+    "env_float",
+    "env_int",
+    "find_head_visible_source_key",
+    "format_duration",
+    "get_s3_client",
+    "get_source_s3_client",
+    "head_object_exists",
+    "is_missing_source_error",
+    "is_retryable_error",
+    "main",
+    "open_source_object",
+    "process_files",
+    "progress_reporter",
+    "source_head_object_exists",
+    "split_s3_uri",
+    "stream_upload",
+    "update_source_access_artifacts",
+    "upload_primary_inventory_artifact",
+    "utc_now_iso",
+    "validate_upload_fraction_guard"
+   ],
+   "uses": [
+    "data-lifecycle.src.badkeys.SOURCE_GET_FAILED_AFTER_HEAD_SUCCESS",
+    "data-lifecycle.src.badkeys.append_source_get_failed_slack_section",
+    "data-lifecycle.src.badkeys.make_badkey_record",
+    "data-lifecycle.src.badkeys.merge_badkey_records",
+    "data-lifecycle.src.badkeys.read_badkeys_tsv",
+    "data-lifecycle.src.badkeys.source_get_failed_records",
+    "data-lifecycle.src.badkeys.write_badkeys_tsv",
+    "data-lifecycle.src.lifecycle_controls.is_retention_marker",
+    "data-lifecycle.src.stage4_keys.build_source_lookup_candidates",
+    "data-lifecycle.src.stage4_keys.load_put_keys",
+    "data-lifecycle.src.stage4_keys.normalize_bucket_object_key"
+   ]
+  },
+  "data-lifecycle/src/stage4_upload_poc.py": {
+   "sha256": "14117488a22591ea5070b1205aa63d8464f7521d7a392b075a1f04364ab98e59",
+   "tier": "full",
+   "symbols": [
+    "DEFAULT_AWS_PROFILE",
+    "DEFAULT_AWS_REGION",
+    "DEFAULT_CHUNK_SIZE_MIB",
+    "DEFAULT_MULTIPART_UPLOAD",
+    "DEFAULT_PART_SIZE_MIB",
+    "DEFAULT_RCLONE_CHUNK_SIZE_MIB",
+    "DEFAULT_RCLONE_DISABLE_CHECKSUM",
+    "DEFAULT_RCLONE_S3_PROVIDER",
+    "DEFAULT_RCLONE_UPLOAD_CONCURRENCY",
+    "DEFAULT_RCLONE_USE_PRESIGNED_REQUEST",
+    "DEFAULT_RCLONE_USE_UNSIGNED_PAYLOAD",
+    "DEFAULT_UPLOADER",
+    "build_client",
+    "main",
+    "parse_args",
+    "parse_s3_url",
+    "upload_with_aws_cli",
+    "upload_with_rclone",
+    "upload_with_smart_open"
+   ],
+   "uses": []
+  },
+  "docker-maintenance/maintenance.py": {
+   "sha256": "c294f29378eca487593a169b946ded33243a133706b4febed415ba8366c9164b",
+   "tier": "full",
+   "symbols": [
+    "Config",
+    "DAY",
+    "GIB",
+    "HOUR",
+    "INTERVAL",
+    "LOG",
+    "Maintenance",
+    "NoRedirect",
+    "State",
+    "disk_critical",
+    "docker",
+    "health_reasons",
+    "load_state",
+    "main",
+    "measure_disk",
+    "notify",
+    "observe_daemon",
+    "prune_images",
+    "save_state"
+   ],
+   "uses": []
+  },
+  "experiment-dash/assets/style.css": {
+   "sha256": "119f9f9c184b37bfd68356f104ddecd34a3f8dd2fcab4ead1704d18525116ce7",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "experiment-dash/dashboard_helpers.py": {
+   "sha256": "168d4ccd9d44cf63cdad2fabd36ebef48430645dbb679dc9e0e6fdc87f2c65ce",
+   "tier": "full",
+   "symbols": [
+    "ROOT_TOPIC",
+    "check_uuid_format",
+    "command",
+    "create_uuid",
+    "end",
+    "generate_topic",
+    "logging_token",
+    "mb",
+    "pause",
+    "ping",
+    "resume",
+    "s3_basepath",
+    "sched_add",
+    "sched_clear",
+    "send_message",
+    "send_to_all_teammates",
+    "start",
+    "status",
+    "stop"
+   ],
+   "uses": []
+  },
+  "experiment-dash/experiment-plotly-app.py": {
+   "sha256": "2f63b6bf2331caa65b2745e53aad684eff3d9a9110138c4a19904bcd58cebabc",
+   "tier": "full",
+   "symbols": [
+    "allow_duplicate",
+    "app",
+    "handle_command_button",
+    "handle_end_button",
+    "handle_pause_button",
+    "handle_ping_button",
+    "handle_resume_button",
+    "handle_sched_add_button",
+    "handle_sched_clear_button",
+    "handle_start_end_button",
+    "handle_status_button",
+    "handle_stop_button",
+    "load_json",
+    "populate_device_checklist",
+    "toggle_collapse",
+    "update_device_states",
+    "update_output",
+    "update_time",
+    "update_value"
+   ],
+   "uses": [
+    "experiment-dash.dashboard_helpers.*"
+   ]
+  },
+  "job-h5repack/get_task.py": {
+   "sha256": "23fb480976107225f82d87ba0c0918e0d95f5eef38b5f4355274adb2191fcfe3",
+   "tier": "full",
+   "symbols": [
+    "q",
+    "queue_name",
+    "uuid"
+   ],
+   "uses": []
+  },
+  "job-h5repack/init.py": {
+   "sha256": "cc135cf0dbed859e46bf41ba46e746d9dffc94a986d98ab431dbb5a41bdd2ce6",
+   "tier": "full",
+   "symbols": [
+    "main"
+   ],
+   "uses": []
+  },
+  "job-h5repack/update_metadata.py": {
+   "sha256": "c9dcb901180842a18aa7d069c5f92d8863c8ca2955463613307127105bd93124",
+   "tier": "full",
+   "symbols": [
+    "main",
+    "save_metadata"
+   ],
+   "uses": []
+  },
+  "logging-s3-aggregator/log_aggregator.py": {
+   "sha256": "8cc6135dc60f2cee30e24c9abcc598475a871a6a53f5605881199f6b09c1b468",
+   "tier": "full",
+   "symbols": [
+    "batch_100_logs",
+    "combine_logs",
+    "delete_s3_object",
+    "format_log_entries",
+    "log_to_stderr",
+    "main",
+    "s3_client"
+   ],
+   "uses": []
+  },
+  "logging-s3/log.py": {
+   "sha256": "21c40f1cf7660dfce12e8cfef06eed6080b58c7510b509718b3cb2196e33f4af",
+   "tier": "full",
+   "symbols": [
+    "main"
+   ],
+   "uses": []
+  },
+  "nginx-reverse-proxy/static/index.html": {
+   "sha256": "c0f85f9deeb17343f3bff2df6cef4d7b19fb1f7b792551554a782b06922c8213",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "oauth2-proxy/error.html": {
+   "sha256": "74cb0f0171e41658b73d5f7c25e0d91ff594387e467373048b00c08976a3012e",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "plotly-dash-picroscope-control-console/Experiment_Metadata_SQL.py": {
+   "sha256": "998142e6f0b3fd6a533588bf258b9f2f77801c6915e0514df40ba6f4b0406ae4",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "plotly-dash-picroscope-control-console/app.py": {
+   "sha256": "d4e658c35c4b096cc1260f06e52694163ecb5189e9d5a0f86491a89d0cb67175",
+   "tier": "full",
+   "symbols": [
+    "app",
+    "base_path"
+   ],
+   "uses": [
+    "plotly-dash-picroscope-control-console.app_elements.experiment_panel",
+    "plotly-dash-picroscope-control-console.app_elements.imaging_panel",
+    "plotly-dash-picroscope-control-console.app_elements.livestream_panel",
+    "plotly-dash-picroscope-control-console.callbacks.db_interactor",
+    "plotly-dash-picroscope-control-console.callbacks.get_callbacks"
+   ]
+  },
+  "plotly-dash-picroscope-control-console/app_elements/experiment_panel.py": {
+   "sha256": "f4073fe66c6c01954e206e46db769e1702bd3ae40c8053da707906d4643385d3",
+   "tier": "full",
+   "symbols": [
+    "EXPERIMENT_PANEL",
+    "get_callbacks"
+   ],
+   "uses": [
+    "plotly-dash-picroscope-control-console.callbacks.*"
+   ]
+  },
+  "plotly-dash-picroscope-control-console/app_elements/imaging_panel.py": {
+   "sha256": "c0be7aebfc81eff13500b54183e94c907b0302f143b0e0939cd0d21c1d36bd48",
+   "tier": "full",
+   "symbols": [
+    "IMAGING_PANEL",
+    "alert",
+    "base_path",
+    "url"
+   ],
+   "uses": [
+    "plotly-dash-picroscope-control-console.callbacks.db_interactor"
+   ]
+  },
+  "plotly-dash-picroscope-control-console/app_elements/livestream_panel.py": {
+   "sha256": "9a366de90112c6999abb588e23693d578a79f2ac963e842a071f8de321af0fc6",
+   "tier": "full",
+   "symbols": [
+    "LIVESTREAM_PANEL"
+   ],
+   "uses": []
+  },
+  "plotly-dash-picroscope-control-console/assets/resizing_script.js": {
+   "sha256": "f210ea99563318895242834e7e1058ff689aa7eb5a94633ff1d1a08caa6ba702",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "plotly-dash-picroscope-control-console/assets/styles.css": {
+   "sha256": "4797946f214b84d95590889d8283d116e14d34d57b7e59b5f44d9aeb2b520ab1",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "plotly-dash-picroscope-control-console/callbacks.py": {
+   "sha256": "6992457ab15ff4b514c3e6d65b27a2a40107c9cceeac9fbf959ee635956f769b",
+   "tier": "full",
+   "symbols": [
+    "brokerString",
+    "db_interactor",
+    "endpoint",
+    "get_callbacks",
+    "gh",
+    "mb",
+    "repo",
+    "shadows_api_key"
+   ],
+   "uses": [
+    "plotly-dash-picroscope-control-console.Experiment_Metadata_SQL.*"
+   ]
+  },
+  "service-accounts/app/token_service.py": {
+   "sha256": "c76d1177321204ecc7aa5c65324c593cf48d03bc93425c4f94c1c079be8e7cd4",
+   "tier": "full",
+   "symbols": [
+    "AUTH0_API_AUDIENCE",
+    "AUTH0_CLIENT_ID",
+    "AUTH0_CLIENT_SECRET",
+    "AUTH0_DOMAIN",
+    "DEFAULT_SERVICE_ACCOUNT_EXPIRATION_DAYS",
+    "_format_utc",
+    "_json_response",
+    "_parse_requested_days",
+    "_service_account_token",
+    "_utcnow",
+    "app",
+    "generate_token",
+    "healthz"
+   ],
+   "uses": []
+  },
+  "shadows_vue/babel.config.js": {
+   "sha256": "3e9eacd9013b5c4ce3a71e8d1d84fbb78ebe79a68855a6de54d3a16670bbf8e0",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "shadows_vue/public/index.html": {
+   "sha256": "4627e56114e37a2f3b57a01fc01c344d887fa6a76a73fbe43f4cc597b9f821ad",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "shadows_vue/src/assets/css/styles.css": {
+   "sha256": "186419c47e46d1688974fe6d1d4688d7234f1790113a0c1e933526b522c9a04c",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "shadows_vue/src/auth/auth0-plugin.js": {
+   "sha256": "b21bc321f55230269722d75cfd3e29db462ff58b429d2661d11ca1ef3a60e80f",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "shadows_vue/src/main.js": {
+   "sha256": "d74abe5e7be0cf9e1073cea1404d1021d0ef4bbdcc166df210698bdd7fb0229d",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "shadows_vue/src/router/index.js": {
+   "sha256": "20229fd097f3aa0bdf3a8977d1ca81422c49acf3237b930a1f856bf48b72bd50",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "shadows_vue/vue.config.js": {
+   "sha256": "dd6cde29732538d16901011777ba40da678b2997461014d6872c4e0a6542c30d",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/__init__.py": {
+   "sha256": "b19dfcc333d6a75dfd73073901164507252f271b41d3b5f7d85510033a0547a7",
+   "tier": "full",
+   "symbols": [
+    "YAMLObject",
+    "YAMLObjectMetaclass",
+    "__version__",
+    "add_constructor",
+    "add_implicit_resolver",
+    "add_multi_constructor",
+    "add_multi_representer",
+    "add_path_resolver",
+    "add_representer",
+    "compose",
+    "compose_all",
+    "dump",
+    "dump_all",
+    "emit",
+    "full_load",
+    "full_load_all",
+    "load",
+    "load_all",
+    "parse",
+    "safe_dump",
+    "safe_dump_all",
+    "safe_load",
+    "safe_load_all",
+    "scan",
+    "serialize",
+    "serialize_all",
+    "unsafe_load",
+    "unsafe_load_all",
+    "warnings"
+   ],
+   "uses": [
+    "skills.braingeneers-one.scripts._vendor.yaml.dumper.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.error.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.events.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.loader.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.nodes.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.tokens.*"
+   ]
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/composer.py": {
+   "sha256": "fcaa37d16afa783594794a5ab94193dcb720f503c19ce3d59539c8311189f453",
+   "tier": "full",
+   "symbols": [
+    "Composer",
+    "ComposerError",
+    "__all__"
+   ],
+   "uses": [
+    "skills.braingeneers-one.scripts._vendor.yaml.error.MarkedYAMLError",
+    "skills.braingeneers-one.scripts._vendor.yaml.events.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.nodes.*"
+   ]
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/constructor.py": {
+   "sha256": "90d8247da78b524c10618fd0e857f54f3d97570fe91b5c5513d024ef3faf88b0",
+   "tier": "full",
+   "symbols": [
+    "BaseConstructor",
+    "Constructor",
+    "ConstructorError",
+    "FullConstructor",
+    "SafeConstructor",
+    "UnsafeConstructor",
+    "__all__"
+   ],
+   "uses": [
+    "skills.braingeneers-one.scripts._vendor.yaml.error.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.nodes.*"
+   ]
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/dumper.py": {
+   "sha256": "3cb72d66563064ba7b5e679477046ebf89d8399d940670c8532f3e94a7cb17ea",
+   "tier": "full",
+   "symbols": [
+    "BaseDumper",
+    "Dumper",
+    "SafeDumper",
+    "__all__"
+   ],
+   "uses": [
+    "skills.braingeneers-one.scripts._vendor.yaml.emitter.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.representer.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.resolver.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.serializer.*"
+   ]
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/emitter.py": {
+   "sha256": "8e086d694ede170837d5b1b407b45979aff6f40762f422a65eafd08e04290a44",
+   "tier": "full",
+   "symbols": [
+    "Emitter",
+    "EmitterError",
+    "ScalarAnalysis",
+    "__all__"
+   ],
+   "uses": [
+    "skills.braingeneers-one.scripts._vendor.yaml.error.YAMLError",
+    "skills.braingeneers-one.scripts._vendor.yaml.events.*"
+   ]
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/error.py": {
+   "sha256": "021f73fada072546c4f63f8cf18a7181244ce4280b09cc15cc980b2d1176171a",
+   "tier": "full",
+   "symbols": [
+    "Mark",
+    "MarkedYAMLError",
+    "YAMLError",
+    "__all__"
+   ],
+   "uses": []
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/events.py": {
+   "sha256": "e74fd392c810884e2ea7e94aa3f57e9c1cbeb402319083d0c58e6a0e1282787c",
+   "tier": "full",
+   "symbols": [
+    "AliasEvent",
+    "CollectionEndEvent",
+    "CollectionStartEvent",
+    "DocumentEndEvent",
+    "DocumentStartEvent",
+    "Event",
+    "MappingEndEvent",
+    "MappingStartEvent",
+    "NodeEvent",
+    "ScalarEvent",
+    "SequenceEndEvent",
+    "SequenceStartEvent",
+    "StreamEndEvent",
+    "StreamStartEvent"
+   ],
+   "uses": []
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/loader.py": {
+   "sha256": "5156becc8aa6905482218abf3e04869b835226db4763645fff3438fdbd5f1cdd",
+   "tier": "full",
+   "symbols": [
+    "BaseLoader",
+    "FullLoader",
+    "Loader",
+    "SafeLoader",
+    "UnsafeLoader",
+    "__all__"
+   ],
+   "uses": [
+    "skills.braingeneers-one.scripts._vendor.yaml.composer.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.constructor.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.parser.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.reader.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.resolver.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.scanner.*"
+   ]
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/nodes.py": {
+   "sha256": "80f28d8fca4a09d87677882bde021820d9cf39a3b11a12405226211919cf13ce",
+   "tier": "full",
+   "symbols": [
+    "CollectionNode",
+    "MappingNode",
+    "Node",
+    "ScalarNode",
+    "SequenceNode"
+   ],
+   "uses": []
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/parser.py": {
+   "sha256": "8a55a9e6fbe0a07146cef3990c8b45a068c3e83e369e1959ad9ca30306b4a09a",
+   "tier": "full",
+   "symbols": [
+    "Parser",
+    "ParserError",
+    "__all__"
+   ],
+   "uses": [
+    "skills.braingeneers-one.scripts._vendor.yaml.error.MarkedYAMLError",
+    "skills.braingeneers-one.scripts._vendor.yaml.events.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.scanner.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.tokens.*"
+   ]
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/reader.py": {
+   "sha256": "d1d9b38ab3a20c6e17a38d519ee412ecaf6b918df18c78956ac7c330d4ea08dc",
+   "tier": "full",
+   "symbols": [
+    "Reader",
+    "ReaderError",
+    "__all__"
+   ],
+   "uses": [
+    "skills.braingeneers-one.scripts._vendor.yaml.error.Mark",
+    "skills.braingeneers-one.scripts._vendor.yaml.error.YAMLError"
+   ]
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/representer.py": {
+   "sha256": "22e58ff9c016f6c1ca1274b4802a926bcf78935060e1c813c5a0f021c6d143e6",
+   "tier": "full",
+   "symbols": [
+    "BaseRepresenter",
+    "Representer",
+    "RepresenterError",
+    "SafeRepresenter",
+    "__all__"
+   ],
+   "uses": [
+    "skills.braingeneers-one.scripts._vendor.yaml.error.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.nodes.*"
+   ]
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/resolver.py": {
+   "sha256": "f4bf9561f9b89961f1503d558385fbae30d12bfed565de9bf76c33abb63620a6",
+   "tier": "full",
+   "symbols": [
+    "BaseResolver",
+    "Resolver",
+    "ResolverError",
+    "__all__"
+   ],
+   "uses": [
+    "skills.braingeneers-one.scripts._vendor.yaml.error.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.nodes.*"
+   ]
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/scanner.py": {
+   "sha256": "60433788b652690c17710460da5d91e0c753d3318fd85f5e1e42862a71f25906",
+   "tier": "full",
+   "symbols": [
+    "Scanner",
+    "ScannerError",
+    "SimpleKey",
+    "__all__"
+   ],
+   "uses": [
+    "skills.braingeneers-one.scripts._vendor.yaml.error.MarkedYAMLError",
+    "skills.braingeneers-one.scripts._vendor.yaml.tokens.*"
+   ]
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/serializer.py": {
+   "sha256": "0a1b85826854d35863e31808f0668abfabdf33606e8f06bd8bb7761401e3edc0",
+   "tier": "full",
+   "symbols": [
+    "Serializer",
+    "SerializerError",
+    "__all__"
+   ],
+   "uses": [
+    "skills.braingeneers-one.scripts._vendor.yaml.error.YAMLError",
+    "skills.braingeneers-one.scripts._vendor.yaml.events.*",
+    "skills.braingeneers-one.scripts._vendor.yaml.nodes.*"
+   ]
+  },
+  "skills/braingeneers-one/scripts/_vendor/yaml/tokens.py": {
+   "sha256": "953408cd2570f0c83dc2fe39f7e4e388e41eeb05738aa69196a5f6ffcf6ba79e",
+   "tier": "full",
+   "symbols": [
+    "AliasToken",
+    "AnchorToken",
+    "BlockEndToken",
+    "BlockEntryToken",
+    "BlockMappingStartToken",
+    "BlockSequenceStartToken",
+    "DirectiveToken",
+    "DocumentEndToken",
+    "DocumentStartToken",
+    "FlowEntryToken",
+    "FlowMappingEndToken",
+    "FlowMappingStartToken",
+    "FlowSequenceEndToken",
+    "FlowSequenceStartToken",
+    "KeyToken",
+    "ScalarToken",
+    "StreamEndToken",
+    "StreamStartToken",
+    "TagToken",
+    "Token",
+    "ValueToken"
+   ],
+   "uses": []
+  },
+  "skills/braingeneers-one/scripts/suite.py": {
+   "sha256": "f130d3a538d2ea942aa50a6f323b337c690e1afe5114f41638ec4b6fc79781ec",
+   "tier": "full",
+   "symbols": [
+    "Failure",
+    "ONE",
+    "Suite",
+    "TRACKING",
+    "_previous_dont_write_bytecode",
+    "_yaml_spec",
+    "api",
+    "blob_sha",
+    "command",
+    "files_at",
+    "fingerprint",
+    "frontmatter",
+    "load_catalog",
+    "main",
+    "without_tracking",
+    "yaml"
+   ],
+   "uses": []
+  },
+  "skills/mission-control-services-management/scripts/authenticate.py": {
+   "sha256": "8f4237da50642c62fa40ca35dd290ccb92f303d6a3f4f2e90eed797a262719ea",
+   "tier": "full",
+   "symbols": [
+    "LOGIN_URL",
+    "MAX_RESPONSE",
+    "SignInError",
+    "check_response",
+    "collect_response",
+    "load_response",
+    "main",
+    "read_private_response",
+    "save_response",
+    "select_path",
+    "validate_response"
+   ],
+   "uses": []
+  },
+  "skills/nrp-cluster/references/memory_peak.py": {
+   "sha256": "5b90bf4064c2e7a14f4cfc0cf2537c7350c5eaf328c4021d63adb242462b5ddc",
+   "tier": "full",
+   "symbols": [
+    "main",
+    "measure"
+   ],
+   "uses": []
+  },
+  "slack-bridge/slack_bridge.py": {
+   "sha256": "8226766900ff4ebdae25a4f810116ae5aae5fc531441d0bea0c639e5ad7c468a",
+   "tier": "full",
+   "symbols": [
+    "_graceful_shutdown",
+    "_handler",
+    "_post_message_with_retry",
+    "_retry_after",
+    "_upload_file_with_retry",
+    "app",
+    "config",
+    "get_channel_name",
+    "handle_slack_event",
+    "healthz",
+    "mb",
+    "mqtt_to_slack_callback",
+    "safe_publish",
+    "shutdown_flag",
+    "slack_client",
+    "slack_signing_secret",
+    "slack_token"
+   ],
+   "uses": []
+  },
+  "smartplug-dash/smartplug-dashboard.py": {
+   "sha256": "e7e3dc865a7260ef02f238d0f5c631e905c062fff4f4628d8092c5ca45d8d4df",
+   "tier": "full",
+   "symbols": [
+    "smartplug",
+    "smartplugs_list",
+    "toggle_smartplugs"
+   ],
+   "uses": []
+  },
+  "strapi-shadows-db/config/admin.js": {
+   "sha256": "14f783d275cd745bf8afe36c411a6357a52d1a113fbe842e8a4d870c99caf1e1",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/config/api.js": {
+   "sha256": "f5a0f53aa2765795bc67eefcaa1c49a5f72d38767793088d30a7b79ee8f08514",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/config/database.js": {
+   "sha256": "fb7cc3b65b8d8265532632930755144ff884f632cd8fba7efbe11838be251cd5",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/config/middlewares.js": {
+   "sha256": "ba74e657785469080d773b90087a0ff1e17c78b680f65139c0f38764c7024e59",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/config/plugins.js": {
+   "sha256": "34265b48f45fd7be5d12959f663a4ba40126f14e8a36219c4e0bc6c83634ffc7",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/config/server.js": {
+   "sha256": "d3bd2d60d3183724b43e044e407734291f8756d406add4170b0012ff811fa90b",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/admin/app.example.js": {
+   "sha256": "a6a94b7d06936ddbc6275309c298afb9633c90359f72c86e333f11f408b2657d",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/admin/webpack.config.example.js": {
+   "sha256": "080582486fae5d28aefd86cee5a9a01622976ba6d53c94795ca20e4c22f5e1ad",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/experiment/controllers/experiment.js": {
+   "sha256": "e75e323a21e1edc57f79ac9365f7a753fa42af0b2791fa54985407faa70173d4",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/experiment/routes/experiment.js": {
+   "sha256": "5333218ee2653985a70c3f5052da5cef51ace9e914ab38696be178fef0f8424c",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/experiment/services/experiment.js": {
+   "sha256": "029e295f9438984c1067d195c2f90b18d282fc6e9f5636c47062ad30f6251dc0",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/interaction-thing/controllers/interaction-thing.js": {
+   "sha256": "b5b619c1428ba8953186946bdc0466004438013d56b80b4ed5a253affe51b075",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/interaction-thing/routes/interaction-thing.js": {
+   "sha256": "c4544b59e9fe57712ddd96cc5607987ddbe248172ef0ba34d71842d6132311b8",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/interaction-thing/services/interaction-thing.js": {
+   "sha256": "8e18bef511a035931ff3fa262f6febe3757d4c0046f1fb0b89fcca714f354141",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/plate/controllers/plate.js": {
+   "sha256": "f5b426a0935bcec4d545613e0e5ef05de0111f7dce2b56b917e3d4c9e8bbfea0",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/plate/routes/plate.js": {
+   "sha256": "67e570f0c76593ba5c11bd3043e0fc04e75c01cc9eb0cd02b35120323fca3ee3",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/plate/services/plate.js": {
+   "sha256": "453f9545534b91880aef372b9afeedf6cda23a6f78de84367c9333a0a38a2ab1",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/sample/controllers/sample.js": {
+   "sha256": "58430299cdcaa73f324784eea88bd73f3678bf41cd0e26bdadceb72ccf766d7b",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/sample/routes/sample.js": {
+   "sha256": "da5d96e0216acbe2fd66fe8c23b1839cdbd8510ed1e7b80e7b62e94069acde35",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/sample/services/sample.js": {
+   "sha256": "0bf1d0891a2c433ab99b82692ba2736fc914765cb022daf1d8f509ba0557de2d",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/well/controllers/well.js": {
+   "sha256": "ba7b061f9462800dd593beb4eb8362e7b9df1a325cf27582398e82cf809e678d",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/well/routes/well.js": {
+   "sha256": "b8999d8fc1cded883da3e80d4229a75a4d229c254df799c42a1f498b59308251",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/api/well/services/well.js": {
+   "sha256": "3c04bb9faa37b92c1d72bc0c04abbab01afc06a713391a7b49dd40a4f101fb90",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  },
+  "strapi-shadows-db/src/index.js": {
+   "sha256": "a725d91dee24be33d3e4a0f4749b801972a0c23c752a1482e8a4167eaa115e87",
+   "tier": "full",
+   "symbols": [],
+   "uses": []
+  }
+ },
+ "stale_files": [
+  "skills/nrp-monitor/rewrite/r3b/graph.py",
+  "skills/nrp-monitor/rewrite/r3b/names.py",
+  "skills/nrp-monitor/rewrite/r3b/piece4-agents-backends.py",
+  "skills/nrp-monitor/rewrite/r3b/toplevel.py",
+  "skills/nrp-monitor/rewrite/shadow/compare.py",
+  "skills/nrp-monitor/rewrite/shadow/run.py",
+  "skills/nrp-monitor/scripts/nrp_monitor/cli.py",
+  "skills/nrp-monitor/scripts/nrp_monitor/cli_args.py",
+  "skills/nrp-monitor/scripts/nrp_monitor/shadow.py"
+ ],
+ "include_tests": false,
+ "trivial_files": {
+  "skills/nrp-monitor/scripts/nrp_monitor/__init__.py": "48313dbbd91f1fab1c1e20a988b185a3a0e76d8c78fb405a429dcbf46e25c33a",
+  "skills/nrp-monitor/scripts/nrp_monitor/task/__init__.py": "3580f4d2a79f241ce09d9c6512844d9c33c02ac751e3f6e62c6453c215d7e3d4"
+ }
 }

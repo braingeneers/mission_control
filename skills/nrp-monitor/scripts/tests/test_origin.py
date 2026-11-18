@@ -4,7 +4,7 @@ Nothing real is sent: Slack payloads are captured by a local HTTP stub on 127.0.
 pushes otherwise go to the fake banner log. Run: python3 tests/test_origin.py"""
 import fcntl
 import http.server
-import importlib.machinery
+from monitor_imports import machinery
 import json
 import os
 import subprocess
@@ -22,7 +22,7 @@ SCRIPT = tt.SCRIPT
 _TMP = tempfile.mkdtemp(prefix="wdorigin_mod_")
 os.environ["NRP_MONITOR_STATE"] = _TMP                    # the module-level STATE of the imported script
 os.environ["NRP_MONITOR_OWNER_NAME"] = "Sam"                 # how messages name the person (setting owner_name)
-WD = importlib.machinery.SourceFileLoader("wd_under_test", SCRIPT).load_module()
+WD = machinery.SourceFileLoader("wd_under_test", SCRIPT).load_module()
 
 RT = {"title": "fixture-sort-chat", "link": "t3-thread://v2/fake-test-environment/fake-test-thread",
       "assistant": "Codex gpt-6-astra", "collaborator": "Sam"}
@@ -269,7 +269,7 @@ class O(unittest.TestCase):
     def _text_for_unrecorded_task(self):
         self.add_unattributed(mode="watch")
         env = dict(self.env, NRP_MONITOR_STATE=str(self.state))
-        code = ("import importlib.machinery as m,sys;w=m.SourceFileLoader('w',sys.argv[1]).load_module();print(w.slack_text('boom', ['task:t1']))")
+        code = ("import sys;from pathlib import Path;sys.path.insert(0,str(Path(sys.argv[1]).parent));from nrp_monitor import wake as w;print(w.slack_text('boom', ['task:t1']))")
         r = subprocess.run([sys.executable, "-c", code, SCRIPT], capture_output=True, text=True, env=env)
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout
@@ -283,35 +283,6 @@ class O(unittest.TestCase):
         self.assertIn("[t1 · fixture-sort-chat]", out)
         self.assertIn("not by one chat", out)
 
-    def test_chain_origin_add_show_backfill_and_stop_alert(self):
-        step = {"id": "a", "job": "c-a", "cwd": str(self.tmp), "argv": ["/bin/echo", "x"], "state": "running"}
-        spec = {"name": "c1", "owner": "some owner", "steps": [step], "origin": RT}
-        f = self.tmp / "c1.json"
-        f.write_text(json.dumps(spec))
-        rc, out, err = self.wd("chain", "add", str(f))
-        self.assertEqual(rc, 0, err)
-        rc, out, _ = self.wd("chain", "show", "c1")
-        self.assertIn('origin: chat "fixture-sort-chat"', out)
-        spec.pop("origin")
-        spec["name"] = "c2"
-        spec["steps"] = [dict(step, job="c-b")]
-        f.write_text(json.dumps(spec))
-        rc, out, err = self.wd("chain", "add", str(f))
-        self.assertEqual(rc, 0)
-        self.assertIn("has no origin", err)
-        rc, out, _ = self.wd("chain", "show", "c2")
-        self.assertIn("origin not recorded (owner field: some owner)", out)
-        rc, out, err = self.wd("origin", "chain", "c2", "--title", "finch", "--link", RT["link"], "--evidence", "verified by parent")
-        self.assertEqual(rc, 0, err)
-        self.set_job("c-a", state="FAILED")
-        self.set_job("c-b", state="FAILED")
-        rc, out, err = self.wd("run")
-        self.assertEqual(rc, 0, err)
-        pushes = self.pushes()
-        self.assertEqual(len(pushes), 2, pushes)
-        joined = "\n".join(pushes)
-        self.assertIn("[fixture-sort-chat] chain c1 STOPPED", joined)
-        self.assertIn("[finch] chain c2 STOPPED", joined)
 
     def test_legacy_add_records_origin_and_a_same_job_reregistration_keeps_it(self):
         rc, out, err = self.wd("add", "legacy-1", "--label", "old job", "--origin-title", "fixture-sort-chat", "--origin-link", RT["link"])

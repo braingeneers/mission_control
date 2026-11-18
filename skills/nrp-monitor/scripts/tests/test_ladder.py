@@ -101,6 +101,15 @@ class LadderTests(Ladder):
     def sonnet_plan_stop(self, line="STOPPED: cannot tell why the worker stopped"):
         self.plan({"cmds": [["nrp-task", "report", "STOPPED", line[9:]]], "result": line})
 
+    def test_judge_is_off_by_default_and_failure_reaches_fixer(self):
+        (self.state / "config.json").write_text(json.dumps({"deputy_enabled": False}))
+        self.add()
+        self.unknown_failure()
+        self.sonnet_plan_stop()
+        self.run_pass()
+        self.assertEqual(self.agent_models(), ["sonnet"])
+        self.assertNotIn("Tier 1 triage:", self.events())
+
     # ---------------------------------------------------------------- Tier 1: benign / no fix needed closes the event
     def test_benign_closes_the_event_without_owner_or_fix_agent(self):
         self.add()
@@ -298,7 +307,7 @@ class LadderTests(Ladder):
 
     def mod_wake_tries(self):
         import re
-        return int(re.search(r"^WAKE_MAX_TRIES = (\d+)", Path(test_tasks.SCRIPT).read_text(), re.M).group(1))
+        return int(re.search(r"^WAKE_MAX_TRIES = (\d+)", (Path(test_tasks.SCRIPT).parent / "nrp_monitor" / "state.py").read_text(), re.M).group(1))
 
     def test_no_webhook_means_the_owner_is_told(self):
         self.add()

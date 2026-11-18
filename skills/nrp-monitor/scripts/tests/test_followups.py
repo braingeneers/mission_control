@@ -43,7 +43,7 @@ def test_thanos_vanished_node(w):
 def test_auth_eligibility_and_failover(w,tmp_path):
     raw=json.dumps({'is_error':True,'error':{'type':'IneligibleTierError','message':'UNSUPPORTED_CLIENT'}})
     assert w.auth_hit(1,raw,'')
-    with patch.object(w,'tier_backends',return_value=[{'runner':'gemini'},{'runner':'claude'}]), patch.object(w,'runner_ready',return_value=True), patch.object(w,'runner_blocked',return_value=False), patch.object(w,'block_runner'), patch.dict(w.RUNNER_EXEC,gemini=lambda *a:('auth',raw,'',1),claude=lambda *a:('ok','CLOSE: healthy','',0)):
+    with patch.object(w,'tier_backends',return_value=[{'runner':'agy'},{'runner':'claude'}]), patch.object(w,'runner_ready',return_value=True), patch.object(w,'runner_blocked',return_value=False), patch.object(w,'block_runner'), patch.dict(w.RUNNER_EXEC,agy=lambda *a:('auth',raw,'',1),claude=lambda *a:('ok','CLOSE: healthy','',0)):
         assert w.dispatch_agent({'tier':'triage'},'',tmp_path)[0]=='claude'
 
 

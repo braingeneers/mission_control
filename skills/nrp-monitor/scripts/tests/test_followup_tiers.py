@@ -1,5 +1,5 @@
 """Bounded follow-up escalation; no models, cluster, or notifications."""
-import importlib.machinery
+from monitor_imports import machinery
 import importlib.util
 import tempfile
 import unittest
@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1] / 'nrp-monitor'
-loader = importlib.machinery.SourceFileLoader('monitor_tiers', str(SOURCE))
+loader = machinery.SourceFileLoader('monitor_tiers', str(SOURCE))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 w = importlib.util.module_from_spec(spec)
 loader.exec_module(w)

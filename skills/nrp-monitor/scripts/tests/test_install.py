@@ -52,7 +52,7 @@ class Install(unittest.TestCase):
                 env.update(HOME=home, NRP_WATCHDOG_STATE=home+"/old")
                 if primary:
                     env["NRP_MONITOR_STATE"] = home+"/new"
-                code = "import runpy; print(runpy.run_path(%r)['STATE'])" % str(HERE/'nrp-monitor')
+                code = "import sys;from pathlib import Path;sys.path.insert(0,str(Path(%r).parent));from nrp_monitor.state import STATE;print(STATE)" % str(HERE/'nrp-monitor')
                 r = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(r.stdout.strip(), home+("/new" if primary else "/old"))

@@ -1,6 +1,6 @@
 """Agent runners: per-tier models and ladder from agents.json, Claude -> Codex fallback on a usage limit, and work that waits
 (without using a retry or sending a false alert) when every runner is out of usage. No models, cluster or notifications."""
-import importlib.machinery
+from monitor_imports import machinery
 import importlib.util
 import json
 import os
@@ -23,7 +23,7 @@ def load_module(state):
     old = os.environ.get('NRP_MONITOR_STATE')
     os.environ['NRP_MONITOR_STATE'] = str(state)       # STATE is read once at import; restore so other test modules are not affected
     try:
-        loader = importlib.machinery.SourceFileLoader('monitor_agents_%d' % time.time_ns(), str(SOURCE))
+        loader = machinery.SourceFileLoader('monitor_agents_%d' % time.time_ns(), str(SOURCE))
         spec = importlib.util.spec_from_loader(loader.name, loader)
         m = importlib.util.module_from_spec(spec)
         loader.exec_module(m)

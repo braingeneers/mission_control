@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Notification-only task webhooks: local HTTP and temporary state, no cluster or models."""
-import importlib.machinery
+from monitor_imports import machinery
 import importlib.util
 import fcntl
 import json
@@ -36,7 +36,7 @@ class Webhooks(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         old = os.environ.get("NRP_MONITOR_STATE")
         os.environ["NRP_MONITOR_STATE"] = self.tmp.name
-        loader = importlib.machinery.SourceFileLoader("wd_webhook_test", str(SCRIPT))
+        loader = machinery.SourceFileLoader("wd_webhook_test", str(SCRIPT))
         spec = importlib.util.spec_from_loader(loader.name, loader)
         self.wd = importlib.util.module_from_spec(spec)
         loader.exec_module(self.wd)
