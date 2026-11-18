@@ -110,7 +110,7 @@ class P(Base):
 
     def test_header_stored_before_the_owner_rename_still_loads(self):
         """Plans synced by the earlier script store `stop_for_hunter`; the running code reads `stops`."""
-        import importlib.machinery, importlib.util, os
+        import importlib.util, os; from monitor_imports import machinery
         rc, _, err = self.wd("plan", "sync", str(self.tmp / "PLAN.md") + "#tp")
         self.assertEqual(rc, 0, err)
         hp = self.state / "plans" / "tp" / "header.json"
@@ -120,7 +120,7 @@ class P(Base):
         old = os.environ.get("NRP_MONITOR_STATE")
         os.environ["NRP_MONITOR_STATE"] = str(self.state)
         try:
-            loader = importlib.machinery.SourceFileLoader("wd_plan_hdr", str(Path(__file__).resolve().parents[1] / "nrp-monitor"))
+            loader = machinery.SourceFileLoader("wd_plan_hdr", str(Path(__file__).resolve().parents[1] / "nrp-monitor"))
             spec = importlib.util.spec_from_loader("wd_plan_hdr", loader)
             wd = importlib.util.module_from_spec(spec)
             loader.exec_module(wd)

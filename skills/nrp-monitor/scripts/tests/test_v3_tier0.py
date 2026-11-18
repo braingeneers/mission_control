@@ -183,8 +183,8 @@ class Tier0(Base):
         self.assertIn("t1-a", self.cl())
 
     def test_node_exclusion_merges_into_an_existing_affinity_and_is_idempotent(self):
-        import importlib.machinery, importlib.util
-        ld = importlib.machinery.SourceFileLoader("wd_t0", test_tasks.SCRIPT)
+        import importlib.util; from monitor_imports import machinery
+        ld = machinery.SourceFileLoader("wd_t0", test_tasks.SCRIPT)
         mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("wd_t0", ld))
         ld.exec_module(mod)
         doc = {"spec": {"template": {"spec": {"affinity": {"nodeAffinity": {"requiredDuringSchedulingIgnoredDuringExecution": {"nodeSelectorTerms": [

@@ -3,7 +3,7 @@
 `DONE.1` of an Indexed Job satisfied `DONE`, the monitor deleted running pods and 16 of 50 featurecontrols were lost).
 Fake aws (tests/test_chains.py, tests/test_tasks.py) answers `ls` by prefix like the real one and `s3api head-object` exactly.
 Run: python3 tests/test_s3_exact.py  (or pytest)"""
-import importlib.machinery
+from monitor_imports import machinery
 import json
 import os
 import subprocess
@@ -20,7 +20,7 @@ import test_tasks as tt
 
 _TMP = tempfile.mkdtemp(prefix="wds3_mod_")
 os.environ["NRP_MONITOR_STATE"] = _TMP
-WD = importlib.machinery.SourceFileLoader("wd_s3_under_test", tt.SCRIPT).load_module()
+WD = machinery.SourceFileLoader("wd_s3_under_test", tt.SCRIPT).load_module()
 B = "s3://braingeneersdev/alice/finch/pv3/jobs/pv3-gate-x"
 
 
@@ -194,7 +194,7 @@ class IndexedTasks(unittest.TestCase):
         self.run_pass()
         self.set_job("t1-a", state="running", completions=4, succeeded=1)
         env = dict(self.env)
-        code = ("import importlib.machinery as m,sys;w=m.SourceFileLoader('w',%r).load_module();print(w.job_state('t1-a','braingeneers'))" % str(self.bin / "nrp-monitor"))
+        code = ("import sys;sys.path.insert(0,%r);from nrp_monitor import cluster as w;print(w.job_state('t1-a','braingeneers'))" % str(self.bin))
         r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=dict(env, PATH=self.env["PATH"]))
         self.assertEqual(r.stdout.strip(), "running", r.stderr[-300:])
         self.set_job("t1-a", state="ok", completions=4, succeeded=4)

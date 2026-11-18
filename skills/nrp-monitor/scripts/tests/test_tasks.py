@@ -169,6 +169,7 @@ class T(unittest.TestCase):
             os.chmod(self.bin / n, 0o755)
         (self.bin / "python3").symlink_to(sys.executable)
         shutil.copy(SCRIPT, self.bin / "nrp-monitor")
+        shutil.copytree(Path(SCRIPT).parent / "nrp_monitor", self.bin / "nrp_monitor", ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copy(HERE / "nrp-task", self.bin / "nrp-task")
         shutil.copytree(HERE / "templates", self.state / "templates")
         # Preserve coverage of the switchable pre-deputy ladder; batch A tests exercise default-on separately.

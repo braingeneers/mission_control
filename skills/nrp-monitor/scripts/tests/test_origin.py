@@ -4,7 +4,7 @@ Nothing real is sent: Slack payloads are captured by a local HTTP stub on 127.0.
 pushes otherwise go to the fake banner log. Run: python3 tests/test_origin.py"""
 import fcntl
 import http.server
-import importlib.machinery
+from monitor_imports import machinery
 import json
 import os
 import subprocess
@@ -22,7 +22,7 @@ SCRIPT = tt.SCRIPT
 _TMP = tempfile.mkdtemp(prefix="wdorigin_mod_")
 os.environ["NRP_MONITOR_STATE"] = _TMP                    # the module-level STATE of the imported script
 os.environ["NRP_MONITOR_OWNER_NAME"] = "Sam"                 # how messages name the person (setting owner_name)
-WD = importlib.machinery.SourceFileLoader("wd_under_test", SCRIPT).load_module()
+WD = machinery.SourceFileLoader("wd_under_test", SCRIPT).load_module()
 
 RT = {"title": "fixture-sort-chat", "link": "t3-thread://v2/fake-test-environment/fake-test-thread",
       "assistant": "Codex gpt-6-astra", "collaborator": "Sam"}
@@ -266,7 +266,7 @@ class O(unittest.TestCase):
     def _text_for_unrecorded_task(self):
         self.add_unattributed(mode="watch")
         env = dict(self.env, NRP_MONITOR_STATE=str(self.state))
-        code = ("import importlib.machinery as m,sys;w=m.SourceFileLoader('w',sys.argv[1]).load_module();print(w.slack_text('boom', ['task:t1']))")
+        code = ("import sys;from pathlib import Path;sys.path.insert(0,str(Path(sys.argv[1]).parent));from nrp_monitor import wake as w;print(w.slack_text('boom', ['task:t1']))")
         r = subprocess.run([sys.executable, "-c", code, SCRIPT], capture_output=True, text=True, env=env)
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout
