@@ -228,7 +228,22 @@ class LadderTests(Ladder):
         self.assertFalse(any(e["event_type"] == "escalation" for e in t["webhook_outbox"]), "delivered, so acknowledged")
         rc, out, _ = self.wd("status", "--quiet")
         self.assertIn("wait on their coordinator chat", out)
+        self.assertIn("this session's chat is unknown", out)
+        self.assertNotIn("t1", out, "unknown chat: a count only, no task names")
         self.assertNotIn("need the owner", out)
+        # The session-start notice is scoped to the chat it runs in.
+        env = self.env
+        try:
+            self.env = dict(env, T3CODE_THREAD_ID="abc")
+            rc, out, _ = self.wd("status", "--quiet")
+            self.assertIn("1 task(s) from this chat wait on you", out)
+            self.assertIn("t1:", out)
+            self.env = dict(env, T3CODE_THREAD_ID="some-other-thread")
+            rc, out, _ = self.wd("status", "--quiet")
+            self.assertNotIn("coordinator", out)
+            self.assertNotIn("t1", out)
+        finally:
+            self.env = env
         rc, out, _ = self.wd("digest")
         self.assertIn("With the coordinator chat, owner not notified (1)", out)
         self.assertIn("## Needs the owner (0)", out)

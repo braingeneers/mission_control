@@ -19,6 +19,22 @@ from . import util as _m_util
 from . import wake as _m_wake
 
 
+def session_ids():
+    """Ids naming the chat this command runs in: the T3 thread, else the Claude Code / Codex session. Empty when unknown."""
+    import os
+    return {v.strip() for v in (os.environ.get(k) for k in ("T3CODE_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID")) if v and v.strip()}
+
+
+def origin_ids(origin):
+    """Ids naming a task's origin chat: the last segment of its T3 link and its recorded session id."""
+    o = origin or {}
+    ids = {str(o["session"]).strip()} if o.get("session") else set()
+    link = str(o.get("link") or "").rstrip("/")
+    if link.startswith("t3-thread://"):
+        ids.add(link.rsplit("/", 1)[-1])
+    return ids
+
+
 def cmd_status(a):
     for line in _m_cluster.bad_node_lines():
         print(line)
@@ -41,8 +57,17 @@ def cmd_status(a):
               "%s: %s" % (n, (t.get("reason") or "")[:100]) for n, t in nh[:3])))
     co = _m_notify.coordinating()
     if co:
-        print("nrp-monitor: %d task(s) wait on their coordinator chat (the owner is told only if the chat says so): %s" % (
-              len(co), "; ".join("%s: %s" % (n, (t.get("reason") or "")[:80]) for n, t in co[:3])))
+        # Session-start notice, scoped to this chat (Hunter 2026-11-18): other chats' waiting tasks stay in their own chats and the
+        # digest. Display only; routing and wakes are unchanged.
+        here = session_ids()
+        if here:
+            mine = [(n, t) for n, t in co if origin_ids(t.get("origin")) & here]
+            if mine:
+                print("nrp-monitor: %d task(s) from this chat wait on you (the owner is told only if you say so): %s" % (
+                      len(mine), "; ".join("%s: %s" % (n, (t.get("reason") or "")[:80]) for n, t in mine[:3])))
+        else:
+            print("nrp-monitor: %d task(s) wait on their coordinator chat; this session's chat is unknown, so they are not "
+                  "listed (`nrp-monitor digest`)" % len(co))
     blocked = [r for r in _m_agents.agent_cfg()["runners"] if _m_agents.runner_blocked(r)]
     if blocked:
         print("nrp-monitor: agent runner(s) out of usage: %s%s  (`nrp-monitor agents`)" % (", ".join(blocked),
