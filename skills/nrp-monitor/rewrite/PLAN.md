@@ -20,7 +20,13 @@ code that one agent can hold in context?
 - 2 tests: "lets go with your rec" (option B: only import/patch-target lines move)
 - 3 utilization: "sounds good. if you wnat to have a subagent work on the patch while we start on the refactor branch and switch over later so we can work in parallel that could make sense."
 - 4 watch-only: "yes that makes sense. I am often asleep or doing something else so the coordinator should deal with it. if there is a problem that absolutely needs me and is a problem with resources we should never leave jobs hanging that could get us banned"
-- 5 Workflows stage: "not really sure what this meansn" (explained in chat; still open)
+- 5 Workflows stage: "not really sure what this meansn" (explained in chat)
+
+**Hunter's answers after R3 (verbatim, 2026-11-18):**
+- Condense: "I mean if we run tests to make sure it is working then we can shrink and if problems come up we can fix them. I think part of the size being a problem was that it was one giant behemoth, so it being more modular will allow agents to find and fix things a lot more quickly via the code map, which you should have set up now. I will leave it to your judgement of more importantly than overall size is making it easier for agents to find and fix things while being robust."
+- Workflows stage type: R6, after the swap (picked the recommended option).
+- Repo-wide code map: "Yes, in background".
+- My choice under that delegation: condense items 1, 2, 3, 5 (one owner module per responsibility), skip 4; then R4 shadow on the final code.
 
 **My choices (not Hunter's):** violation grace = 30 min (config key) before the monitor stops a violating Job itself;
 it also stops at once when the namespace reaches `account_block_after_violating_pods` - 1 violating pods. Coding
