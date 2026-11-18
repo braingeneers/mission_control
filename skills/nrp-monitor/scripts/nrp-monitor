@@ -2273,6 +2273,10 @@ def submit_step(name, sid):
         stop_chain(name, sid, "could not run argv: %s" % str(e)[:100])
         return False
     lp.write_text(("rc=%d\n--- stdout ---\n%s\n--- stderr ---\n%s" % (r.returncode, r.stdout[-8000:], r.stderr[-8000:])))
+    if r.returncode and BLOCK_RE.search(r.stderr + r.stdout):              # NRP refused it: account RED ALERT, the step waits (not a failure)
+        red_alert_enter(c["namespace"], (r.stderr.strip() or r.stdout.strip())[-300:], "chain %s submit refused" % name)
+        set_state(name, sid, state="pending")
+        return False
     if r.returncode:
         tail = (r.stderr.strip() or r.stdout.strip()).splitlines()[-1:] or [""]
         stop_chain(name, sid, "submit exited %d: %s (see %s)" % (r.returncode, tail[0][:100], lp))
@@ -2334,6 +2338,10 @@ def advance_chain(name, jobs, counts, a):
         if counts["n"] >= cap:
             PASS["capped"] = PASS.get("capped", 0) + 1
             log("chain %s step %s waits: %d of our Jobs unfinished (cap %d)" % (name, sid, counts["n"], cap))
+            continue
+        if red_alert():                                                   # account RED ALERT: nothing new until NRP's dry-run accepts
+            PASS["held"] = PASS.get("held", 0) + 1
+            log("chain %s step %s HELD: NRP RED ALERT" % (name, sid))
             continue
         if submit_step(name, sid):
             counts["n"] += 1
@@ -3035,6 +3043,10 @@ def wake_text(t, event, harness="claude"):
                 "must change (LOG/PLAN beside the work), run `nrp-monitor wake-review %s --by coordinator --why TEXT`. Resubmit only with the "
                 "changed design and inside the plan's approval; if the redesign is a decision that is Hunter's, say so in one line and use "
                 "`nrp-monitor task needs-owner`." % (body, n))[:3000]
+    if kind == "red_alert":
+        return ("[NRP monitor RED ALERT: automated, from the monitor script, not from the owner. Highest priority: handle this before "
+                "anything else in this chat.]\n%s\nAct in this turn: resize or delete the pods, or hand each pod that is not yours to its real "
+                "owner with `t3 thread send`. Then record `nrp-monitor wake-review %s --by coordinator --why TEXT`." % (body, n))[:3000]
     head = ("[NRP monitor wake: an automated message from the monitor script, not from the owner. The monitor's own subagents already handled "
             "what they could; you are woken as a last resort, and the owner only after you.]\n")
     tail = ("\nUse your judgment on what to do next. "
@@ -4264,6 +4276,7 @@ def apply_manifest(ns, path):
             msg = (r.stderr.strip() or r.stdout.strip())[:400]
             if BLOCK_RE.search(msg):
                 LAST_BLOCK["msg"] = msg
+                red_alert_enter(ns, msg, "submit refused")
                 return "blocked"
             return msg
     return "ok"
@@ -4412,6 +4425,127 @@ def block_should_reapply(n):
     return changed
 
 
+# ---- account RED ALERT: NRP's own admission verdict is the signal (Hunter 2026-11-18) ---------------------------------------
+# Every RED_PROBE_S a server-side dry-run create of a tiny Job runs NRP's admission webhooks without creating anything. A denial with the
+# utilization/quota text (or any real submit refused that way) puts the account in RED ALERT: no task or chain submits anything until a
+# probe passes again; the owners of the offending pods are woken once per alert and Hunter is pushed once. Only a passing probe clears it.
+RED_ALERT = STATE / "red_alert.json"
+RED_PROBE_S = 600
+RED_REUSE_S = 3600          # an alert re-entered within this long after clearing keeps its id (no second round of wakes for a flapping block)
+RED_PROBE_JOB = {"apiVersion": "batch/v1", "kind": "Job", "metadata": {"generateName": "nrp-monitor-admission-probe-"},
+                 "spec": {"backoffLimit": 0, "template": {"spec": {"restartPolicy": "Never", "containers": [{
+                     "name": "probe", "image": "busybox", "command": ["true"],
+                     "resources": {"requests": {"cpu": "100m", "memory": "64Mi"}, "limits": {"cpu": "100m", "memory": "64Mi"}}}]}}}}
+
+
+def red_alert():
+    """The active RED ALERT record, or {} when NRP accepts new pods."""
+    return read_json(RED_ALERT, {}).get("active") or {}
+
+
+def red_alert_enter(ns, msg, source):
+    with state_lock():
+        st = read_json(RED_ALERT, {})
+        if st.get("active"):
+            return False
+        last = st.get("last") or {}
+        keep = last if now() - last.get("cleared", 0) < RED_REUSE_S else {}
+        st["active"] = {"id": keep.get("id") or "%s-%d" % (ns, now()), "since": now(), "ns": ns, "source": source,
+                        "refusal": " ".join(msg.split())[:300], "woken": keep.get("woken", []), "notified": keep.get("notified", False)}
+        write_json(RED_ALERT, st)
+    log("NRP RED ALERT (%s, namespace %s): %s. ALL submits are held until NRP's dry-run accepts again." % (source, ns, msg[:200]))
+    digest("red-alert", "NRP is refusing new pods (%s): %s. All submits held." % (source, msg[:200]))
+    return True
+
+
+def red_probe(ns):
+    """('ok'|'denied'|'error', text) from a server-side dry-run create: NRP's admission webhooks judge it, nothing is created."""
+    with tempfile.TemporaryDirectory(prefix="nrp-probe-") as td:
+        p = Path(td) / "probe.json"
+        p.write_text(json.dumps(RED_PROBE_JOB))
+        r = kubectl("-n", ns, "create", "--dry-run=server", "-f", str(p), timeout=60)
+    msg = (r.stderr.strip() or r.stdout.strip())[:400]
+    return ("ok", "") if not r.returncode else ("denied" if BLOCK_RE.search(msg) else "error", msg)
+
+
+def red_alert_text(cur, n, mine, unknown):
+    return ("NRP RED ALERT: NRP is refusing new pods on the account (namespace %s, since %s): %s. This needs action now, no exceptions. "
+            "Pods listed as task %s's: %s. Resize or delete your low pods now: request = ceil(NRP Thanos whole-life working-set peak x 1.5), "
+            "limit within 20%% of request (never size from a cgroup memory.peak / profile peak: it counts page cache); delete a pod that "
+            "cannot be resized (resubmits wait until NRP accepts again, then the monitor sends them). If a pod listed as yours is not yours, "
+            "find the real owner (Job spec S3 paths, `nrp-monitor task list` and the task registries, the registering T3 thread) and hand it "
+            "off with `t3 thread send`; \"not mine\" alone is not an acceptable answer. Pods with no known owning task: %s. Every task's "
+            "submits are held; the alert clears only when NRP's dry-run accepts again, \"no change\" cannot close it."
+            % (cur["ns"], iso(cur["since"]), cur["refusal"][:200], n, "; ".join(offender_text(o) for o in mine) or "none",
+               "; ".join(offender_text(o) for o in unknown) or "none"))
+
+
+def red_alert_notify(cur):
+    """Once per alert: offenders -> owning task (by Job name), wake each owner's coordinator, push Hunter (unknown owners named)."""
+    try:
+        offenders = namespace_offenders(cur["ns"])
+    except Exception as e:                                                   # retried next pass; Hunter hears once now
+        push("NRP RED ALERT: NRP refuses new pods (%s); all submits held; the offender check failed: %s" % (cur["refusal"][:120], str(e)[:80]),
+             "red-alert:%s:check" % cur["id"])
+        return
+    owner = {s["job"]: n for n in task_names() for s in (task_load(n) or {}).get("stages", [])}
+    mine, unknown = {}, []
+    for o in offenders:
+        n = owner.get(o["owner"][4:]) if o["owner"].startswith("Job/") else None
+        mine.setdefault(n, []).append(o) if n else unknown.append(o)
+    woken, unreached = set(cur.get("woken", [])), []
+    for n, pods in sorted(mine.items()):
+        text = red_alert_text(cur, n, pods, unknown)
+        ok = n in woken or (not terminal_task(n) and task_txn(n, lambda t: bool(queue_task_webhook(t, "red_alert", summary=text)) and
+                                                                     not tev(t, "NRP RED ALERT: coordinator woken for %d low pod(s)" % len(pods))))
+        (woken.add(n) if ok else unreached.append(n))
+    short = lambda os_: ", ".join("%s [%s]" % (o["pod"], o["owner"] or o["username"] or o["service_account"] or "?") for o in os_)
+    text = ("NRP RED ALERT: NRP refuses new pods on the account; all submits held until its dry-run accepts. NO KNOWN OWNER: %s. "
+            "Owners woken: %s.%s" % (short(unknown) or "none" if offenders else "no pod outside NRP's bands (quota?)",
+                                     ", ".join(sorted(woken)) or "none", (" No chat to wake: %s." % ", ".join(unreached)) if unreached else ""))
+    digest("red-alert", text)
+    push(text, "red-alert:%s" % cur["id"])
+    with state_lock():
+        st = read_json(RED_ALERT, {})
+        if (st.get("active") or {}).get("id") == cur["id"]:
+            st["active"].update(notified=True, woken=sorted(woken), offenders=[o["pod"] for o in offenders])
+            write_json(RED_ALERT, st)
+
+
+def process_red_alert(a, st):
+    """Probe NRP's admission (rate-limited), enter or clear the RED ALERT, and notify once per alert. Logs every pass while held."""
+    if a.dry_run:
+        print("[dry-run] RED ALERT %s" % ("ACTIVE: submits held" if red_alert() else "clear"))
+        return
+    cur = red_alert()
+    names = [n for n in task_names() if (task_load(n) or {}).get("status") in TASK_LIVE + TASK_HELD]
+    nss = {cur["ns"]} if cur else {NS} | {task_load(n)["namespace"] for n in names} | {
+        (chain_load(c) or {}).get("namespace") or NS for c in chain_names() if (chain_load(c) or {}).get("status") in LIVE}
+    probed = read_json(RED_ALERT, {}).get("probed", {})
+    for ns in sorted(nss):
+        if now() - probed.get(ns, 0) < RED_PROBE_S:
+            continue
+        verdict, msg = red_probe(ns)
+        with state_lock():
+            s = read_json(RED_ALERT, {})
+            s.setdefault("probed", {})[ns] = now()
+            if verdict == "ok" and (s.get("active") or {}).get("ns") == ns:
+                s["last"] = dict(s.pop("active"), cleared=now())
+                log("NRP RED ALERT CLEARED: NRP's dry-run in %s accepts again; held submits resume" % ns)
+                digest("red-alert", "cleared: NRP's dry-run accepts new pods again; held submits resume")
+            write_json(RED_ALERT, s)
+        if verdict == "denied":
+            red_alert_enter(ns, msg, "admission dry-run probe")
+        elif verdict == "error":
+            log("admission probe in %s inconclusive: %s" % (ns, msg[:150]))
+    cur = red_alert()
+    if cur:
+        PASS["red_alert"] = 1
+        log("NRP RED ALERT active since %s (%s): all submits held" % (iso(cur["since"]), cur["refusal"][:120]))
+        if not cur.get("notified"):
+            red_alert_notify(cur)
+
+
 def cpu_quantity(value):
     text = str(value).strip()
     factor = {"m": .001, "u": .000001, "n": .000000001}.get(text[-1:], 1)
@@ -4553,6 +4687,16 @@ def do_submit(n, sid, reason, by):
     gx = gpu_expired(s)
     if gx:
         return False, gx + ". Report STOPPED; do not resubmit."
+    if red_alert():                                                       # account RED ALERT: nothing new is created until NRP's dry-run accepts
+        def hold(t):
+            t["status"] = "blocked"
+            if "pending" not in t:
+                tev(t, "submit of %s HELD: NRP RED ALERT (NRP refuses new pods on the account); sent when NRP's dry-run accepts" % s["job"])
+            t.setdefault("pending", {"stage": sid, "reason": reason, "by": by, "since": now(), "refusal": "NRP RED ALERT hold",
+                                     "checked": now(), "offenders": [], "hold": "red-alert"})
+        task_txn(n, hold)
+        return True, ("HELD: NRP RED ALERT, NRP is refusing new pods on the account. The monitor sends this submit when its dry-run "
+                      "accepts again. Do not retry yourself; resize or delete low pods instead.")
     st_ = job_state(s["job"], ns)
     if st_ in ("running", "pending", "error"):
         return False, "Job %s is still %s" % (s["job"], st_)
@@ -4576,6 +4720,8 @@ def do_submit(n, sid, reason, by):
                 tev(t, "submit of %s BLOCKED (account utilization or quota); the monitor checks the namespace once, wakes the coordinator, "
                        "and re-applies when the offenders change" % s["job"])
             t.setdefault("pending", {"stage": sid, "reason": reason, "by": by, "since": now(), "refusal": LAST_BLOCK.get("msg", "")[:300]})
+            if red_alert():                                           # the RED ALERT wakes the offenders' owners; no per-task episode
+                t["pending"].update(checked=now(), offenders=[], hold="red-alert")
         task_txn(n, b)
         block_episode(n)
         return True, ("BLOCKED: NRP refused the submit (utilization block or quota). The monitor checked the namespace once and woke the "
@@ -5571,6 +5717,9 @@ def advance_task(n, jobs, a):
         return
     if t["status"] == "blocked":
         p = t.get("pending") or {}
+        if red_alert():                                                   # held account-wide; the alert, not the 6 h timer, tells the owner
+            PASS["held"] = PASS.get("held", 0) + 1
+            return
         if p and not block_should_reapply(n):                                 # pods outside the bands explain it: wait, no retry loop
             ok = True
         else:
@@ -5888,7 +6037,7 @@ def task_pod_flag(st, n, sid, pod, kind, line):
         return
     t = task_load(n)
     stage = tstage(t, sid)
-    evidence = memory_low_evidence(t, stage, pod) if kind == "LOW" and any(k == "mem" and int(pct) < 20 for k, use, req, pct, mx in FLAG_RES.findall(line)) else None
+    evidence = memory_low_evidence(t, stage, pod, working_set_only=rule == "nrp") if kind == "LOW" and any(k == "mem" and int(pct) < 20 for k, use, req, pct, mx in FLAG_RES.findall(line)) else None
     if evidence and evidence["ramp_up"]:
         return
     if stage["state"] != "running":
@@ -5920,6 +6069,8 @@ def process_util_event(n, a):
         return
     context = dict(t, failure=event)
     numbers = json.dumps(event.get("evidence"), sort_keys=True)
+    if event.get("rule") == "nrp":                                        # below NRP's own floor: the review may not end in "no change"
+        return util_nrp_review(n, t, event, context, numbers, a)
     prompt = triage_prompt(context) + "\nMemory evidence (GiB): " + numbers + "\n" + MEMORY_RULE
     line, _ = run_task_agent(n, prompt, a, kind="triage")
     if is_unavailable(line):
@@ -5936,6 +6087,44 @@ def process_util_event(n, a):
     task_txn(n, lambda t: (t.pop("util_event", None), tstage(t, event["stage"]).update(util_reviewed=now()), tev(t, "utilization review: " + line)))
 
 
+NRP_UTIL_RULE = """NRP VIOLATION (rule=nrp: below NRP's 20% floor, which NRP enforces by refusing new pods on the whole account). "No change
+needed" is NOT an allowed outcome. Size from NRP's measured working-set peak (peaks_gi above, Thanos whole-life per pod), never from a
+cgroup memory.peak / profile peak, which counts reclaimable page cache: request = ceil(peak x 1.5), limit within 20% of request. Write it
+into the manifest; if the stage resumes from saved progress, `nrp-task delete` the running Job and `nrp-task submit` it at the new size now.
+If it cannot be restarted safely, say why in one line: the monitor then wakes the coordinator chat."""
+
+
+def util_nrp_review(n, t, event, context, numbers, a):
+    """An NRP-floor observation: the fixer resizes/restarts, or (watch-only, or the fixer left the same Job running) the coordinator chat is
+    woken visibly. Never closed as "no change"."""
+    sid = event["stage"]
+    before = tstage(t, sid).get("submitted")
+    line = "watch-only task: no fixer"
+    if t.get("mode") != "watch":
+        line, _ = run_task_agent(n, task_prompt(context) + "\nMemory evidence (GiB): " + numbers + "\n" + MEMORY_RULE + "\n" + NRP_UTIL_RULE, a)
+        if is_unavailable(line):
+            return
+    cur = task_load(n)
+    s = tstage(cur, sid)
+    acted = s.get("submitted") != before or s["state"] != "running" or (cur.get("failure") or {}).get("stage") == sid
+    text = ("NRP task %s: Job %s is below NRP's 20%% utilization floor (an NRP violation: NRP refuses new pods on the whole account when "
+            "pods stay below it). %s Resize now: request = ceil(NRP Thanos whole-life working-set peak x 1.5), limit within 20%% of request "
+            "(never from a cgroup memory.peak / profile peak: it counts page cache); restart only if the stage resumes from saved progress, "
+            "otherwise decide now whether to delete it. \"No change\" is not an allowed answer. Evidence (GiB): %s. Look: `nrp-monitor task show %s`."
+            % (n, event["job"], event["detail"][:200], numbers[:900], n))
+
+    def f(t):
+        t.pop("util_event", None)
+        tstage(t, sid).update(util_reviewed=now())
+        tev(t, "utilization review (NRP floor): " + line)
+        if not acted:
+            woke = queue_task_webhook(t, "util_nrp", summary=text)
+            tev(t, "NRP floor not fixed by the review; coordinator chat %s" % ("woken" if woke else "has no wake target (digest only)"))
+    task_txn(n, f)
+    if not acted:
+        digest("util-review", "NRP violation not fixed by the review; coordinator chat woken: " + event["detail"][:200], n)
+
+
 MEMORY_RULE = """Memory NRP band is 20–150% of request. Tier 1 is judge only: CLOSE with numbers or ESCALATE with numbers and what looks wrong.
 The fixer alone changes resources. need=max(stage whole-life per-pod peaks, recorded OOM limits); right=ceil(need*1.5) Gi.
 A recorded OOM limit is a proven lower bound even when sampled usage idles below the band between spikes.
@@ -5950,7 +6139,7 @@ stops the Job (`nrp-task delete`) and restructures before any resubmit (parallel
 "leave running work to finish" rule does not apply to GPU flags. The monitor itself deletes a GPU Job whose 90-min mean is under 40%, 30 min after the 1 h warning."""
 
 
-def memory_low_evidence(t, s, flagged_pod):
+def memory_low_evidence(t, s, flagged_pod, working_set_only=False):
     import math
     import statistics
     doc = manifest_doc(s["manifest"])
@@ -5984,7 +6173,7 @@ def memory_low_evidence(t, s, flagged_pod):
                 pc = next((c for c in p.get("spec", {}).get("containers", []) if c["name"] == cs.get("name")), {})
                 b = mem_bytes(pc.get("resources", {}).get("limits", {}).get("memory", ""))
                 if b: oom.append(b / 2**30)
-    need = max(list(peaks.values()) + oom + [true_peak / 2**30 if true_peak else 0])
+    need = max(list(peaks.values()) + oom + [true_peak / 2**30 if true_peak and not working_set_only else 0])   # memory.peak counts page cache
     right = math.ceil(need * 1.5)
     spread = max(peaks.values()) / statistics.median(peaks.values()) if peaks and statistics.median(peaks.values()) else None
     missing = sorted((set(ages) | {flagged_pod}) - set(peaks))
@@ -7845,7 +8034,8 @@ def cmd_tool(a):
             evidence = util.get("evidence") or {}
             if util.get("rule") == "gpu":                                 # a GPU under NRP's floor is a policy violation, not a sizing question:
                 pass                                                      # stopping it never waits for "time left" or resumability
-            elif not stage_resumable(jobs[j]) or (evidence.get("remaining_seconds") or 0) - max(0, now() - util.get("ts", now())) <= 7200:
+            elif not stage_resumable(jobs[j]) or (util.get("rule") != "nrp" and  # NRP floor: restart whenever it resumes
+                                                  (evidence.get("remaining_seconds") or 0) - max(0, now() - util.get("ts", now())) <= 7200):
                 sys.exit("utilization review: leave running Job to finish; resubmit requires resumable stage and >2h measured time left")
             f = util
         if st_ in ("running", "pending") and not (f.get("job") == j and f.get("cls") in ("util", "infra")):
@@ -8396,6 +8586,10 @@ def cmd_run_pass(a):
     def beat(tag):
         if not a.dry_run:
             write_heartbeat("%s %s" % (tag, " ".join("%s=%s" % kv for kv in sorted(PASS.items())) or "idle"))
+    try:
+        process_red_alert(a, st)                                          # NRP's admission verdict first: it gates every submit below
+    except Exception as e:
+        log("process_red_alert error: %s: %s" % (type(e).__name__, str(e)[:150]))
     first = () if a.tasks_only else (process_chains,)                       # chains first: submits are time-critical
     for fn in first:
         try:

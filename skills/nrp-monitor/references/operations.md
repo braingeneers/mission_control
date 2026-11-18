@@ -11,6 +11,19 @@
 - When a task finishes: record it, start the continuation (`on_done`, `followup`) if declared, otherwise list it in the
   digest as `no-continuation`. A task with no (or a thin) handoff is also listed, as `no-handoff` (see handoff.md).
 
+## Account RED ALERT (NRP refusing new pods)
+
+NRP's own verdict is the signal. About every 10 minutes the pass runs a server-side dry-run create of a tiny Job
+(busybox `true`, cpu 100m / mem 64Mi, requests = limits; admission webhooks run, nothing is created). A denial with the
+utilization/quota text, or any real submit refused that way, puts the account in RED ALERT (`red_alert.json` in the
+state dir). While it lasts no task or chain submits anything (held submits show as `blocked`, `hold: red-alert`), and the
+log says so every pass. Once per alert the monitor maps each pod outside NRP's bands to the task whose stage Job owns it,
+wakes that task's coordinator chat (visible T3 turn where available), and pushes Hunter "NRP RED ALERT" with every pod no
+task owns (those are also listed in every woken chat). The wake demands action now: resize (request = ceil(Thanos
+whole-life working-set peak x 1.5), limit within 20%) or delete low pods; a pod that is not yours goes to its real
+owner by `t3 thread send` ("not mine" alone is not an answer). Only a passing dry-run clears the alert; held submits
+then go out. The 10-minute-mean checks stay, to name suspects and warn early.
+
 ## Tier 0 rules (no model, before any agent)
 
 Applied to a failed stage of an `auto` task before a fix agent is started. Each resubmit goes through the same checks as an agent's

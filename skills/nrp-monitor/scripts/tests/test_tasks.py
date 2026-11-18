@@ -74,6 +74,9 @@ elif a[0] == "apply":
     if n in cl["jobs"]: sys.stderr.write("field is immutable\n"); sys.exit(1)
     cl["jobs"][n] = {"state": "running", "start": time.time()}; save()
     open(d + "/applied.log", "a").write(n + " " + open(f).read().replace("\n", " ") + "\n"); print("job.batch/%%s created" %% n)
+elif a[0] == "create" and "--dry-run=server" in a:                          # the RED ALERT admission probe
+    if os.path.exists(d + "/apply_block"): sys.stderr.write("admission webhook denied the request: Your pods resources utilization is too low\n"); sys.exit(1)
+    print("job.batch/probe created (server dry run)")
 elif a[:2] == ["create", "configmap"]:
     open(d + "/configmaps.log", "a").write(a[2] + "\n"); print("configmap/%%s created" %% a[2])
 else:
@@ -528,9 +531,14 @@ class T(unittest.TestCase):
         self.run_pass()
         self.assertEqual(self.task()["status"], "blocked")
         self.run_pass()
-        self.assertEqual(self.pushes(), [])
+        self.assertEqual(len(self.pushes()), 1)                              # the account RED ALERT, once
+        self.assertIn("NRP RED ALERT", self.pushes()[0])
         (self.fake / "apply_block").unlink()
-        self.run_pass()
+        self.run_pass()                                                      # probe not due yet: still held
+        self.assertNotIn("t1-a", self.cl())
+        ra = self.state / "red_alert.json"
+        ra.write_text(json.dumps(dict(json.loads(ra.read_text()), probed={})))
+        self.run_pass()                                                      # the probe passes: cleared, the held submit goes
         self.assertIn("t1-a", self.cl())
         self.assertEqual(self.task()["status"], "running")
 

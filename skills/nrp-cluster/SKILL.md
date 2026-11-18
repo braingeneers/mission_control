@@ -77,7 +77,10 @@ namespace before retrying. Include pods you did not launch (Workflows/Flowforge 
 task pods, other workstreams). Run `kubectl get pods` for every Running pod, then pass all their prefixes to
 `nrp-util-check`; the account check only counts pods annotated with your username. Report each pod outside the
 bands with its owner and usage. Fix or delete your own pods. Ask the owner before deleting anyone else's pods.
-Never work around the webhook or retry in a loop.
+Never work around the webhook or retry in a loop. nrp-monitor treats this as an account RED ALERT: it holds every
+task's submits until NRP's server-side dry-run accepts again, wakes the owners of the low pods, and alerts Hunter.
+If woken, act now: resize (request = ceil(Thanos working-set peak x 1.5), limit within 20%) or delete your low pods,
+and hand pods that are not yours to their real owner (`t3 thread send`); "no change" does not clear the alert.
 
 ## Reference Loading
 

@@ -68,6 +68,13 @@ Worked example: a workload requests 12Gi. A 1.2Gi mean at 17 minutes is ramp-up,
 4.5–7.7Gi and a recorded OOM at 6Gi give need 7.7Gi and right 12Gi. Since 12 <= 1.2*12, the request is sized correctly.
 The peak range is only about 1.7x (max/median cannot exceed that range), so there is no split.
 
+**Below NRP's floor (rule=nrp) is not a sizing opinion.** NRP refuses new pods on the whole account while pods stay
+below its 20% floor, so such an observation skips the judge and may not end in "no change needed". The fixer resizes
+from NRP's Thanos working-set peaks only (never a cgroup `memory.peak` / profile peak: it counts reclaimable page cache;
+the evidence's `need` leaves it out for these events) and restarts the Job if the stage resumes from saved progress
+(no two-hour rule). If the same Job is still running after the review, or the task is watch-only, the coordinator chat
+is woken visibly, never digest-only. Lab-floor (40%) observations keep the flow above.
+
 For legacy chains and standalone registrations, the existing strike handling remains separate.
 
 ## Historical util failure waivers
