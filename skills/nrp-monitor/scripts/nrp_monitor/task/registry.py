@@ -1,25 +1,10 @@
 """NRP monitor task/registry (mechanical extraction; R3a)."""
-import argparse
-import collections
-import contextlib
-import fcntl
-import getpass
-import hashlib
 import json
 import os
 import re
-import shlex
 import shutil
-import stat
 import subprocess
 import sys
-import tempfile
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-import uuid
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # ---- validation ----------------------------------------------------------------------------------------------

@@ -1,26 +1,9 @@
 """NRP monitor setup (mechanical extraction; R3a)."""
-import argparse
-import collections
-import contextlib
-import fcntl
-import getpass
-import hashlib
 import json
 import os
-import re
-import shlex
 import shutil
-import stat
-import subprocess
 import sys
-import tempfile
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
-import uuid
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from . import agents as _m_agents
 from . import notify as _m_notify

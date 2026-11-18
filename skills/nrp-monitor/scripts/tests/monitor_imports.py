@@ -8,6 +8,8 @@ import importlib.machinery
 import importlib.util
 import uuid
 import sys
+import shutil
+import subprocess
 import types
 from pathlib import Path
 
@@ -17,7 +19,9 @@ class PackageView(types.ModuleType):
     def __getattr__(self, name):
         if name in OWNERS:
             return getattr(self._modules[OWNERS[name]], name)
-        # Standard-library modules remain patchable by the old tests.
+        # Standard-library patch targets belong to this test adapter.
+        if name in ("subprocess", "shutil", "sys"):
+            return globals()[name]
         return getattr(self._modules['state'], name)
 
     def __setattr__(self, name, value):
