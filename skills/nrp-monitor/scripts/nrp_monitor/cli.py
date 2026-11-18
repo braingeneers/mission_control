@@ -36,8 +36,12 @@ def origin_ids(origin):
 
 
 def cmd_status(a):
-    for line in _m_cluster.bad_node_lines():
-        print(line)
+    bad = _m_cluster.bad_node_lines()
+    if a.quiet and bad:                       # session-start hook: one line; the full list is in `status` and the digest
+        print("nrp-monitor: %d node(s) excluded after faults (`nrp-monitor status` lists them)" % len(bad))
+    else:
+        for line in bad:
+            print(line)
     hb = _m_state.heartbeat_age()
     watching = [j for j, r in _m_state.load()["jobs"].items() if r.get("status") == "watching"]
     tasks = [n for n in _m_state.task_names() if (_m_state.task_load(n) or {}).get("status") in _m_state.TASK_LIVE]

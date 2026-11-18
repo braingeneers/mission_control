@@ -138,3 +138,15 @@ def test_agy_argv_and_result(w,tmp_path):
     with patch.object(w.subprocess,'run',side_effect=run):
         result=w.exec_agy({'tier':'triage','allowed':[],'json':True},'fixture',tmp_path,10,{})
     assert w.triage_verdict(json.loads(result[1])['result'])[0]=='CLOSE'
+
+
+def test_quiet_status_summarizes_excluded_nodes(w, capsys):
+    # The session-start hook runs `status --quiet`: one count line, not one line per node.
+    with patch.object(w, 'now', return_value=100):
+        w.record_bad_node('node-a', 'Xid'); w.record_bad_node('node-b', 'ECC')
+        w.cmd_status(SimpleNamespace(quiet=True))
+        out = capsys.readouterr().out
+        assert '2 node(s) excluded after faults' in out and 'node-a' not in out
+        w.cmd_status(SimpleNamespace(quiet=False))
+        out = capsys.readouterr().out
+        assert 'excluded node node-a until' in out and 'excluded node node-b until' in out
