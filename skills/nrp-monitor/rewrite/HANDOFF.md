@@ -1,21 +1,23 @@
-# Handoff: nrp-monitor R3a partial implementation (2026-11-18)
-**Plan:** nrpmon-rewrite, R3a authorized; stop before R4 install. User requested implementation sub-agent relay.
-**Branch:** nrp-monitor-rewrite from 0f38bd1; C1 ce234a2, C2 fc77d32. No push or install.
-**Verified:** script compiles. No package exists yet. Targeted cuts check: 33 passed in 45.53 s; no full-suite result yet.
-**Baseline completed:** isolated original copy: 642 passed, 1 skipped, 2 failures due solely to omitted sibling memory_peak.py. Both helper tests passed when rerun from real repo (2 passed / 0.11 s). Composite baseline 644 passed / 1 skipped; no single clean full pass. Output /tmp/nrp-r3a-baseline-result.txt.
-Completed targeted corrected cuts check: scripts/tests/test_plans.py test_origin.py test_red_alert.py, output /tmp/nrp-r3a-cuts-result.txt (session 11455).
-Earlier runs against the changing source (sessions 18125, 9973) are invalid; do not report their counts as baseline.
-Existing interpreter /Users/hunterschweiger/miniconda3/bin/python3 has pytest; default tool shell python3 does not.
+# Handoff: nrp-monitor R3a cuts complete, package pending (2026-11-18)
+**Plan:** nrpmon-rewrite R3a authorized; stop before R4 install. Implementation sub-agent relay.
+**Worktree:** /Users/hunterschweiger/.t3/worktrees/mission_control/t3-5d6f3948-7a71276ff0751a9b; branch nrp-monitor-rewrite. Never edit main checkout.
+**Commits:** C1 ce234a2 + e54710f; C2 fc77d32; C3 1d34054 + docs 2c8dc77; C4 50d2068. Register updated in relay commit.
+**Checked:** C3 targeted 56 passed; C4 targeted 86 passed; default-off new test 1 passed; retained exact-marker tests 14 passed. No package exists yet.
+**In flight:**
+- Corrected clean baseline: exec session 18705, /tmp/nrp-r3a-original-result.txt. Archived 0f38bd1 scripts plus sibling memory_peak.py; command python -m pytest /tmp/nrp-r3a-original/skills/nrp-monitor/scripts/tests -q.
+- Current full suite: exec session 36773, /tmp/nrp-r3a-after-cuts-result.txt; cwd skills/nrp-monitor/scripts, python -m pytest tests -q.
+- Interpreter: /Users/hunterschweiger/miniconda3/bin/python3 (default python lacks pytest).
 **Next:**
-1. Review baseline copy-path issue recorded in LOG; targeted corrected cuts checks passed 33 tests. Run the final full suite from scripts in the real repo.
-2. Review C2 sidecar s3 cp removal (coupled to may_touch) and stale docstrings/skill docs mentioning night code/chains; keep scope within approved cuts.
-3. Apply C3 local gemini CLI removal (keep agy) and C4 off-by-default ladder.triage_judge; one commit per cut. Update register with each SHA in subsequent commit.
-4. Mechanical module move per DESIGN section 1; no deeper redesign. Use explicit module imports and preserve state/CLI behavior.
-5. Installer must copy package beside entry point; tests often copy just the script to fake bin, so inspect fixture packaging carefully.
-6. Port internal-test import/patch targets only; full test suite, CLI parse checks, module counts, LOG update, commit and push only nrp-monitor-rewrite when passing.
-**Tests:** full removed-test names in PLAN register. User explicitly permits only cut-feature test removal; preserve retained part of mixed tests.
-Mixed test test_next_add_refuses_outside_may_touch_and_outside_run became test_next_add_refuses_outside_run; only cut may_touch assertion removed.
-**Gotchas:** plan_gpu_cover was inside night-code section but is retained GPU approval logic; restored in C2.
-ChainError, load_chain_file, state_lock, iso/ago, regexes and heartbeat helpers were in chain sections but serve retained features.
-**Read first:** PLAN.md, LOG.md top entry, DESIGN.md sections 1-2. Script read section-by-section only.
-**Open questions:** none; continue approved work. Never touch live ~/.local paths, install, push main or merge patch P.
+1. Inspect/await the two in-flight outputs. Flattened previous baseline is invalid for helper tests: 642 passed/1 skipped/2 missing-helper failures. Corrected run should settle comparison.
+2. Fix any retained regressions from full suite; preserve every retained assertion. Only cut-specific removals allowed and register all of them.
+3. Mechanical move to scripts/nrp_monitor per DESIGN §1, explicit imports, no shared namespace. Keep bodies/names; <=~800 lines/module (record exceptions). No R3b redesign or patch P.
+4. Thin nrp-monitor entry; install.sh copies package beside it; fake-bin copy fixtures must copy package. Never run install outside existing temporary-HOME tests.
+5. Port internal tests only imports/patch targets. Prove retained assertions unchanged (C3 mixed tests have approved cut runner fixture/expectation changes).
+6. Full suite, CLI parse checks, module counts, LOG; commit and push only nrp-monitor-rewrite once suite passes. Never install/touch live ~/.local/push main.
+**Gotchas:** C4 config is state config.json ladder.triage_judge (not agents.json); task fixture opts in so optional judge assertions survive.
+C1 retained ChainError, state_lock, iso/ago, regex/heartbeat helpers. C2 retained plan_gpu_cover (GPU approval).
+C3 removed local runner tests (6); generic setup/config/failover now use agy; no retained assertions dropped.
+Seven more C1 tests removed from ExactChains/IndexedChains in test_s3_exact; retained pure/task tests unchanged.
+Some stale CLI help still says Gemini CLI / thinking and historical docs mention chains/night code; clean only cut-related current guidance.
+**Read first:** PLAN.md (R3a/register), LOG.md newest entry, DESIGN.md §1-2.
+**Open questions:** none. Branch not pushed because full suite is still pending; honor pass-before-push rule.

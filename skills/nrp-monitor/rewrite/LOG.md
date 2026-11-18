@@ -1,5 +1,13 @@
 # Log: nrp-monitor rewrite (newest first)
 
+## 2026-11-18 — R3a cuts continued, mechanical move still pending
+- C3 `1d34054`, docs/register `2c8dc77`: removed local Gemini CLI, policy/settings and setup selection; agy retained. Generic config/setup/failover tests use agy in place of removed runner; only local-runner tests and valid-thinking loop removed (full register). C2 stale code-authoring / sidecar-copy help corrected in the same script edit.
+- C4 `50d2068`: task failure judge requires config.json `ladder.triage_judge: true`, default false. Existing task fixture explicitly opts in; robustness role test opts in. No existing assertions changed for C4. Added one end-to-end default-off test (passed).
+- C1 follow-up `e54710f`: full-suite collection found test_s3_exact still imported deleted test_chains. Removed its two chain-only classes (7 tests); all names in register. Retained exact-marker tests passed (14).
+- Checks: C3 targeted tiers/followups/robustness 56 passed; C4 tasks/ladder/robustness 86 passed (before new default-off test); new default-off 1 passed. diff --check clean.
+- Original baseline /tmp/nrp-r3a-baseline finished 642 passed, 1 skipped, 2 failed in 427.71s. Both failures are missing nrp-cluster/references/memory_peak.py due to flattened temp-copy layout, not monitor regressions. Corrected immutable baseline archived from 0f38bd1, including sibling helper, running in /tmp/nrp-r3a-original (output below).
+- No package move/import port/installer edit yet. No install/live state access, main changes, push or P port. Full suite must pass before branch push.
+
 ## 2026-11-18 — R3a partial implementation relay (not ready to install or push)
 - Branch `nrp-monitor-rewrite`, based on `0f38bd1`; C1 `ce234a2`, C2 `fc77d32`.
 - C1 removed chain execution/commands and cut-specific tests (full names in PLAN cut register); shared helpers retained.
