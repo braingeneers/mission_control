@@ -109,6 +109,15 @@ def judge(row, events, now):
                   and row['start'] <= e['time'] <= row['deadline']]
     if row['category'] in ('unobserved', 'suppressed_write'):
         return dict(row, verdict='unknown', installed='shadow coverage suppressed')
+    # The state copy can be taken while an installed agent for this stage is
+    # still running (its later submit lands inside the window). The shadow then
+    # repeats the same agent decision on the same failure: that is a match.
+    earlier = [e for e in events if e['task'] == row['task'] and e['stage'] == row['stage'] and e['time'] < row['start']]
+    if earlier and row['category'] in ('fix_agent', 'utilization_review'):
+        last = max(earlier, key=lambda e: e['time'])
+        if last['category'] == row['category']:
+            return dict(row, verdict='matched', installed=last['evidence'] + ' (agent in flight at snapshot)',
+                        installed_category=last['category'])
     if candidates:
         event = min(candidates, key=lambda e: e['time'])
         return dict(row, verdict='matched' if event['category'] == row['category'] else 'unexplained',

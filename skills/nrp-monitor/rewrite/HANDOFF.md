@@ -1,16 +1,14 @@
-# Handoff: nrp-monitor R4 decision shadow (2026-11-18)
-- Plan: nrpmon-rewrite, PLAN.md R4; stop before install/swap. R5 later; R6 unapproved.
-- Worktree: `/Users/hunterschweiger/.t3/worktrees/mission_control/t3-5d6f3948-7a71276ff0751a9b`, branch `nrp-monitor-rewrite`.
-- No push, install, scheduling, live mutation or installed monitor execution.
-- Comparator uses first task/stage decisions, not final state. First suppressed task action ends reliable coverage; later events are provisional. Untouched siblings are unknown.
-- Installed launchd interval checked: 300 seconds. Window starts at snapshot start and ends two intervals after shadow completion. Missing installed evidence is pending, then unknown; silence never proves wait.
-- Each invocation resolves old pending rows in private `result-*.json` and `pending.json`, rewriting their reports. Day summary counts each row once per run, including current verdicts and route counts.
-- Private persistence: `/private/tmp/claude-501/nrp-shadow/`. Reports: gitignored `rewrite/shadow/runs/`. Old Markdown-only runs lack persisted decision data and are excluded from aggregation.
-- Filesystem finding: inferred four old blocks were relative `os.unlink('job.json', dir_fd=...)` during isolated submit-temp cleanup. Checked reproduction and two FD regression cases confirm the gate bug/recovery; no production source write or new redirect. See shadow/AUDIT.md.
-- Final shadow: `shadow/runs/2026-11-18T114731.md`, private `pass-_8g7_fbs`; exit 0, matched 2 / unexplained 0 / pending 15 / unknown 12 at completion; zero filesystem blocks/global errors. Re-judged 11:51:43: matched 7 / unexplained 0 / pending 10 / unknown 12. Pending is not equivalence evidence.
-- No suspected rewrite bug identified. Summary retains four earlier-development mismatches: one missing journal task scope (fixed), three wait/later-failure timing gaps; see newest LOG entry.
-- Focused checks: 60 passed. Full suite: 664 passed, 7 existing warnings, 242.71s (`/tmp/r4-suite.txt`).
-- Next: main session runs the shadow every ~15 minutes for a day, then day-summary, reports to Hunter, and stops before install. No scheduler was installed.
-- One run, from this worktree: `/Users/hunterschweiger/miniconda3/bin/python3 skills/nrp-monitor/rewrite/shadow/run.py`.
-- Summary, adjust local start time: `/Users/hunterschweiger/miniconda3/bin/python3 skills/nrp-monitor/rewrite/shadow/run.py --day-summary 2026-11-18T00:00:00`.
-- Read first: PLAN.md R4/Cut register; newest LOG.md; shadow/AUDIT.md; latest run report.
+# Handoff: nrp-monitor R4 day shadow  (2026-11-18 12:00, main session)
+**Plan and active steps:** nrpmon-rewrite, PLAN.md R4. Approved through the shadow; STOP for Hunter before install/swap. R5 later; R6 unapproved.
+**Where we are:** comparator verified (664 tests pass; newest LOG entry). Branch `nrp-monitor-rewrite` pushed. No suspected rewrite bug so far; pending/unknown rows are coverage limits, not equivalence.
+**In flight:** day loop, 96 shadow passes every 15 min, ends ~2026-11-19 12:00 local.
+- Check: `kill -0 $(cat /private/tmp/claude-501/nrp-shadow/loop.pid) && tail -5 /private/tmp/claude-501/nrp-shadow/loop.log`
+- Reports: gitignored `rewrite/shadow/runs/`; persisted results under `/private/tmp/claude-501/nrp-shadow/`.
+- The loop runs code from this worktree: edits here change later passes. Note the time of any edit in LOG.
+**Next:**
+1. After the loop ends (or earlier for a partial read): from the worktree, `/Users/hunterschweiger/miniconda3/bin/python3 skills/nrp-monitor/rewrite/shadow/run.py --day-summary 2026-11-18T11:55:00`.
+2. Check every unexplained row against installed monitor.log (read-only). Fix comparator gaps with a test; treat real decision differences as rewrite bugs.
+3. Report to Hunter: counts, each unexplained row and its cause, and a recommendation on the R4 install/swap. Do not install.
+4. At merge to main, regenerate code-map aggregates (_INDEX/_GRAPH/_FEATURES conflict).
+**Gotchas:** state copy is sequential, not atomic; installed agents in flight at snapshot time are now matched. One pass takes ~60 s.
+**Read first:** PLAN.md R4; newest LOG entry; shadow/AUDIT.md; latest runs/ report.

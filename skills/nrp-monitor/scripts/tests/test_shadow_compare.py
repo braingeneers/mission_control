@@ -76,3 +76,11 @@ def test_utilization_measurement_is_not_review_decision():
     assert c.category('utilization observation (stage keeps running): LOW job-a') is None
     events = c.installed_events(['2026-11-18T10:00:00 task t: utilization observation (stage keeps running): LOW job-a', '2026-11-18T10:00:01 task t: triage agent start'], TASKS)
     assert [(e['stage'], e['category']) for e in events] == [('a', 'utilization_review')]
+
+
+def test_agent_in_flight_at_snapshot_matches():
+    early = event('fix_agent', time='2026-11-18T09:58:00')
+    later = event('submit', time='2026-11-18T10:00:30')
+    assert c.judge(row('fix_agent'), [early, later], '2026-11-18T10:01:00')['verdict'] == 'matched'
+    # A finished earlier ladder step (submit) does not excuse a different first decision.
+    assert c.judge(row('fix_agent'), [early, event('submit', time='2026-11-18T09:59:00'), later], '2026-11-18T10:01:00')['verdict'] == 'unexplained'

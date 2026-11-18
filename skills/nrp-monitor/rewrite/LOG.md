@@ -1,5 +1,10 @@
 # Log: nrp-monitor rewrite (newest first)
 
+## 2026-11-18 — R4 comparator verified; in-flight agent match; day loop started (main session)
+- Reviewed aab633d: shadow-only changes (decision journal, dir_fd-resolved write gate, compare.py). Full suite 664 passed. Live pass 11:52:21 (`runs/2026-11-18T115221.md`, private pass-7yig6zi0): matched 2 / unexplained 1 / pending 12 / unknown 10; zero filesystem blocks.
+- The unexplained row (20260720 ws17-64): installed started a fix agent at 11:50:42 (monitor.log line 23592) whose submit landed 11:52:30; the state copy was taken while that agent ran, so the shadow repeated the same fix_agent decision and was compared to the later submit. Comparator gap, not a rewrite bug. judge() now matches a shadow agent decision to the same installed agent decision made before the snapshot when no other decision came between (test_agent_in_flight_at_snapshot_matches). 61 shadow tests pass.
+- Day loop: `/private/tmp/claude-501/nrp-shadow/loop.sh`, PID in `loop.pid`, log `loop.log`; 96 passes x 15 min from ~11:58 local, ends ~2026-11-19 12:00.
+
 ## 2026-11-18 — R4 first-decision comparator and pending/day reports
 - Compare first task/stage decisions, not terminal shadow states; task suppression cuts off later events as provisional. Read installed launchd interval (300s), allow two intervals after completion, persist/re-judge pending results under private tmp; missing evidence expires unknown. `--day-summary SINCE` aggregates persisted per-run verdicts, every unexplained row/evidence and route counts. Reports stay gitignored under shadow/runs/.
 - Four old filesystem blocks are inferred isolated submit-temp cleanup false positives: relative job.json unlink resolved against cwd instead of dir_fd. Checked local reproduction recovered cleanup without changing the decision. Resolve directory FDs; external writes remain blocked with route/path-kind/caller labels and private targets, and count as suppression. No new redirect or production source writes; details in shadow/AUDIT.md.
