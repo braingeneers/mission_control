@@ -1,5 +1,8 @@
 # Log: nrp-monitor rewrite (newest first)
 
+## 2026-11-19 session-start notice: one main chat
+Hunter (2026-11-19): global notices (excluded nodes, runner usage, every owner wait) go only to one main chat; other chats see only their own items; the main chat moves with `origin --replace` and `nrp-monitor main-chat --link`. Heartbeat-stale and "NO runner left" stay in every chat. Digest gained a runner-usage line. Built by a Sonnet agent (codex out of usage), 717 tests pass. Main chat set to the nrp-monitor rewrite thread 7157dabd. Plans store no origin, so plan owner-waits are digest-only.
+
 ## 2026-11-18 — band action: own-account count, ramp-up gate, coordinator sizing kept, `task stage --done-s3`
 - Reported by the ft-ladder coordinator (~13:35): (1) ft-disease-sizegroups u96 stopped for one pod aged 5m (account stop: `namespace_offenders` counted every account's pods incl. Workflows `nf-*` under nextflow-sa); (2) ft-official-units-region: band auto-restart (cpu=1.0, 3Gi) overwrote the coordinator's 250m/6Gi manifest 7 min after its resume, then stopped the pod at 6m; (3) done_s3 had to be hand-edited.
 - Fixes (codex gpt-6.1-sol, reviewed): stop count only `ours`; NRP band flags wait through ramp-up = min(25% measured runtime, 15 min), 10 min without history, age from the flag line, unknown age = act (my choice, cautious); resume after a band wake/stop clears nrp_* and sets `coordinator_sized` (also `task resize`) → wake instead of auto-restart; `task stage NAME STAGE --done-s3 URI`. 702 tests pass.

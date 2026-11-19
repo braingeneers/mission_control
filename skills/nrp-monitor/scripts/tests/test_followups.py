@@ -140,8 +140,11 @@ def test_agy_argv_and_result(w,tmp_path):
     assert w.triage_verdict(json.loads(result[1])['result'])[0]=='CLOSE'
 
 
-def test_quiet_status_summarizes_excluded_nodes(w, capsys):
-    # The session-start hook runs `status --quiet`: one count line, not one line per node.
+def test_quiet_status_summarizes_excluded_nodes(w, capsys, monkeypatch):
+    # The session-start hook runs `status --quiet`: one count line, not one line per node, and only in the main chat.
+    monkeypatch.setenv('T3CODE_THREAD_ID', 'main-chat-id')
+    w.cmd_main_chat(SimpleNamespace(here=True, clear=False, link=None, title=None, by='test'))
+    capsys.readouterr()
     with patch.object(w, 'now', return_value=100):
         w.record_bad_node('node-a', 'Xid'); w.record_bad_node('node-b', 'ECC')
         w.cmd_status(SimpleNamespace(quiet=True))

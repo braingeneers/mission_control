@@ -3,7 +3,7 @@ import argparse
 
 
 def monitor_parser():
-    from . import cli as _m_cli, decisions as _m_decisions, nrp_task as _m_nrp_task, notify as _m_notify, plan_commands as _m_plan_commands, setup as _m_setup, state as _m_state, task_commands as _m_task_commands, wake as _m_wake
+    from . import cli as _m_cli, decisions as _m_decisions, main_chat as _m_main_chat, nrp_task as _m_nrp_task, notify as _m_notify, plan_commands as _m_plan_commands, setup as _m_setup, state as _m_state, task_commands as _m_task_commands, wake as _m_wake
     from .task import registry as _m_task_registry
     ap = argparse.ArgumentParser(description=_m_cli.__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -134,11 +134,18 @@ def monitor_parser():
     o.add_argument("name")
     origin_edit_args(o)
     o.set_defaults(f=_m_task_commands.cmd_origin)
+    x = sub.add_parser("main-chat", help="show, set or clear the one chat that gets global notices (bad nodes, runner usage, owner waits) at session start")
+    x.add_argument("--here", action="store_true", help="make this chat the main chat (from its session id)")
+    x.add_argument("--link", help="make the chat with this link the main chat (t3-thread://v2/ENV/THREAD or https://...)")
+    x.add_argument("--title", help="chat title, with --here or --link")
+    x.add_argument("--by", help="who changed it (default: current session or cli)")
+    x.add_argument("--clear", action="store_true", help="no main chat: no chat gets global notices at session start")
+    x.set_defaults(f=_m_main_chat.cmd_main_chat)
     l = sub.add_parser("log")
     l.add_argument("-n", type=int, default=30)
     l.set_defaults(f=_m_cli.cmd_log)
     t = sub.add_parser("status", help="heartbeat age; warns (exit 3) when stale while chains or jobs are active")
-    t.add_argument("--quiet", action="store_true", help="print only the warning (for a SessionStart hook)")
+    t.add_argument("--quiet", action="store_true", help="session-start hook: own items, plus global notices only in the main chat (see `main-chat`)")
     t.set_defaults(f=_m_cli.cmd_status)
     x = sub.add_parser("setup", help="choose which assistant runs each tier (Claude Code / Codex / Gemini CLI) from the subscriptions you have; writes agents.json after showing a diff")
     x.add_argument("--non-interactive", action="store_true", help="no prompts: use the flags, else the suggestions for the installed CLIs, and write")

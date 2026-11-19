@@ -25,6 +25,14 @@ send messages. Do those only as the user asks, following the procedures below.
 For a short wait inside one session, use one background wait and do not register anything. Never poll in the foreground
 and never start an agent whose only job is to wait.
 
+## Main chat
+
+At session start, `nrp-monitor status --quiet` shows global notices (excluded nodes, tasks that need the owner,
+runners out of usage) only in the one main chat. Every other chat sees only its own items, plus the scheduler
+warning and "NO runner left" everywhere. Everything is also in `nrp-monitor digest`. Set it with
+`nrp-monitor main-chat --here` (or `--link t3-thread://... [--title T]`), show it with no options, remove it with
+`--clear`. It moves to the new chat when `task origin ... --replace` moves the main chat's work.
+
 ## Procedure
 
 1. **Check the monitor exists and is alive.** Run `nrp-monitor status`. Exit 3 or "has never run" means the

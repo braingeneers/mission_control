@@ -9,6 +9,7 @@ from pathlib import Path
 from . import agents as _m_agents
 from . import cluster as _m_cluster
 from . import legacy as _m_legacy
+from . import main_chat as _m_main_chat
 from . import notify as _m_notify
 from . import plan_wakes as _m_plan_wakes
 from . import red_alert as _m_red_alert
@@ -36,8 +37,20 @@ def origin_ids(origin):
 
 
 def cmd_status(a):
+    # --quiet is the session-start hook. Global notices (bad nodes, owner waits, runner usage) go to the one main chat
+    # (`nrp-monitor main-chat`); any other chat sees its own items and a pointer to the digest. Plain `status` shows everything.
+    here = session_ids()
+    main = not a.quiet or _m_main_chat.is_main(here)
+    hidden = []                                # global notices this chat did not get
+
+    def pointer():                             # a known chat under a set main chat stays silent: it is not the one told
+        if hidden and (not here or not _m_main_chat.load()):
+            print("nrp-monitor: global notices are in `nrp-monitor digest`%s" % (
+                  "" if _m_main_chat.load() else "; set a main chat with `nrp-monitor main-chat --here`"))
     bad = _m_cluster.bad_node_lines()
-    if a.quiet and bad:                       # session-start hook: one line; the full list is in `status` and the digest
+    if bad and not main:
+        hidden.append("bad nodes")
+    elif a.quiet and bad:                     # session-start hook: one line; the full list is in `status` and the digest
         print("nrp-monitor: %d node(s) excluded after faults (`nrp-monitor status` lists them)" % len(bad))
     else:
         for line in bad:
@@ -54,8 +67,14 @@ def cmd_status(a):
         print("WARNING: nrp-monitor %s but %s; nothing is being submitted, checked or notified. Start: "
               "sh -c 'while :; do nrp-monitor run; sleep 300; done'" %
               ("has never run" if age is None else "has not run for %d min" % (age // 60), desc))
+        pointer()
         return 3
     nh = _m_notify.needs_owner()
+    if nh and not main:                        # another chat's owner wait is global; this chat's own wait is not
+        nh_own = [(n, t) for n, t in nh if origin_ids(t.get("origin")) & here] if here else []
+        if len(nh_own) < len(nh):
+            hidden.append("owner waits")
+        nh = nh_own
     if nh:
         print("nrp-monitor: %d task(s) need the owner: %s  (`nrp-monitor digest`)" % (len(nh), "; ".join(
               "%s: %s" % (n, (t.get("reason") or "")[:100]) for n, t in nh[:3])))
@@ -63,7 +82,6 @@ def cmd_status(a):
     if co:
         # Session-start notice, scoped to this chat (Hunter 2026-11-18): other chats' waiting tasks stay in their own chats and the
         # digest. Display only; routing and wakes are unchanged.
-        here = session_ids()
         if here:
             mine = [(n, t) for n, t in co if origin_ids(t.get("origin")) & here]
             if mine:
@@ -74,8 +92,13 @@ def cmd_status(a):
                   "listed (`nrp-monitor digest`)" % len(co))
     blocked = [r for r in _m_agents.agent_cfg()["runners"] if _m_agents.runner_blocked(r)]
     if blocked:
-        print("nrp-monitor: agent runner(s) out of usage: %s%s  (`nrp-monitor agents`)" % (", ".join(blocked),
-              "; NO runner left, agent work is waiting" if not _m_agents.agents_available() else "; work uses the next runner"))
+        no_runner = not _m_agents.agents_available()
+        if main or no_runner:                  # "NO runner left" stops all agent work, so every chat sees it
+            print("nrp-monitor: agent runner(s) out of usage: %s%s  (`nrp-monitor agents`)" % (", ".join(blocked),
+                  "; NO runner left, agent work is waiting" if no_runner else "; work uses the next runner"))
+        else:
+            hidden.append("runner usage")
+    pointer()
     if not a.quiet:
         print("ok: heartbeat %s, %s" % ("none" if age is None else _m_state.ago(hb) + " ago", desc))
     return 0

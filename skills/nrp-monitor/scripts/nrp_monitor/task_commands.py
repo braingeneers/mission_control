@@ -11,6 +11,7 @@ from pathlib import Path
 from . import config as _m_config
 from . import decisions as _m_decisions
 from . import ladder as _m_ladder
+from . import main_chat as _m_main_chat
 from . import plan_commands as _m_plan_commands
 from . import state as _m_state
 from .task import registry as _m_task_registry
@@ -320,7 +321,7 @@ def cmd_origin(a):
         new = _m_wake.norm_origin(dict(flags, evidence=a.evidence), source="backfilled %s" % datetime.now().date().isoformat())
     except _m_state.ChainError as e:
         sys.exit("origin refused: %s" % e)
-    msgs = []
+    msgs, replaced = [], []
 
     def apply(rec, log_fn):
         old = rec.get("origin")
@@ -337,6 +338,8 @@ def cmd_origin(a):
             rec.setdefault("origin_history", []).append(dict(old, replaced_at=_m_state.iso(), replacement_evidence=a.evidence,
                                                              by=getattr(a, "by", None) or os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CODEX_THREAD_ID") or "cli"))
         rec["origin"] = new
+        if old:
+            replaced.append(dict(old))
         by = getattr(a, "by", None) or os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CODEX_THREAD_ID") or "cli"
         log_fn("origin %s -> %s by %s (evidence: %s)" % (_m_wake.origin_plain(old), _m_wake.origin_plain(new), by, a.evidence))
     if kind == "task":
@@ -353,6 +356,10 @@ def cmd_origin(a):
     if not ok:
         sys.exit(msgs[0] if msgs else "no %s named %s" % (kind, name))
     print("%s %s origin recorded: %s" % (kind, name, _m_wake.origin_plain(new)))
+    if replaced:                                                         # the main chat follows its work to the new chat
+        moved = _m_main_chat.transfer(replaced[0], new, by=_m_main_chat.acting_by(a))
+        if moved:
+            print(moved)
     return 0
 
 

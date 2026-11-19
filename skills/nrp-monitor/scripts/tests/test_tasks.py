@@ -413,6 +413,10 @@ class T(unittest.TestCase):
         self.assertEqual(len(self.pushes()), 1, self.pushes())
         self.assertIn("needs you", self.pushes()[0])
         rc, out, _ = self.wd("status", "--quiet")
+        self.assertIn("global notices are in `nrp-monitor digest`", out, "no main chat: the hook points to the digest")
+        self.env = dict(self.env, T3CODE_THREAD_ID="main-chat-id")
+        self.assertEqual(self.wd("main-chat", "--here")[0], 0)
+        rc, out, _ = self.wd("status", "--quiet")
         self.assertIn("1 task(s) need the owner", out)
 
     def test_slow_deadline_enters_the_ladder_not_the_owner(self):

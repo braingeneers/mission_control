@@ -120,6 +120,18 @@ A different link or session clears unspecified old chat details while preserving
 Previous origins remain in `origin_history` with replacement time, replacement evidence and changer (`--by`, otherwise the current session or `cli`).
 `task show NAME` lists them. The task log records old and new origins and the changer.
 
+If the old origin chat is the main chat, `--replace` moves the main chat to the new chat too and prints that it did.
+
+### Main chat and session-start status
+
+`nrp-monitor status --quiet` (the SessionStart hook) shows global notices only in the main chat: excluded nodes, tasks that need the owner, runners out of usage.
+Other chats see only tasks that need the owner and have their own origin, the scheduler warning and "NO runner left".
+A chat with an unknown id, or any chat while no main chat is set, gets one line pointing to `nrp-monitor digest` when it hid something.
+Plain `nrp-monitor status` shows everything. The digest lists blocked runners.
+
+`nrp-monitor main-chat` shows the main chat. `--here` sets it from this chat's id (the T3 link cannot be read from the environment; add `--link` to record it).
+`--link t3-thread://v2/ENV/THREAD [--title T]` sets it explicitly. `--clear` removes it. It is stored as `main_chat` in `config.json`, and each change is logged.
+
 ### Queue waits
 
 Stages may declare `"queue_wait_ceiling": "6h"` (positive durations in seconds, minutes, hours or days: `s`, `m`, `h`, `d`).

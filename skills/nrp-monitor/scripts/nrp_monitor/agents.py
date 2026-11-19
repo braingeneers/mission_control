@@ -248,6 +248,17 @@ def unavailable_text():
     return "%s: %s" % (_m_state.UNAVAILABLE, "; ".join(bits))
 
 
+def blocked_text():
+    """'claude out of usage until Fri 14:00; codex not signed in, retried until ...' for the blocked runners, or '' when none is."""
+    st, bits = _m_notify.read_json(_m_state.RUNNER_STATE, {}), []
+    for r in agent_cfg()["runners"]:
+        u = float((st.get(r) or {}).get("until", 0))
+        if u > _m_state.now():
+            bits.append("%s %s until %s" % (r, "not signed in, retried" if (st.get(r) or {}).get("kind") == "auth" else "out of usage",
+                                            datetime.fromtimestamp(u).strftime("%a %H:%M")))
+    return "; ".join(bits)
+
+
 def block_runner(runner, out, err, kind="limit"):
     """Set a runner aside: `limit` until its reset time (usage / rate limit), `auth` for AUTH_BLOCK_S (not signed in)."""
     text = " ".join(((out or "") + " " + (err or "")).split())

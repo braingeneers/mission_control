@@ -193,6 +193,10 @@ def render_digest(hours):
     lines = ["# nrp-monitor digest, last %dh (%s)" % (hours, _m_state.iso()),
              "Sent by the monitor script, not by one chat: each task/chain below names the chat that owns it (origin) when recorded."]
     lines.extend(_m_cluster.bad_node_lines())
+    from . import agents as _m_agents  # Local import breaks orchestration cycle; patches stay on the defining module.
+    blocked = _m_agents.blocked_text()
+    if blocked:                                # session-start status shows this only in the main chat; the digest keeps it for all
+        lines.append("Agent runners blocked: %s%s  (`nrp-monitor agents`)" % (blocked, "" if _m_agents.agents_available() else "; NO runner left, agent work is waiting"))
     nh = needs_owner()
     owner_plans = [(p, _m_plans.plan_state(p)["owner_wait"]) for p in _m_plan_commands.plan_names() if _m_plans.plan_state(p).get("owner_wait")]
     lines.append("\n## Needs the owner (%d)" % (len(nh) + len(owner_plans)))
