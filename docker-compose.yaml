@@ -1044,7 +1044,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20261118-06b734bfd349
+    image: braingeneers/workflows-backend:20261118-a7ee8df32960
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1070,6 +1070,8 @@ services:
       MQTT_QOS: "1"
       COLLECTED_RUNS_ROOT: "/local/workflows/runs"
       WORKSPACE_PVC_CLAIM: "flowforge-nextflow-work-west"
+      # Temporary. Remove after NRP confirms the host is stable, then recreate the backend.
+      K8S_DRIVER_EXCLUDED_NODES: '["nautilus-ext-gpu01.fullerton.edu"]'
       LAUNCHER_MOUNT_TIMEOUT_SECONDS: "1800"
       NOTIFICATION_DISPATCH_ENABLED: "true"
       NOTIFICATION_SERVICE_URL: "http://notification-service:8000"
@@ -1092,7 +1094,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20261118-06b734bfd349
+    image: braingeneers/workflows-frontend:20261118-a7ee8df32960
     container_name: workflows
     restart: unless-stopped
     expose:
