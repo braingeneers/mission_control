@@ -688,7 +688,12 @@ The `VIRTUAL_HOST` & `LETSENCRYPT_HOST` environment variables in your service's 
 
 **IMPORTANT** Never include credentials in your docker image, that image is public and those credentials will be found and stolen if you do. Credentials are stored in our `braingeneers` namespace in Kubernetes. See the [administration page on the wiki](https://github.com/braingeneers/wiki/blob/main/shared/administrators.md) for more details.
 
-If your service requires access to shared secrets such as the S3 credentials, add a volume mount from the shared secrets volume. The secrets will be available in the following directory structure. All secrets in our namespace are downloaded by the `secret-fetcher` service. If you've added a new secret to the Kubernetes namespace you can simply restart the `secret-fetcher` service to make it available and watch the `secret-fetcher` logs to confirm your new secret was pulled.
+Mount the shared `secrets` volume in services that need fetched credentials.
+`secret-fetcher` reads the Braingeneers namespace at startup and writes keys
+under `/secrets/<secret-name>/<key>`. Follow
+[read-only secret verification](skills/mission-control-services-management/references/secrets.md#verify-before-handoff)
+to confirm an existing key before deployment. The refresh procedure there
+covers new or rotated keys and verifies the affected consumer.
 
 ```text
 /secrets/
