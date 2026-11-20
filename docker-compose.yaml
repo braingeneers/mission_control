@@ -1112,12 +1112,14 @@ services:
 
   # Braingeneers Lit-Map intake service: contribute papers to the literature knowledge base.
   # Image is built on NRP from github.com/braingeneers/lit-map (service/Dockerfile); the tag
-  # and digest come from service/image.lock. The same image runs the per-paper NRP Jobs.
+  # and digest come from service/image.lock. Paper processing runs in this container.
   # Uploads use relay mode because the braingeneers bucket CORS only allows the uploader origins.
   lit-map:
-    image: hschweiger15/lit-map-service:20261119-1491a239@sha256:bf2cd8eae36374d2252df8d448a5fd1c81b180ff39f8d2b34b5650f3e04408fa
+    image: hschweiger15/lit-map-service:20261119-474276b2@sha256:0d8622b618f2207d13cada79ced2b37d3e8e106a801cefdb2f34bf6af51dfb14
     container_name: lit-map
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     entrypoint: /secrets/entrypoint-secrets-setup.sh
     command:
       - "--copy"
@@ -1126,7 +1128,7 @@ services:
       - "/secrets/kube-config/config:/kube/config"
       - "/bin/sh"
       - "-c"
-      - "alembic -c service/alembic.ini upgrade head && uvicorn service.app:app --host 0.0.0.0 --port 8000"
+      - "alembic -c service/alembic.ini upgrade head && exec uvicorn service.app:app --host 0.0.0.0 --port 8000"
     expose:
       - "8000"
     environment:
@@ -1142,7 +1144,9 @@ services:
       LITMAP_WORK: "/local/lit-map"
       LITMAP_KUBECONFIG: "/kube/config"
       LITMAP_K8S_NAMESPACE: "braingeneers"
-      # NRP Jobs run this same image (keep identical to the image above).
+      LITMAP_PAPER_WORKERS: "2"
+      NRP_LLM_API_KEY_FILE: "/secrets/nrp-llm-api-key/nrp_llm_api_key"
+      # Keep the legacy pin during the drain and rollback window.
       LITMAP_JOB_IMAGE: "hschweiger15/lit-map-service:20261119-1491a239@sha256:bf2cd8eae36374d2252df8d448a5fd1c81b180ff39f8d2b34b5650f3e04408fa"
       LITMAP_MAX_JOBS: "2"
       LITMAP_UPLOAD_MODE: "presigned"
