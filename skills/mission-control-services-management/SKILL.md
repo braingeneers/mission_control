@@ -15,7 +15,8 @@ Use this skill for services deployed through the `mission_control` repository on
   user or operator concise instructions for server-side work, with exact commands
   when needed or requested, and wait for the result.
 - Never create, patch, replace, or delete Kubernetes Secrets. Secret mutations
-  are operator-owned; provide instructions without performing the mutation.
+  are operator-owned. Use [read-only verification](references/secrets.md#verify-before-handoff)
+  to check existing Secret wiring before involving the operator.
 - Do not run production-style Mission Control services locally unless the user
   explicitly requests a local test.
 - Preserve user scope. Diagnosis does not authorize deployment, restart,

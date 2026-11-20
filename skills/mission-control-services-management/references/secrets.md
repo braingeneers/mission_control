@@ -1,22 +1,17 @@
 # Secrets And Runtime Credentials
 
 Use this reference for `secret-fetcher`, mounted secret files, entrypoint setup,
-and runtime token refresh. It does not authorize the agent to mutate a
-Kubernetes Secret.
+and runtime token refresh.
 
 ## Ownership Boundary
 
-Kubernetes Secret creation, patching, replacement, and deletion are
-operator-owned. The agent may:
-
-- inspect tracked configuration and public secret-name/key contracts;
-- diagnose whether a mounted file is expected;
-- give an authorized operator exact mutation or refresh instructions;
-- wait for sanitized status or existence checks.
-
-The agent must not read, decode, print, modify, or submit secret values. Read the
-wiki administrator guidance before advising an operator on a mutation, and do
-not present administrator procedures as ordinary self-service.
+Agents may verify Secret and key presence through authorized read-only
+Kubernetes access and check sanitized consumer status through approved HTTPS
+APIs. Keep credential values in the existing fetcher and application paths,
+with no raw or decoded values in agent output, commands, logs, or local copies.
+Kubernetes Secret mutations and production host operations are
+operator-owned. Read the wiki administrator guidance before advising an
+operator on a mutation.
 
 ## Materialization Model
 
@@ -88,16 +83,48 @@ instead of substituting credentials.
 
 ## Diagnosis And Refresh Handoff
 
-Common causes of missing credentials:
+### Verify Before Handoff
 
-- `secret-fetcher` cannot authenticate or lacks namespace permissions;
-- the Kubernetes Secret name or key differs from the mounted path;
-- `secret-fetcher` has not been recreated since an operator changed a Secret;
-- `--copy` or `--env` points to the wrong source or application destination;
-- the consuming service was not recreated after refreshed materialization.
+1. Use the authorized workstation kubeconfig and explicit namespace to
+   check the exact Secret and data key. Project a boolean with `kubectl`
+   instead of requesting YAML, JSON, or the field value. Replace `SECRET_NAME`
+   and `KEY_NAME` with the expected names.
 
-Ask the operator to check file existence or size without printing content, then
-refresh only `secret-fetcher` and the affected consumer when required. Inspect
-bounded logs for names and status, never values. Missing Slack, DKIM, LLM, or
-other provider credentials should follow the owning reference's documented
-degraded behavior rather than introducing an insecure fallback.
+   ```bash
+   kubectl --namespace braingeneers get secret SECRET_NAME \
+     -o go-template='{{if index .data "KEY_NAME"}}present-and-nonempty{{else}}missing-or-empty{{end}}{{"\n"}}'
+   ```
+
+   A successful check establishes presence with the workstation identity.
+   An authorization error requires an authorized operator or an existing
+   consumer signal.
+2. Trace the shared volume, exact `/secrets/<name>/<key>` path, any entrypoint
+   copy or environment mapping, and how the pinned image reads the result.
+   The fetcher's current health check sees a completion marker. A failed
+   Kubernetes read can still leave the fetcher healthy.
+3. Prefer a documented read-only HTTPS signal from the live consumer or an
+   established consumer of the same shared key. Check what its status
+   actually measures. An existing consumer can confirm the shared mount,
+   while the target's status or a normal operation can verify its own
+   access and upstream authentication.
+
+Ask the operator for a targeted check only when the remaining uncertainty
+matters for the rollout. For a running consumer, this checks the exact path
+without displaying its contents. The command succeeds only for a readable,
+nonempty file.
+
+```bash
+docker compose exec -T SERVICE sh -c 'test -r "$1" && test -s "$1"' sh /secrets/SECRET_NAME/KEY_NAME
+```
+
+### Refresh After A Secret Change
+
+`secret-fetcher` populates the volume at startup. When an operator adds or
+rotates a key or diagnoses stale materialization, have them recreate
+`secret-fetcher` with `docker compose up -d --no-deps --force-recreate secret-fetcher`
+and verify the affected consumer. Recreate the consumer when it copies or
+caches credentials at startup. A routine application image update using a
+verified existing key follows the normal
+[targeted pull and recreate](operations.md#targeted-service-operations).
+Missing provider credentials follow the owning reference's documented
+degraded behavior.

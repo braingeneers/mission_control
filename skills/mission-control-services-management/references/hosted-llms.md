@@ -23,7 +23,9 @@ The existing operator-owned Kubernetes Secret is:
 - Key: `nrp_llm_api_key`
 - Fetched file: `/secrets/nrp-llm-api-key/nrp_llm_api_key`
 
-Do not create, patch, replace, decode, print, or log this Secret. If it is absent, stop and ask a Braingeneers namespace operator to restore the operator-owned credential. `secret-fetcher` materializes it into the shared in-memory `secrets` volume. A consuming service needs:
+If the Secret is absent, ask a Braingeneers namespace operator to restore it.
+`secret-fetcher` materializes it into the shared in-memory `secrets` volume.
+A consuming service needs:
 
 ```yaml
 environment:
@@ -59,19 +61,11 @@ The sibling `../workflows/workflow-sources/grant-opportunities-report/` implemen
 
 ## Safe Validation And Rotation
 
-Agent-side diagnosis remains local and read-only. Never SSH to the GI server or mutate Kubernetes Secrets. An operator may confirm that the mounted file is non-empty without printing it:
-
-```bash
-docker compose exec -T SERVICE test -s /secrets/nrp-llm-api-key/nrp_llm_api_key
-```
-
-After an operator rotates the Kubernetes Secret, instruct the operator to refresh `secret-fetcher`, verify it, and recreate only the consuming service on `braingeneers.gi.ucsc.edu`:
-
-```bash
-docker compose up -d --force-recreate secret-fetcher
-docker compose logs --tail=100 secret-fetcher
-docker compose up -d --force-recreate SERVICE
-docker compose logs --tail=100 SERVICE
-```
+Use [the shared secret verification and refresh procedure](secrets.md#verify-before-handoff).
+For example, Uploader's `GET /api/version` reports
+`metadata_assistant.enabled` based on whether its code can read a nonempty
+credential from the mounted secret. That confirms availability in Uploader.
+Verify provider authentication through a successful target-service model
+request. Model discovery confirms the advertised catalog.
 
 Application logs and health endpoints should report connectivity, selected model, and feature readiness without revealing token contents.
