@@ -10,6 +10,10 @@ second application repository. Put service-owned code, entrypoints, schedulers,
 migrations, maintenance jobs, runtime defaults, and application configuration
 in the owning repository and image.
 
+When changing a service's startup arguments or credential mounts, exercise the
+effective startup command from rendered Compose against the pinned image with
+disposable dependencies. Compose validation alone checks the configuration.
+
 Compose should normally contain only:
 
 - the published image and deployment-specific command;

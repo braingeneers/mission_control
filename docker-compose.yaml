@@ -1120,14 +1120,6 @@ services:
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
-    entrypoint: /secrets/entrypoint-secrets-setup.sh
-    command:
-      - "--copy"
-      - "/secrets/prp-s3-credentials/credentials:/root/.aws/credentials"
-      - "--copy"
-      - "/bin/sh"
-      - "-c"
-      - "alembic -c service/alembic.ini upgrade head && exec uvicorn service.app:app --host 0.0.0.0 --port 8000"
     expose:
       - "8000"
     environment:
@@ -1142,6 +1134,7 @@ services:
       LITMAP_SITE_PREFIX: "braindance/_lit-map/"
       LITMAP_WORK: "/local/lit-map"
       LITMAP_PAPER_WORKERS: "2"
+      AWS_SHARED_CREDENTIALS_FILE: "/secrets/prp-s3-credentials/credentials"
       NRP_LLM_API_KEY_FILE: "/secrets/nrp-llm-api-key/nrp_llm_api_key"
       LITMAP_UPLOAD_MODE: "presigned"
       # Admins may delete abusive submissions. Login is CILogon by email, so this is an email list.

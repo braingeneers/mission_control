@@ -28,6 +28,7 @@ DATA_LIFECYCLE_STAGE4_POC_DESTINATION_URL ?= $(DATA_LIFECYCLE_STAGE4_POC_DESTINA
 
 .PHONY: help test compose-validate service-proxy-test notification-service-compose-test data-explorer-compose-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test replicated-volume-backup-compose-test verify-uploader-deployment sql-db-build sql-db-push sql-db-shell sql-db-test-backup replicated-volume-backup-build replicated-volume-backup-push replicated-volume-backup-shell replicated-volume-backup-test data-lifecycle-build data-lifecycle-test data-lifecycle-push data-lifecycle-shell data-lifecycle-run-local data-lifecycle-stage4-upload-repro
 .PHONY: docker-maintenance-build docker-maintenance-test docker-maintenance-push docker-maintenance-shell docker-maintenance-compose-test
+.PHONY: lit-map-compose-test
 
 help:
 	@printf '%s\n' \
@@ -65,7 +66,10 @@ help:
 compose-validate:
 	docker compose -f docker-compose.yaml config -q
 
-test: compose-validate service-proxy-test notification-service-compose-test data-explorer-compose-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test replicated-volume-backup-compose-test docker-maintenance-compose-test
+test: compose-validate service-proxy-test notification-service-compose-test data-explorer-compose-test uploader-compose-test uploader-deployment-verifier-test workflows-compose-test replicated-volume-backup-compose-test docker-maintenance-compose-test lit-map-compose-test
+
+lit-map-compose-test:
+	./scripts/test-lit-map-compose-contract.sh
 
 service-proxy-test:
 	./service-proxy/test-default-auth-config.sh
