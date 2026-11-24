@@ -1,11 +1,14 @@
 ---
 name: nrp-cluster
-description: Build, deploy, and monitor Kubernetes batch jobs on the NRP Nautilus cluster. Use this skill for pipeline execution workflows, S3/W&B setup checks, jobs that call NRP-hosted open-weight LLMs or Brave Search through managed credentials, and job-level troubleshooting.
+description: Build, deploy, and monitor Kubernetes batch jobs submitted directly to NRP Nautilus. Covers cluster setup, S3/W&B, hosted LLM and Brave Search credentials, and job-level troubleshooting. For hosted Workflows runs and Recipes, use workflow-authoring.
 ---
 
 # NRP Cluster Management
 
-Use this skill when working on compute pipelines that run as Kubernetes jobs on the NRP Nautilus cluster.
+Use this skill for compute pipelines submitted directly as Kubernetes jobs on
+NRP Nautilus. For an existing Workflows run or Recipe, use `workflow-authoring`
+and its bundled run waiter. Bring in this skill when the run investigation
+needs cluster diagnostics. Nextflow owns submission and retries of its workers.
 
 ## Start Here
 
@@ -126,7 +129,10 @@ Before submission, ask for or confirm:
 ### 4) Monitor and debug
 
 - Use `/.agent/workflows/monitor-job.md`.
-- For approved work that will run unattended, register it with the `nrp-monitor` skill (when installed) instead of polling. A model never waits or polls: a script (Tier 0) tracks states, markers and utilization against these rules and applies fixed repairs; what it cannot classify goes to Tier 1 triage judge (the user's chosen runner; CLOSE or ESCALATE only), then a Tier 2 fixer (also chosen by the user), then Tier 3, a wake of the task's own coordinator chat in Claude Code, Codex or T3 (one wake per plan step, plus escalations). The owner is told only when that chat runs `task needs-owner`; a timeout never pages directly. `task add` needs an origin (the coordinator chat), and the registering agent writes this ladder into its handoff. `nrp-monitor setup` chooses the backend for each tier.
+- For approved direct jobs that will run unattended, register them with the
+  `nrp-monitor` skill when installed. Follow that skill's instructions for
+  verifying the scheduler, registering the coordinator chat, and recording
+  the escalation path in the handoff.
 - Capture job/pod status and recent logs after submission.
 - Delete finished/failed jobs when requested.
 

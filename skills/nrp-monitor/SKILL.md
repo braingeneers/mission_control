@@ -1,6 +1,6 @@
 ---
 name: nrp-monitor
-description: Follow approved NRP Nautilus work unattended instead of polling it. Register staged Jobs as a task with exact S3 success markers; a background pass submits stages, saves logs, checks utilization against the shared NRP Cluster numbers, repairs failures up a ladder (script rules, a triage judge, a fixer, a bounded fresh deputy, then a wake of the plan's own coordinator chat), continues the approved plan when work finishes, and contacts the owner once, only if that chat says he is needed. Use after the user approves NRP compute, for "keep an eye on this", overnight pipelines and utilization enforcement. Not for deciding what to run or for ad-hoc one-off Jobs.
+description: Supervise approved Kubernetes batch jobs submitted directly to NRP Nautilus. Register jobs with exact S3 success markers for unattended execution, utilization checks, bounded retries, and coordinator wake-up. For hosted Workflows runs and Recipes, use workflow-authoring.
 ---
 
 # NRP Monitor
@@ -17,7 +17,10 @@ send messages. Do those only as the user asks, following the procedures below.
 
 ## When to use it
 
-- The user has approved NRP work (a Job or a staged pipeline) and it will run longer than a short wait.
+For a Workflows portal run or Recipe on NRP, use `workflow-authoring` and its
+bundled run waiter. Nextflow owns the worker Jobs and retries for that run.
+
+- The user has approved direct NRP work (a Job or a staged pipeline) and it will run longer than a short wait.
 - Several stages depend on each other, or a stage should start only when another task's output exists.
 - Work must continue overnight, and a finished stage should lead to the next approved step or to analysis.
 - The user wants resources and utilization held to the NRP Cluster skill's numbers without watching.

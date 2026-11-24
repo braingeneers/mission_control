@@ -117,7 +117,7 @@ contracts, after deciding whether documentation alone answers the question.
 | Requested outcome | Skill to read |
 | --- | --- |
 | Load, analyze, visualize, or export neuronal spike trains with SpikeLab | `spikelab-analysis-implementer` |
-| Build, understand, debug, or make Recipes from lab Nextflow workflows; investigate a workflow run | `workflow-authoring` |
+| Author or compose lab Nextflow workflows and Recipes, or monitor and debug a hosted Workflows run | `workflow-authoring` |
 | Manage direct NRP Nautilus batch jobs, including jobs that use hosted LLMs or Brave Search | `nrp-cluster` for general job work. Use `nrp-monitor` for approved unattended work or an already registered Monitor task. |
 | Find, search, verify, or download datasets; author Uploader metadata; prepare DANDI/GEO publication or shared collections | `data-explorer-cli-access` |
 | Find/read Slack conversations or send requested replies/email; diagnose, develop, or package Mission Control services and protected APIs | `mission-control-services-management` |
@@ -126,9 +126,9 @@ contracts, after deciding whether documentation alone answers the question.
 | Style, check, or assemble publication figures (legends, whitespace, role-based text sizes, the Styler) | `figure-style` |
 
 For Workflows portal runs, including Recipes that run on NRP, start with
-`workflow-authoring`. Nextflow owns submission and retries for its tasks. Add
-`mission-control-services-management` if the evidence points to the Workflows
-service infrastructure or proxy.
+`workflow-authoring` and use its bundled run waiter for monitoring. Nextflow
+owns submission and retries for its tasks. Add `nrp-cluster` for specific cluster
+diagnostics or `mission-control-services-management` for service or proxy issues.
 
 For direct NRP jobs, use `nrp-cluster` to build images, prepare and submit jobs,
 check progress or wait briefly during the session, or diagnose failures. When the
