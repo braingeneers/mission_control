@@ -257,6 +257,7 @@ def clone_code(name, code, warn):
     from .. import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     repo = Path(os.path.expanduser(code["repo"])).resolve()
     sub = (code.get("subdir") or "").strip("/")
+    restore_parent_clone(repo)
     r = git("rev-parse", "--show-toplevel", cwd=str(repo))
     if r.returncode:
         raise _m_state.ChainError("code.repo %s is not a git repository" % repo)
@@ -278,18 +279,15 @@ def clone_code(name, code, warn):
             extras.append(rel)
             shipped_extras.append(rel)
     scope = [x for x in ([sub] + extras if sub else []) if x] or ["."]
+    if not sub and not code.get("full_checkout"):                    # whole-repo clones were most of the task cache's disk
+        size = checkout_bytes(repo, sha)
+        if size > _m_state.CLONE_FULL_MAX:
+            raise _m_state.ChainError(
+                "code.subdir is not set, so the task would check out all of %s (%d MiB at %s; limit %d MiB). Set code.subdir to the folder "
+                "the task runs from (and code.extra_pkg_dirs for other code it ships), or code.full_checkout: true if it really needs the "
+                "whole repo" % (repo, size >> 20, sha[:10], _m_state.CLONE_FULL_MAX >> 20))
     dest = _m_state.TASK_CACHE / name / "repo"
-    shutil.rmtree(dest, ignore_errors=True)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    for step in (["clone", "-q", "--no-checkout", str(repo), str(dest)],):
-        r = git(*step)
-        if r.returncode:
-            raise _m_state.ChainError("git clone failed: %s" % r.stderr.strip()[:200])
-    if sub:
-        git("sparse-checkout", "set", "--cone", *scope, cwd=str(dest))
-    r = git("checkout", "-q", "-B", "monitor/" + name, sha, cwd=str(dest))        # -B: a night-code work clone already has this branch
-    if r.returncode:
-        raise _m_state.ChainError("git checkout failed: %s" % r.stderr.strip()[:200])
+    checkout_into(repo, dest, scope if sub else None, "monitor/" + name, sha)
     if not code.get("commit"):
         diff = git("diff", "HEAD", "--binary", "--", *scope, cwd=str(repo)).stdout
         if diff.strip():
@@ -319,12 +317,73 @@ def clone_code(name, code, warn):
         if skipped:
             warn.append("%d untracked file(s) under %s are NOT in the clone (not source or over %d MiB; e.g. %s); commit them or set code.commit"
                         % (len(skipped), sub or repo, _m_state.CLONE_MAX_FILE >> 20, skipped[0]))
-    out = {"repo": str(repo), "base": sha, "clone": str(dest), "branch": "monitor/" + name, "subdir": sub}
+    out = {"repo": str(repo), "base": sha, "clone": str(dest), "branch": "monitor/" + name, "subdir": sub,
+           "snapshot": git("rev-parse", "HEAD", cwd=str(dest)).stdout.strip()}         # past here = commits a fixer made, not task-add copies
+    if code.get("full_checkout"):
+        out["full_checkout"] = True
     if code.get("pkg_dir"):
         out["pkg_dir"] = code["pkg_dir"]
     if shipped_extras:
         out["extra_pkg_dirs"] = shipped_extras
     return out
+
+
+def checkout_bytes(repo, sha):
+    """Sum of blob sizes a full checkout of sha would write (git ls-tree -r -l)."""
+    r = git("ls-tree", "-r", "-l", sha, cwd=str(repo))
+    return sum(int(f[3]) for f in (l.split(None, 4) for l in r.stdout.splitlines()) if len(f) > 3 and f[3].isdigit())
+
+
+def checkout_into(repo, dest, scope, branch, sha):
+    """Fresh clone of repo at sha on branch into dest; scope = sparse cone dirs, None = whole tree."""
+    from .. import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
+    shutil.rmtree(dest, ignore_errors=True)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    r = git("clone", "-q", "--no-checkout", str(repo), str(dest))
+    if r.returncode:
+        raise _m_state.ChainError("git clone failed: %s" % r.stderr.strip()[:200])
+    if scope:
+        git("sparse-checkout", "set", "--cone", *scope, cwd=str(dest))
+    r = git("checkout", "-q", "-B", branch, sha, cwd=str(dest))
+    if r.returncode:
+        raise _m_state.ChainError("git checkout failed: %s" % r.stderr.strip()[:200])
+
+
+def restore_parent_clone(path, depth=0):
+    """A repo path inside another task's pruned clone (continuations, plan TASK files): rebuild that clone first."""
+    from .. import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
+    path = Path(path)
+    cache = _m_state.TASK_CACHE.resolve() if _m_state.TASK_CACHE.exists() else _m_state.TASK_CACHE
+    if path.exists() or not path.is_relative_to(cache) or path == cache or depth >= 20:
+        return
+    parent = _m_state.task_load(path.relative_to(cache).parts[0])
+    if parent and parent.get("code"):
+        ensure_clone(parent, depth + 1)
+
+
+def ensure_clone(t, depth=0):
+    """Rebuild a pruned task clone: code.repo at code.base with the same sparse scope, then the task's saved commits
+    (TASKS/<task>/code.bundle) on its branch. Returns the clone path; raises ChainError when it cannot."""
+    from .. import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
+    code = t["code"]
+    dest = Path(code["clone"])
+    if (dest / ".git").exists():
+        return dest
+    repo = Path(code["repo"])
+    restore_parent_clone(repo, depth)                                 # a continuation's repo is its parent's (maybe pruned) clone
+    if not repo.exists():
+        raise _m_state.ChainError("cannot restore the clone of %s: its source repo %s is gone" % (t["name"], repo))
+    sub = (code.get("subdir") or "").strip("/")
+    extras = [x.strip("/") for x in code.get("extra_pkg_dirs") or [] if not os.path.isabs(os.path.expanduser(x))]
+    checkout_into(repo, dest, [x for x in [sub] + extras if x] if sub else None, code["branch"], code["base"])
+    bundle = _m_state.task_dir(t["name"]) / "code.bundle"
+    if bundle.exists():
+        r = git("fetch", "-q", str(bundle), code["branch"], cwd=str(dest))
+        if r.returncode or git("reset", "-q", "--hard", "FETCH_HEAD", cwd=str(dest)).returncode:
+            shutil.rmtree(dest.parent, ignore_errors=True)
+            raise _m_state.ChainError("cannot restore the clone of %s from %s: %s" % (t["name"], bundle, r.stderr.strip()[:200]))
+    _m_state.log("task %s: clone restored at %s" % (t["name"], dest))
+    return dest
 
 
 def code_dir_problem(x, what):

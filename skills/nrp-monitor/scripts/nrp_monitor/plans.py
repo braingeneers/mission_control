@@ -373,6 +373,10 @@ def tool_next_add(n, t, rest):
     raw.pop("mode", None)
     carry = {k: t["code"][k] for k in ("pkg_dir", "extra_pkg_dirs") if (t.get("code") or {}).get(k)}     # what reship packs stays declared
     if t.get("code"):
+        try:
+            _m_task_registry.ensure_clone(t)                               # a finished task's clone may have been pruned
+        except _m_state.ChainError as e:
+            sys.exit("next-add refused: %s" % e)
         raw["code"] = dict({"repo": t["code"]["clone"], "subdir": (raw.get("code") or {}).get("subdir") or t["code"].get("subdir") or ""}, **carry)
     else:
         raw.pop("code", None)

@@ -16,6 +16,10 @@ Required: `name` (lowercase letters, digits and `-`, at most 40), `goal`, `appro
   A relative extra dir is inside `repo` (cloned with the task, so agents can fix it); an absolute or `~` one is another checkout, read in
   place at reship (not editable by agents). At most 8, each a distinct package name, no `..`. Declare them for a task registered without
   them with `nrp-monitor task code NAME --pkg-dir DIR --extra-pkg-dir finetune --extra-pkg-dir bwb`.
+  **Set `subdir`** to the folder the task runs from: only it and the relative `extra_pkg_dirs` are checked out. Without `subdir` the
+  whole repo is cloned, which is refused above 200 MiB unless `full_checkout: true` (say why in `notes`). The clone lives in
+  `~/.cache/nrp-tasks/<task>/repo` and is deleted 3 days after the task ends (7 while an `on_done` continuation is still unregistered);
+  commits past `base` are kept as `~/.local/state/nrp-monitor/tasks/<task>/code.bundle` and `next-add` restores the clone when needed.
 - `namespace` (default `braingeneers`), `mode` (`auto`: agents repair and resubmit, `watch`: any failure goes to the
   person), `max_retries` (nonnegative integer; default `max(4, ceil(n_stages/4))`; explicit values win), `label`.
 - `origin` (**required** for `task add`): `{title, link, assistant?, collaborator?, harness?, session?, cwd?}` of the chat or ticket the work came from.

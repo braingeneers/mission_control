@@ -15,6 +15,7 @@ from . import plan_wakes as _m_plan_wakes
 from . import red_alert as _m_red_alert
 from . import s3 as _m_s3
 from . import state as _m_state
+from .task import cleanup as _m_task_cleanup
 from .task import pass_ as _m_task_pass_
 from . import util as _m_util
 from . import wake as _m_wake
@@ -69,6 +70,10 @@ def cmd_status(a):
               ("has never run" if age is None else "has not run for %d min" % (age // 60), desc))
         pointer()
         return 3
+    cache = _m_task_cleanup.cache_report() or {}
+    if main and cache.get("bytes", 0) > _m_state.CLONE_CACHE_WARN:   # refreshed hourly by the pass; finished clones are pruned after a few days
+        print("nrp-monitor: task code cache %s is %.0f GiB (warn at %d GiB); finished task clones are pruned %g days after they end"
+              % (_m_state.TASK_CACHE, cache["bytes"] / 2**30, _m_state.CLONE_CACHE_WARN >> 30, _m_state.CLONE_KEEP_DAYS))
     nh = _m_notify.needs_owner()
     if nh and not main:                        # another chat's owner wait is global; this chat's own wait is not
         nh_own = [(n, t) for n, t in nh if origin_ids(t.get("origin")) & here] if here else []
@@ -153,7 +158,7 @@ def run_pass(a):
         _m_red_alert.process_red_alert(a, st)                                          # NRP's admission verdict first: it gates every submit below
     except Exception as e:
         _m_state.log("process_red_alert error: %s: %s" % (type(e).__name__, str(e)[:150]))
-    rest = (_m_task_pass_.process_tasks, _m_plan_wakes.process_continuations, _m_wake.process_task_webhooks) if a.tasks_only else (_m_legacy.check_pods, _m_task_pass_.process_tasks, _m_plan_wakes.process_continuations, _m_wake.process_task_webhooks, _m_legacy.check_jobs,
+    rest = (_m_task_pass_.process_tasks, _m_task_cleanup.prune_clones, _m_plan_wakes.process_continuations, _m_wake.process_task_webhooks) if a.tasks_only else (_m_legacy.check_pods, _m_task_pass_.process_tasks, _m_task_cleanup.prune_clones, _m_plan_wakes.process_continuations, _m_wake.process_task_webhooks, _m_legacy.check_jobs,
                                                                          _m_util.check_orphans)
     for fn in rest:
         try:

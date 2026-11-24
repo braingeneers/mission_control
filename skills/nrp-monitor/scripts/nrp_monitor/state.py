@@ -113,6 +113,10 @@ CODE_SKIP = (".git", "__pycache__", ".pytest_cache", "results", "node_modules")
 CLONE_SUFFIXES = frozenset({".py", ".yaml", ".yml", ".json", ".lock", ".txt", ".csv", ".ini", ".md", ".R", ".sh"})   # source and config; same idea as pv3 --ship-code
 
 CLONE_MAX_FILE = 2 * 1024 * 1024
+CLONE_FULL_MAX = int(os.environ.get("NRP_CLONE_FULL_MAX_MB") or 200) << 20     # whole-repo task clone refused above this unless code.full_checkout
+CLONE_KEEP_DAYS = float(os.environ.get("NRP_CLONE_KEEP_DAYS") or 3)            # finished task clones are pruned this long after the end
+CLONE_KEEP_CONT_DAYS = float(os.environ.get("NRP_CLONE_KEEP_CONT_DAYS") or 7)  # ...or this long while a plan continuation may still clone it
+CLONE_CACHE_WARN = int(os.environ.get("NRP_CLONE_CACHE_WARN_GB") or 20) << 30  # status warns when the task cache passes this
 
 CODE_SKIP_EXT = (".pt", ".npz", ".npy", ".pth", ".safetensors", ".h5", ".nwb", ".fasta", ".fa", ".gz", ".tgz", ".zip")
 

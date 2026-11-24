@@ -1,6 +1,7 @@
 """NRP monitor task/pass_ (mechanical extraction; R3a)."""
 import hashlib
 import json
+import os
 import subprocess
 
 # ---- task pass ---------------------------------------------------------------------------------------------------
@@ -13,7 +14,7 @@ def run_postcheck(t):
     if not check:
         return {"ok": True, "output": "no postcheck declared"}
     try:
-        r = subprocess.run(check["cmd"], cwd=(t.get("code") or {}).get("clone") or _m_state.task_dir(t["name"]),
+        r = subprocess.run(check["cmd"], cwd=next((c for c in [(t.get("code") or {}).get("clone")] if c and os.path.isdir(c)), None) or _m_state.task_dir(t["name"]),
                            env=_m_agents.clean_env(), capture_output=True, text=True, timeout=120)
         output = (r.stdout + "\n" + r.stderr)[-16000:]
         return {"ok": r.returncode == 0 and check["expect"] in r.stdout, "rc": r.returncode, "output": output}
@@ -224,7 +225,8 @@ def advance_task(n, jobs, a):
         if not t.get("handoff") or t["handoff"].get("thin"):
             _m_notify.digest("no-handoff", "%s finished with %s: a later fix or continue agent had only the task fields. Write one with templates/handoff.md "
                    "next time (`nrp-monitor task show %s`)" % (t["label"], "no handoff" if not t.get("handoff") else "a thin handoff", n), n)
-        if t.get("code") and _m_task_registry.git("rev-list", "--count", "%s..HEAD" % t["code"]["base"], cwd=t["code"]["clone"]).stdout.strip() not in ("", "0"):
+        if (t.get("code") and os.path.isdir(t["code"]["clone"]) and _m_task_registry.git(          # commits past the task-add snapshot are a fixer's
+                "rev-list", "--count", "%s..HEAD" % (t["code"].get("snapshot") or t["code"]["base"]), cwd=t["code"]["clone"]).stdout.strip() not in ("", "0")):
             _m_notify.digest("merge", "fixes on branch %s: git -C %s fetch %s %s" % (t["code"]["branch"], t["code"]["repo"], t["code"]["clone"],
                    t["code"]["branch"]), n)
         if t.get("followup") and not t.get("on_done") and not a.dry_run:

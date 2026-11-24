@@ -161,7 +161,8 @@ def cmd_task_show(a):
     for r in t.get("agent_runs", [])[-3:]:
         print("  agent %s %s cost=%s denials=%s: %s" % (_m_state.iso(r["ts"])[5:16], r["kind"], r.get("cost"), r.get("denials"), r["result"][:200]))
     if t.get("code"):
-        print("code: %s branch %s (base %s)" % (t["code"]["clone"], t["code"]["branch"], t["code"]["base"][:10]))
+        print("code: %s branch %s (base %s)%s" % (t["code"]["clone"], t["code"]["branch"], t["code"]["base"][:10],
+              "" if Path(t["code"]["clone"]).exists() else " (pruned; bundle: %s)" % (t["code"].get("bundle") or "none, no commits past base")))
     h = t.get("handoff")
     if h:
         try:
