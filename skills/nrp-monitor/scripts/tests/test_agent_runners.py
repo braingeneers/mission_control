@@ -265,7 +265,7 @@ class EndToEnd(unittest.TestCase):
         self.man = h.task()['stages'][0]['manifest']
         h.run_pass()
         h.set_job('alice-t1-a', state='FAILED', term={'reason': 'OOMKilled', 'exitCode': 137})
-        h.plan({'cmds': [['sh', "sed -i '' 's/512Mi/1Gi/g' %s" % self.man], ['nrp-task', 'submit', 'alice-t1-a', '--reason', 'OOM -> 1Gi'],
+        h.plan({'cmds': [['sh', "sed -i.bak 's/512Mi/1Gi/g' %s" % self.man], ['nrp-task', 'submit', 'alice-t1-a', '--reason', 'OOM -> 1Gi'],
                          ['nrp-task', 'report', 'RESUBMITTED', 'OOM -> 1Gi']], 'result': 'RESUBMITTED: OOM -> 1Gi'})
 
     def use_limited_claude(self):

@@ -130,6 +130,9 @@ python3 ~/.claude/skills/braingeneers-one/scripts/suite.py install braingeneers-
 The same helper creates Codex links when installing or updating specialists.
 It reports any existing entry that points elsewhere and preserves it.
 
+For other assistants, use the same `install braingeneers-one` command with
+the router path reported by GitHub CLI to set up daily updates.
+
 Run the installed helper, substituting the actual interpreter and path:
 
 ```bash
@@ -187,9 +190,9 @@ logging in again to solve organization membership. Direct the user to
 
 ## Keep the installed instructions current
 
-Manual maintenance is the default. Ask your assistant to check with
-`suite.py status --table` and apply available updates with `suite.py update`.
-To opt in to daily updates, run these commands using the installed router.
+On macOS and Linux, the installed helper sets up daily updates by default
+when you run its `install` or `update` command. Use the following commands to check the schedule
+or re-enable it after opting out.
 
 ```bash
 python3 ~/.claude/skills/braingeneers-one/scripts/suite.py schedule enable
@@ -198,8 +201,9 @@ python3 ~/.claude/skills/braingeneers-one/scripts/suite.py schedule status
 
 The daily job updates unmodified managed copies from their source repositories.
 Claude and Codex share those copies through the Codex links. Use
-`schedule disable` to turn the job off. If Linux has no systemd user manager,
-the helper prints a crontab entry you can add or remove yourself.
+`schedule disable` to turn the job off and preserve your choice across future
+installs and updates. If the user scheduler is unavailable, the helper prints
+a crontab entry you can add or remove yourself.
 
 A modified managed copy is **stuck** because automatic and manual updates
 preserve local edits. Use `suite.py reset NAME` to back up the edited copy

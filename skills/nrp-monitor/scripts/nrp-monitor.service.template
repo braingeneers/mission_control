@@ -1,0 +1,8 @@
+[Unit]
+Description=NRP Monitor pass
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.local/state/nrp-monitor
+Environment="PATH=%h/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+ExecStart="%h/.local/bin/nrp-monitor" run

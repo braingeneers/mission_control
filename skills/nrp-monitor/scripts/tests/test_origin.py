@@ -101,7 +101,7 @@ class O(unittest.TestCase):
         self.assertEqual(self.task()["origin"]["link"], RT["link"])
         self.run_pass()
         self.fail()                                                       # auto mode: fix agent, silent retry
-        self.plan({"cmds": [["sh", "sed -i '' 's/512Mi/1Gi/g' %s" % self.task()["stages"][0]["manifest"]],
+        self.plan({"cmds": [["sh", "sed -i.bak 's/512Mi/1Gi/g' %s" % self.task()["stages"][0]["manifest"]],
                             ["nrp-task", "submit", "alice-t1-a", "--reason", "OOM 512Mi -> 1Gi"],
                             ["nrp-task", "report", "RESUBMITTED", "OOM -> 1Gi"]], "result": "RESUBMITTED"})
         self.run_pass()

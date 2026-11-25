@@ -311,7 +311,7 @@ class Suite:
             return {"codex_link_error": f"Could not create {link}: {exc}"}
         return {"codex_link": str(link)}
 
-    def install(self, name, update=False, reset=False):
+    def install(self, name, update=False, reset=False, auto=False):
         item = self.catalog[name]
         destination = self.root / name
         present = destination.exists() or destination.is_symlink()
@@ -331,7 +331,8 @@ class Suite:
                 current = self.enroll(item)
         commit, tree = self.latest(item)
         if present and not reset and current == tree:
-            return {"name": name, "status": "current", **self.codex_link(destination)}
+            return {"name": name, "status": "current",
+                    **({} if auto else self.codex_link(destination))}
         self.root.mkdir(parents=True, exist_ok=True)
         # Stage on the destination filesystem so rename is atomic and works across cache mounts.
         with tempfile.TemporaryDirectory(prefix=".braingeneers-stage-", dir=self.root) as stage:
@@ -380,7 +381,8 @@ class Suite:
             result["diff_summary"] = str(diff)
         if backup:
             result["backup"] = str(backup)
-        result.update(self.codex_link(destination))
+        if not auto:
+            result.update(self.codex_link(destination))
         return result
 
 
@@ -402,14 +404,32 @@ def schedule(action, root, state_dir):
             "--state-dir", str(state_dir), "update", "--auto"]
     environment = {key: os.environ[key] for key in ("PATH", "GH_CONFIG_DIR", "XDG_CONFIG_HOME")
                    if key in os.environ}
+    ensure = action == "ensure"
+    if ensure:
+        action = "enable"
     if action == "enable" and not runner.is_file():
         raise Failure(f"Install Braingeneers One at {runner.parent.parent} before enabling the schedule.")
+
+    def cron_fallback(reason):
+        command_line = shlex.join(["env", *(f"{key}={value}" for key, value in environment.items()), *argv])
+        return reason + " Add this line with crontab -e:\n0 9 * * * " + command_line.replace("%", r"\%")
 
     if sys.platform == "darwin":
         path = home / "Library/LaunchAgents" / (SCHEDULE_LABEL + ".plist")
         domain = f"gui/{os.getuid()}"
         target = f"{domain}/{SCHEDULE_LABEL}"
-        loaded = scheduler_command(["launchctl", "print", target])
+        try:
+            loaded = scheduler_command(["launchctl", "print", target])
+            if action == "enable" and not loaded and not scheduler_command(["launchctl", "print", domain]):
+                return cron_fallback("User launchd session unavailable.")
+        except FileNotFoundError:
+            if action == "enable":
+                return cron_fallback("launchctl unavailable.")
+            if action == "disable":
+                path.unlink(missing_ok=True)
+            loaded = False
+        if ensure and loaded:
+            return None
         if action == "status":
             return "Daily updates enabled." if loaded else "Daily updates disabled."
         if loaded:
@@ -438,15 +458,17 @@ def schedule(action, root, state_dir):
             available = False
         if not available:
             if action == "enable":
-                command_line = shlex.join(["env", *(f"{key}={value}" for key, value in environment.items()), *argv])
-                return "User systemd unavailable. Add this line with crontab -e:\n0 9 * * * " + command_line.replace("%", "\\%")
+                return cron_fallback("User systemd unavailable.")
             if action == "disable" and timer.exists():
                 raise Failure("User systemd unavailable. Restore access to your user manager and retry disabling the timer.")
             return "User systemd unavailable. Inspect crontab -l or remove the update line with crontab -e."
-        if action == "status":
+        if action == "status" or ensure:
             enabled = scheduler_command(systemctl + ["is-enabled", "--quiet", timer.name])
             active = scheduler_command(systemctl + ["is-active", "--quiet", timer.name])
-            return "Daily updates enabled." if enabled and active else "Daily updates disabled."
+            if action == "status":
+                return "Daily updates enabled." if enabled and active else "Daily updates disabled."
+            if enabled and active:
+                return None
         if action == "enable":
             unit_dir.mkdir(parents=True, exist_ok=True)
             # systemd performs its own specifier and environment expansion.
@@ -497,7 +519,7 @@ def main():
     update.add_argument("--auto", action="store_true", help="Quietly update unmodified managed copies")
     reset = sub.add_parser("reset", help="Back up a modified managed copy and reinstall")
     reset.add_argument("name")
-    scheduling = sub.add_parser("schedule", help="Manage the opt-in daily update job")
+    scheduling = sub.add_parser("schedule", help="Manage the daily update job")
     scheduling.add_argument("action", choices=("enable", "disable", "status"))
     args = parser.parse_args()
     auto = args.operation == "update" and args.auto
@@ -512,15 +534,6 @@ def main():
     root_id = hashlib.sha256(str(root).encode()).hexdigest()[:16]
     cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
     state_dir = (args.state_dir or cache / "braingeneers-one" / root_id).expanduser().absolute()
-    if args.operation == "schedule":
-        try:
-            if args.action == "enable":
-                state_dir.mkdir(parents=True, exist_ok=True)
-            print(schedule(args.action, root, state_dir))
-            return 0
-        except (Failure, OSError, subprocess.TimeoutExpired) as exc:
-            print(str(exc), file=sys.stderr)
-            return 1
     state_dir.mkdir(parents=True, exist_ok=True)
     lock = state_dir / "running.lock"
     try:
@@ -530,7 +543,17 @@ def main():
             return 0
         sys.exit(f"Another helper may be running. If it was interrupted, verify it stopped, then trash {lock}.")
     suite = None
+    opt_out = state_dir / "auto-update-disabled"
     try:
+        if args.operation == "schedule":
+            if args.action == "disable":
+                opt_out.touch()
+            print(schedule(args.action, root, state_dir))
+            if args.action == "enable":
+                opt_out.unlink(missing_ok=True)
+            return 0
+        if auto and opt_out.exists():
+            return 0
         suite = Suite(root, state_dir)
         if args.operation == "status":
             output = suite.status(args.daily)
@@ -552,7 +575,7 @@ def main():
                                  or suite.local_status(name)["mode"] != "managed copy"):
                         continue
                     output.append(suite.install(name, update=args.operation == "update",
-                                                reset=args.operation == "reset"))
+                                                reset=args.operation == "reset", auto=auto))
                 except OPERATION_ERRORS as exc:
                     output.append({"name": name, "status": "skipped / failed", "reason": str(exc)})
         errors = [(row["name"], row.get("reason") or row["codex_link_error"])
@@ -565,8 +588,14 @@ def main():
                 print(f"{name}: {reason}", file=sys.stderr)
         else:
             print(json.dumps(output, indent=2))
+        if (not auto and args.operation in ("install", "update") and not opt_out.exists()
+                and (sys.platform == "darwin" or sys.platform.startswith("linux"))
+                and (root / "braingeneers-one/scripts/suite.py").is_file()):
+            message = schedule("ensure", root, state_dir)
+            if message:
+                print(message, file=sys.stderr)
         return 1 if errors else 0
-    except OPERATION_ERRORS as exc:
+    except OPERATION_ERRORS + (subprocess.TimeoutExpired,) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     finally:

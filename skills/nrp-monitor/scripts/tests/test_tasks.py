@@ -404,7 +404,7 @@ class T(unittest.TestCase):
         self.run_pass()
         # 1) OOM -> resources -> agent doubles memory and resubmits (silent)
         self.set_job("alice-t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
-        self.plan({"cmds": [["sh", "sed -i '' 's/512Mi/1Gi/g' %s" % man], ["nrp-task", "submit", "alice-t1-a", "--reason", "OOM at 512Mi -> 1Gi"],
+        self.plan({"cmds": [["sh", "sed -i.bak 's/512Mi/1Gi/g' %s" % man], ["nrp-task", "submit", "alice-t1-a", "--reason", "OOM at 512Mi -> 1Gi"],
                             ["nrp-task", "report", "RESUBMITTED", "OOM at 512Mi -> 1Gi"]], "result": "RESUBMITTED: OOM -> 1Gi"})
         self.run_pass()
         t = self.task()
@@ -416,7 +416,7 @@ class T(unittest.TestCase):
         # 2) code bug -> agent fixes in the clone, commits, ships the code to S3, resubmits (silent)
         self.set_job("alice-t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1},
                      log="Traceback (most recent call last):\n  File \"run.py\", line 2\nKeyError: 'sise'")
-        self.plan({"cmds": [["sh", "sed -i '' s/sise/size/ %s/job/run.py" % clone], ["nrp-task", "commit", "fix KeyError sise -> size"],
+        self.plan({"cmds": [["sh", "sed -i.bak s/sise/size/ %s/job/run.py" % clone], ["nrp-task", "commit", "fix KeyError sise -> size"],
                             ["nrp-task", "reship", "alice-t1-a"],
                             ["nrp-task", "submit", "alice-t1-a", "--reason", "KeyError typo -> fixed"],
                             ["nrp-task", "report", "RESUBMITTED", "KeyError typo fixed"]], "result": "RESUBMITTED: typo"})

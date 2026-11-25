@@ -109,9 +109,11 @@ installation, and offer the appropriate owner-managed update
 (for example, reviewing changes and pulling a clean symlinked checkout).
 Do not use force or clear a pin to silence a warning.
 
-## Opt in to daily updates
+## Manage daily updates
 
-Use the installed router to run the following commands.
+Install and manual update set up daily updates when no job is active, unless
+the user previously ran `schedule disable`. Use the installed router to manage
+the schedule.
 
 ```bash
 python3 "<ONE>/scripts/suite.py" schedule enable
@@ -121,9 +123,10 @@ python3 "<ONE>/scripts/suite.py" schedule disable
 
 The per-user job runs daily at 9 a.m. local time. On macOS a LaunchAgent runs
 in the user's login session. On Linux a systemd user timer runs when the user
-manager is available. If systemd is unavailable, `schedule enable` prints a
-line to add with `crontab -e`. Manage that entry directly with `crontab -l` and
-`crontab -e`.
+manager is available. If the user scheduler is unavailable, the helper prints a
+line to add with `crontab -e`. Use `schedule disable` to record the opt-out and
+remove a manually installed cron entry with `crontab -e`. Run
+`schedule enable` to opt back in.
 
 The job runs `update --auto`, which updates only recorded, unmodified managed
 copies. Run `status` once after a new setup so it can verify and record any

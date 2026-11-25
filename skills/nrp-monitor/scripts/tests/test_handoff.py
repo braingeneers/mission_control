@@ -269,7 +269,7 @@ class Appends(Base):
         h = self.h
         self.add()
         self.fail_and_run_agent('RESUBMITTED: 1Gi\n\nHANDOFF_ENTRY:\nfirst attempt text',
-                                cmds=[['sh', "sed -i '' 's/512Mi/1Gi/g' %s" % h.task()['stages'][0]['manifest']],
+                                cmds=[['sh', "sed -i.bak 's/512Mi/1Gi/g' %s" % h.task()['stages'][0]['manifest']],
                                       ['nrp-task', 'submit', 'alice-t1-a', '--reason', 'OOM -> 1Gi'], ['nrp-task', 'report', 'RESUBMITTED', 'OOM -> 1Gi']])
         h.set_job('alice-t1-a', state='FAILED', term={'reason': 'Error', 'exitCode': 1}, log='Traceback\nKeyError: x')
         h.plan({'cmds': [['nrp-task', 'report', 'STOPPED', 'code bug']], 'result': 'STOPPED: bug\n\nHANDOFF_ENTRY:\nsecond attempt text'})

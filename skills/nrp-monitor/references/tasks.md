@@ -61,12 +61,15 @@ Derive the deadline from measured runtime with margin; the queue counts toward i
 ## Shipping code
 
 Ship code in the image or as a disposable S3 build artifact. Keep code out of ConfigMaps and Secrets.
-The Git source repo is authoritative.
+The Git source repo is authoritative. Authenticated lab users are trusted.
+Use `braingeneerscache`, the bucket Workflows uses, for code bundles including
+those from private repos. Lab credentials can read those bundles. The task
+branch uses the source repo's existing access settings, including public visibility.
 
 1. Declare the directories in `code.dirs`. The bundle preserves paths from the clone root. The shipper commits
    changes in those directories on the task branch and packs the selected regular files directly from that
    commit. Untracked files require a repeatable `--add PATH`. Credential-like paths
-   are refused even when declared. Symlinks and excluded caches stay out of the archive.
+   are refused before a push or upload, even when declared. Symlinks and excluded caches stay out of the archive.
 2. Use `NRP_TASK=<task> nrp-task ship NAME [--from SUBDIR] [--add PATH ...]` to print the Job container env and a startup command
    that downloads, verifies the SHA-256, extracts and runs from the bundle root. `NAME` starts with the task name.
    `--from` selects one directory for this invocation. The manifest records that selection for recovery.

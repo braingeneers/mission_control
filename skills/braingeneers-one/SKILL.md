@@ -182,11 +182,12 @@ python3 "<ONE>/scripts/suite.py" update
 
 On first use, and at most once per day thereafter, run `status --daily` while
 idle, before starting specialist operations. It checks installed suite members,
-including this router, and caches a successful check. Briefly offer available
-updates and apply them only when requested. Users can opt in to automatic daily
-updates with `schedule enable`. The schedule runs `update --auto` for unmodified
-managed copies. If enabled, let it handle routine updates. A request to check
-alone does not authorize an update, a reset, or a schedule change.
+including this router, and caches a successful check. The helper enables
+daily updates on install or update unless the user opted out. When the schedule
+is on, let it handle routine updates without asking. It runs `update --auto`
+for unmodified managed copies and leaves existing links, unmanaged directories
+and modified copies alone. When daily updates are off, offer available updates
+and apply them when requested. A check alone authorizes only the check.
 
 When status shows a stuck modified copy, tell the user that local edits prevent
 updates and that `reset NAME` backs up the edits before reinstalling. When it

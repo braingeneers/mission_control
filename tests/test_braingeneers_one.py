@@ -39,6 +39,7 @@ class MaintenanceTest(unittest.TestCase):
         self.during_download = lambda: None
         self.addCleanup(patch.stopall)
         patch.dict(suite.os.environ, {"HOME": str(self.base)}).start()
+        patch.object(suite, "scheduler_command", return_value=False).start()
         patch.object(suite, "api", side_effect=self.api).start()
         patch.object(suite, "command", side_effect=self.command).start()
         self.manager = suite.Suite(self.root, self.base / "state", self.catalog)
@@ -384,14 +385,17 @@ class MaintenanceTest(unittest.TestCase):
         plist = self.base / "Library/LaunchAgents" / (suite.SCHEDULE_LABEL + ".plist")
         with patch.dict(suite.os.environ, {"HOME": str(self.base)}), patch.object(
                 suite.sys, "platform", "darwin"), patch.object(suite, "scheduler_command") as scheduler:
-            scheduler.return_value = False
-            self.assertEqual(self.cli("schedule", "enable"), (0, "Daily updates enabled.\n"))
+            scheduler.side_effect = lambda args, **kwargs: len(args[-1].split("/")) == 2
+            with patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                self.assertEqual(self.cli("install", "braingeneers-one")[0], 0)
+                self.assertEqual(stderr.getvalue(), "Daily updates enabled.\n")
             data = plistlib.loads(plist.read_bytes())
             self.assertEqual(data["ProgramArguments"], [
                 sys.executable, str(runner), "--skills-dir", str(self.root),
                 "--state-dir", str(self.base / "state"), "update", "--auto"])
             self.assertEqual(data["StartCalendarInterval"], {"Hour": 9, "Minute": 0})
             self.assertEqual(scheduler.call_args.args[0][:2], ["launchctl", "bootstrap"])
+            scheduler.side_effect = None
             scheduler.return_value = True
             self.assertEqual(self.cli("schedule", "status"), (0, "Daily updates enabled.\n"))
             self.assertEqual(self.cli("schedule", "disable"), (0, "Daily updates disabled.\n"))
@@ -422,6 +426,35 @@ class MaintenanceTest(unittest.TestCase):
             self.assertIn("0 9 * * * ", output)
             self.assertIn("update --auto", output)
             self.assertFalse(timer.exists())
+
+    def test_install_and_update_ensure_schedule_until_user_disables_it(self):
+        runner = self.write_install(self.root, "braingeneers-one", 1) / "scripts/suite.py"
+        runner.touch()
+        self.write_install(self.root, "example", 1)
+        for operation in ("install", "update"):
+            with self.subTest(operation=operation), patch.object(suite.sys, "platform", "linux"), patch.dict(
+                    suite.os.environ, {"XDG_CONFIG_HOME": str(self.base / operation)}), patch.object(
+                    suite, "scheduler_command") as scheduler, patch("sys.stderr", new_callable=io.StringIO):
+                scheduler.side_effect = lambda args, **kwargs: not any(
+                    status in args for status in ("is-enabled", "is-active"))
+                self.assertEqual(self.cli(operation, "example")[0], 0)
+                timer = self.base / operation / "systemd/user" / (suite.SCHEDULE_LABEL + ".timer")
+                self.assertTrue(timer.is_file())
+                self.assertIn("enable", scheduler.call_args.args[0])
+                scheduler.side_effect = None
+                scheduler.return_value = True
+                scheduler.reset_mock()
+                self.assertEqual(self.cli("update", "example")[0], 0)
+                self.assertEqual(scheduler.call_count, 3)
+                self.assertEqual(self.cli("schedule", "disable")[0], 0)
+                self.assertFalse(timer.exists())
+                scheduler.reset_mock()
+                self.assertEqual(self.cli("update", "example")[0], 0)
+                self.assertEqual(self.cli("install", "example")[0], 0)
+                self.assertEqual(self.cli("update", "--auto"), (0, ""))
+                scheduler.assert_not_called()
+                self.assertEqual(self.cli("schedule", "enable")[0], 0)
+                self.assertFalse((self.manager.state_dir / "auto-update-disabled").exists())
 
     def test_cli_rejects_non_catalog_member_before_download(self):
         with patch("sys.stderr", new_callable=io.StringIO):

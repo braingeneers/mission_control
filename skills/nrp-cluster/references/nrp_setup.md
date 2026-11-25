@@ -60,9 +60,11 @@ or explicit cleanup covering completion, cancellation, and launch failure.
 
 Use an image for large or reusable code. For a registered monitor task,
 `NRP_TASK=<task> nrp-task ship NAME [--from SUBDIR]` pushes the Git task branch,
-publishes the bundle to the expiring S3 cache, and prints `NRP_CODE_URI`,
+publishes the bundle to `braingeneerscache`, the expiring S3 bucket used by
+Workflows, and prints `NRP_CODE_URI`,
 `NRP_CODE_SHA256`, and startup lines to download, verify, extract, and run it.
-See [Shipping code](../../nrp-monitor/references/tasks.md#shipping-code).
+Authenticated lab users are trusted. The bucket is appropriate for bundles
+from private repos as well. See [Shipping code](../../nrp-monitor/references/tasks.md#shipping-code).
 This replaces `nrp-task configmap`. If NRP disallows the S3 tarball, use the image.
 
 Measure the namespace ConfigMap total (read-only):

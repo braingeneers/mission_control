@@ -366,7 +366,7 @@ class Refused(Base):
         h.set_job('alice-t1-a', state='FAILED')
         man = h.task()['stages'][0]['manifest']
         self.agent(report='RESUBMITTED', result='RESUBMITTED: resized',
-                   extra_cmds=[['sh', "sed -i '' 's/512Mi/1Gi/g' %s" % man], ['nrp-task', 'submit', 'alice-t1-a', '--reason', 'oversized -> 1Gi']])
+                   extra_cmds=[['sh', "sed -i.bak 's/512Mi/1Gi/g' %s" % man], ['nrp-task', 'submit', 'alice-t1-a', '--reason', 'oversized -> 1Gi']])
         h.run_pass()
         self.assertEqual(h.task()['attempts'][0]['cls'], 'util')
         self.assertEqual(self.waivers(), [])
