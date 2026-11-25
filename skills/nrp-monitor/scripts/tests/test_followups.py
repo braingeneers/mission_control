@@ -97,7 +97,7 @@ def test_submit_blocks_live_job_and_cleans_terminal(w,tmp_path):
         def apply(ns,path):
             assert 'bad' in Path(path).read_text()
             return 'ok'
-        with patch.object(w,'task_load',return_value=t), patch.object(w,'manifest_check',return_value=[]), patch.object(w,'gpu_expired',return_value=None), patch.object(w,'job_state',return_value=status), patch.object(w,'save_task_logs') as logs, patch.object(w,'kubectl',return_value=SimpleNamespace(returncode=0)) as kube, patch.object(w,'apply_manifest',side_effect=apply) as submit, patch.object(w,'bad_nodes',return_value={'bad':{}}), patch.object(w,'task_txn',side_effect=RuntimeError('submitted')):
+        with patch.object(w,'task_load',return_value=t), patch.object(w,'manifest_check',return_value=[]), patch.object(w,'gpu_expired',return_value=None), patch.object(w,'job_state',return_value=status), patch.object(w,'save_task_logs') as logs, patch.object(w,'delete_owned_job',return_value=SimpleNamespace(returncode=0)) as kube, patch.object(w,'apply_manifest',side_effect=apply) as submit, patch.object(w,'bad_nodes',return_value={'bad':{}}), patch.object(w,'task_txn',side_effect=RuntimeError('submitted')):
             if status in ('running','pending','error'):
                 assert w.do_submit('t','s','reason','test')[0] is False
                 kube.assert_not_called();submit.assert_not_called()

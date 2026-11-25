@@ -27,7 +27,7 @@ answer OVERSIZED or KEPT as below, never DELETED without having run the delete).
       of about 1.5x the peak, rounded up (CPU to 0.5 cores, memory to 1 Gi, GPU to whole GPUs; if GPU use is under
       40% of one GPU, say it should run on CPU or batch more work per GPU).
    Only use KEPT when the pod is not the owner's or a command was denied before you could read the evidence.
-4. Delete: if an owner Job is listed, delete the Job (`kubectl -n {ns} delete job <job>`, otherwise the controller
+4. Delete: if an owner Job is listed, delete the Job (`nrp-monitor delete-owned-job <job> --namespace {ns}`, otherwise the controller
    recreates the pod); else `kubectl -n {ns} delete pod {pod}`. Never delete anything else, never use --all or label
    selectors, never touch another namespace. Do not print or search for credentials.
 5. Your final reply is ONE line, no markdown, no other text before it, beginning with one of DELETED, OVERSIZED, KEPT

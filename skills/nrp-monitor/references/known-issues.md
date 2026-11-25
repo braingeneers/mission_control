@@ -44,7 +44,7 @@ Wakes block a pass for up to 600 seconds each. Separate task escalations are not
 - A completion followup is not retried if all runners are unavailable when it fires.
 - Existing tasks may have no origin or useful handoff. Local plan work never runs automatically;
   launchd cannot read Desktop repositories, so task code uses a cache clone.
-- Live pv3 import behavior after multi-directory reship remains unverified; packaging layout is tested.
+- Live multi-directory imports through the legacy pv3 adapter remain unverified. Packaging layout is tested.
 - `UTIL_OK` is intentionally narrow: lab-floor-only, running non-GPU tasks, bounded count/time;
   ordinary NRP-band/GPU failures cannot be waived.
 - Never-submitted pending stages reuse existing success markers after their gates pass, without rerunning.
@@ -63,3 +63,7 @@ resume through the task's normal submission path. This draft does not change ado
 ## Cost ledger rollout limits
 
 The ledger starts with new events after installation. Historical task/digest events support wake counts but cannot recover unreported tokens or USD cost. T3 relay/CLI wakes do not report coordinator consumption; those costs remain null. Completion wakes are intentionally unchanged pending a separate batching design. Default cap scaling affects new tasks that omit `max_retries`; existing tasks retain their stored cap, though the deputy can raise it within the scaled bound. Recorded resolutions mean accepted state transitions or verified markers, not proof that the eventual outputs pass scientific review.
+
+## Exit 137 and scratch eviction
+
+Exit 137 may come from an ephemeral-storage eviction. Check `kubectl describe pod` and its eviction reason before raising memory.

@@ -1,5 +1,7 @@
 """nrp-monitor: agent-free NRP monitoring, approved tasks (no model runs unless something needs a decision)."""
 import fcntl
+import os
+import shlex
 import re
 import shutil
 import sys
@@ -37,7 +39,39 @@ def origin_ids(origin):
     return ids
 
 
+def cmd_delete_owned_job(args):
+    result = _m_cluster.delete_owned_job(args.namespace, args.job, wait=True)
+    if result.stdout:
+        print(result.stdout.rstrip())
+    if result.stderr:
+        print(result.stderr.rstrip(), file=sys.stderr)
+    return result.returncode
+
+
+def warn_version_mismatch():
+    binary = os.environ.get("NRP_MONITOR_BINARY_VERSION")
+    try:
+        recorded = (_m_state.STATE / "SKILL_VERSION_PATH").read_text().strip()
+    except OSError:
+        recorded = ""
+    candidates = [Path.home() / directory / "skills/nrp-monitor/VERSION"
+                  for directory in (".claude", ".agents", ".codex")]
+    if recorded:
+        candidates.insert(0, Path(recorded))
+    for path in candidates:
+        try:
+            skill = path.read_text().strip()
+        except OSError:
+            continue
+        if binary and skill and skill != binary:
+            update = path.parent / "scripts/install.sh"
+            print("WARNING: nrp-monitor binary %s differs from skill %s. Update with %s" %
+                  (binary, skill, shlex.quote(str(update))))
+        break
+
+
 def cmd_status(a):
+    warn_version_mismatch()
     # --quiet is the session-start hook. Global notices (bad nodes, owner waits, runner usage) go to the one main chat
     # (`nrp-monitor main-chat`); any other chat sees its own items and a pointer to the digest. Plain `status` shows everything.
     here = session_ids()

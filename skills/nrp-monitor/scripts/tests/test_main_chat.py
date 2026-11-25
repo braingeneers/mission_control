@@ -101,10 +101,10 @@ class MainChat(Base):
         self.main("--link", LINK_A)
         self.bad_node()
         self.block("claude")
-        self.needs_owner("other", LINK_B)
+        self.needs_owner("alice-other", LINK_B)
         rc, out, _ = self.status("chat-aaaa")
         self.assertIn("1 node(s) excluded", out)
-        self.assertIn("1 task(s) need the owner: other:", out)
+        self.assertIn("1 task(s) need the owner: alice-other:", out)
         self.assertIn("agent runner(s) out of usage: claude", out)
         self.assertNotIn(POINTER, out)
 
@@ -113,10 +113,10 @@ class MainChat(Base):
         self.bad_node()
         self.second_runner()
         self.block("claude")
-        self.needs_owner("mine", LINK_B, "mine needs you")
-        self.needs_owner("theirs", LINK_A, "theirs needs you")
+        self.needs_owner("alice-mine", LINK_B, "mine needs you")
+        self.needs_owner("alice-theirs", LINK_A, "theirs needs you")
         rc, out, _ = self.status("chat-bbbb")
-        self.assertIn("1 task(s) need the owner: mine:", out)
+        self.assertIn("1 task(s) need the owner: alice-mine:", out)
         self.assertNotIn("theirs", out)
         self.assertNotIn("node(s) excluded", out)
         self.assertNotIn("out of usage", out)
@@ -125,20 +125,20 @@ class MainChat(Base):
     def test_unknown_chat_gets_only_the_pointer(self):
         self.main("--link", LINK_A)
         self.bad_node()
-        self.needs_owner("t", LINK_A)
+        self.needs_owner("alice-t", LINK_A)
         rc, out, _ = self.status(None)
         self.assertEqual(out, "nrp-monitor: " + POINTER)
         self.assertNotIn(SET_HINT, out)
 
     def test_pointer_suggests_setting_a_main_chat_when_none_is_set(self):
         self.bad_node()
-        self.needs_owner("t", LINK_A)
+        self.needs_owner("alice-t", LINK_A)
         for chat in (None, "chat-zzzz"):
             rc, out, _ = self.status(chat)
             self.assertIn(POINTER + "; " + SET_HINT, out)
             self.assertNotIn("node(s) excluded", out)
         rc, out, _ = self.status("chat-aaaa")                # its own wait is still its own
-        self.assertIn("1 task(s) need the owner: t:", out)
+        self.assertIn("1 task(s) need the owner: alice-t:", out)
         self.assertIn(SET_HINT, out)
 
     def test_no_pointer_without_global_lines(self):
@@ -158,7 +158,7 @@ class MainChat(Base):
 
     def test_heartbeat_warning_shows_in_every_chat(self):
         self.main("--link", LINK_A)
-        self.add("t1")                                        # a live task and no heartbeat
+        self.add("alice-t1")                                        # a live task and no heartbeat
         for chat in (None, "chat-bbbb", "chat-aaaa"):
             rc, out, _ = self.status(chat)
             self.assertEqual(rc, 3, chat)
@@ -167,7 +167,7 @@ class MainChat(Base):
     def test_plain_status_still_shows_everything(self):
         self.main("--link", LINK_A)
         self.bad_node()
-        self.needs_owner("other", LINK_A)
+        self.needs_owner("alice-other", LINK_A)
         saved = self.env
         self.env = dict(saved, T3CODE_THREAD_ID="chat-bbbb")
         try:
@@ -188,9 +188,9 @@ class MainChat(Base):
             self.env = saved
 
     def test_origin_replace_moves_the_main_chat_with_the_work(self):
-        self.add("t1", origin={"title": "old", "link": LINK_A})
+        self.add("alice-t1", origin={"title": "old", "link": LINK_A})
         self.main("--link", LINK_A, "--title", "Old main")
-        rc, out, err = self.origin_replace("t1", LINK_B)
+        rc, out, err = self.origin_replace("alice-t1", LINK_B)
         self.assertEqual(rc, 0, err)
         self.assertIn("main chat moved with the work", out)
         self.assertEqual(self.config()["main_chat"]["link"], LINK_B)
@@ -201,16 +201,16 @@ class MainChat(Base):
         self.assertIn("main chat Old main", self.wd("log")[1])
 
     def test_origin_replace_leaves_main_chat_alone_when_it_is_another_chat(self):
-        self.add("t1", origin={"title": "old", "link": LINK_A})
+        self.add("alice-t1", origin={"title": "old", "link": LINK_A})
         self.main("--link", "t3-thread://v2/fake-env/chat-cccc")
-        rc, out, err = self.origin_replace("t1", LINK_B)
+        rc, out, err = self.origin_replace("alice-t1", LINK_B)
         self.assertEqual(rc, 0, err)
         self.assertNotIn("main chat", out)
         self.assertEqual(self.config()["main_chat"]["link"], "t3-thread://v2/fake-env/chat-cccc")
 
     def test_origin_replace_without_a_main_chat_sets_none(self):
-        self.add("t1", origin={"title": "old", "link": LINK_A})
-        rc, out, err = self.origin_replace("t1", LINK_B)
+        self.add("alice-t1", origin={"title": "old", "link": LINK_A})
+        rc, out, err = self.origin_replace("alice-t1", LINK_B)
         self.assertEqual(rc, 0, err)
         self.assertNotIn("main_chat", self.config())
 

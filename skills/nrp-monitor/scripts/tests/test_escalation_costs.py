@@ -213,7 +213,7 @@ class BatchACommands(Ladder):
 
     def failure(self):
         self.run_pass()
-        self.set_job('t1-a', state='FAILED', term={'reason':'Error', 'exitCode':1},
+        self.set_job('alice-t1-a', state='FAILED', term={'reason':'Error', 'exitCode':1},
                      log='Traceback\nValueError: missing environment dependency')
 
     def test_deputy_resubmits_with_real_fake_runner(self):
@@ -221,7 +221,7 @@ class BatchACommands(Ladder):
         self.failure()
         self.enable_deputy()
         self.plan({'result':'STOPPED: routine environment fix remains'},
-                  {'cmds':[['nrp-task','submit','t1-a','--reason','routine environment fixed']],
+                  {'cmds':[['nrp-task','submit','alice-t1-a','--reason','routine environment fixed']],
                    'result':'RESOLVED: fixed environment and resubmitted'})
         self.run_pass()
         t = self.task()
@@ -242,9 +242,9 @@ class BatchACommands(Ladder):
         # With no origin wake target the existing owner fallback remains, after the deputy.
         self.assertEqual(self.task()['status'], 'NEEDS_OWNER')
         fp = self.task()['failure']['fingerprint']
-        rc, out, err = self.wd('task','resume','t1','--note','Known old code; retry unchanged', '--decide','resubmit')
+        rc, out, err = self.wd('task','resume','alice-t1','--note','Known old code; retry unchanged', '--decide','resubmit')
         self.assertEqual(rc, 0, err)
-        entries = json.loads((self.state/'tasks/t1/decisions.json').read_text())
+        entries = json.loads((self.state/'tasks/alice-t1/decisions.json').read_text())
         self.assertEqual(entries[0]['fingerprint'], fp)
         self.assertEqual(entries[0]['scope'], 'task')
         self.assertEqual(self.task()['attempts'][-1]['fingerprint'], fp)
@@ -254,14 +254,14 @@ class BatchACommands(Ladder):
         self.run_pass()
         t = self.task()
         # A legacy failure still gets a deterministic fingerprint when inspected.
-        f = dict(stage='a', job='t1-a', cls='infra', sig='gone', detail='Job vanished', ts=1)
+        f = dict(stage='a', job='alice-t1-a', cls='infra', sig='gone', detail='Job vanished', ts=1)
         m = load_module(self.state)
         fp = m.fingerprint(t, f)
         t['failure'] = dict(f, fingerprint=fp)
         t['stages'][0]['state'] = 'failed'
-        (self.state/'tasks/t1/task.json').write_text(json.dumps(t))
-        self.set_job('t1-a', state='FAILED')
-        rc, out, err = self.wd('decide','t1',fp,'--action','resubmit','--scope','task','--max-uses','1','--why','Known transient')
+        (self.state/'tasks/alice-t1/task.json').write_text(json.dumps(t))
+        self.set_job('alice-t1-a', state='FAILED')
+        rc, out, err = self.wd('decide','alice-t1',fp,'--action','resubmit','--scope','task','--max-uses','1','--why','Known transient')
         self.assertEqual(rc, 0, err)
         self.run_pass()
         self.assertIsNone(self.task()['failure'])
@@ -270,15 +270,15 @@ class BatchACommands(Ladder):
         self.assertEqual(self.task()['attempts'][-1]['fingerprint'], fp)
 
     def test_default_scaled_cap_and_explicit_override(self):
-        stages = [dict(id='s%d'%i, job='job-%d'%i, manifest=self.manifest('job-%d'%i),
+        stages = [dict(id='s%d'%i, job='alice-job-%d'%i, manifest=self.manifest('alice-job-%d'%i),
                        done_s3=['s3://braingeneersdev/t/%d'%i]) for i in range(21)]
         rc, out, err = self.add(stages=stages)
         self.assertEqual(rc, 0, err)
         self.assertEqual(self.task()['max_retries'], 6)
-        stages = [dict(s, job='explicit-%d'%i, manifest=self.manifest('explicit-%d'%i)) for i, s in enumerate(stages)]
-        rc, out, err = self.add(name='explicit', stages=stages, max_retries=2)
+        stages = [dict(s, job='alice-explicit-%d'%i, manifest=self.manifest('alice-explicit-%d'%i)) for i, s in enumerate(stages)]
+        rc, out, err = self.add(name='alice-explicit', stages=stages, max_retries=2)
         self.assertEqual(rc, 0, err)
-        self.assertEqual(self.task('explicit')['max_retries'], 2)
+        self.assertEqual(self.task('alice-explicit')['max_retries'], 2)
 
 
 def test_setup_preserves_deputy_backend(monitor):

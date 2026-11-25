@@ -308,8 +308,11 @@ def observe_task(n, jobs):
                 miss = s["done_s3"][res.index(False)]
                 task_fail(n, sid, "outputs", "outputs-missing:" + miss, "Job succeeded but %s does not exist" % miss, p)
                 continue
-            _m_cluster.kubectl("-n", ns, "delete", "job", s["job"], "--wait=false")
-            _m_state.task_txn(n, lambda t: (_m_state.tstage(t, sid).update(state="done", done_ts=_m_state.now()), _m_stage_jobs.propagate_resources(t, _m_state.tstage(t, sid)), _m_state.tev(t, "stage %s done, Job deleted" % sid)))
+            deleted = _m_cluster.delete_owned_job(ns, s["job"])
+            if deleted.returncode:
+                _m_state.log(deleted.stderr.strip())
+                _m_state.task_txn(n, lambda t: _m_state.tev(t, deleted.stderr.strip()))
+            _m_state.task_txn(n, lambda t: (_m_state.tstage(t, sid).update(state="done", done_ts=_m_state.now()), _m_stage_jobs.propagate_resources(t, _m_state.tstage(t, sid)), _m_state.tev(t, "stage %s done%s" % (sid, ", Job deleted" if not deleted.returncode else ""))))
             _m_notify.digest("done", "stage %s (%s) succeeded; outputs %s" % (sid, s["job"], ", ".join(s["done_s3"])[:200]), n)
             _m_state.PASS["stage_done"] = _m_state.PASS.get("stage_done", 0) + 1
         elif info["state"] == "FAILED":

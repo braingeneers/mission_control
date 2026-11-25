@@ -18,10 +18,10 @@ NRP's own verdict is the signal. About every 10 minutes the pass runs a server-s
 utilization/quota text, or any real submit refused that way, puts the account in RED ALERT (`red_alert.json` in the
 state dir). While it lasts no task or chain submits anything (held submits show as `blocked`, `hold: red-alert`), and the
 log says so every pass. Once per alert the monitor maps each pod outside NRP's bands to the task whose stage Job owns it,
-wakes that task's coordinator chat (visible T3 turn where available), and pushes Hunter "NRP RED ALERT" with every pod no
+wakes that task's coordinator chat (visible T3 turn where available), and sends the account owner "NRP RED ALERT" with every pod no
 task owns (those are also listed in every woken chat). The wake demands action now: resize (request = ceil(Thanos
 whole-life working-set peak x 1.5), limit within 20%) or delete low pods; a pod that is not yours goes to its real
-owner by `t3 thread send` ("not mine" alone is not an answer). Only a passing dry-run clears the alert; held submits
+owner through the owning coordinator chat. Only a passing dry-run clears the alert; held submits
 then go out. The 10-minute-mean checks stay, to name suspects and warn early.
 
 ## Tier 0 rules (no model, before any agent)

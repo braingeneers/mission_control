@@ -32,7 +32,7 @@ class TestPostcheckPasses:
             checker.write_text('raise SystemExit("broken acceptance script")\n')
             rc, out, err = h.add(postcheck={'cmd': ['python3', str(checker)], 'expect': 'PASS'})
             assert rc == 0, err
-            path = h.state / 'tasks/t1/task.json'
+            path = h.state / 'tasks/alice-t1/task.json'
             t = h.task()
             t['stages'][0]['state'] = 'done'
             t['failure'] = None
@@ -41,10 +41,10 @@ class TestPostcheckPasses:
                 t['origin'] = {'harness': 'codex', 'session': 'fake-coordinator'}
             path.write_text(json.dumps(t))
             m = runners.load_module(h.state)
-            f = dict(stage='a', job='t1-a', cls='outputs', sig='postcheck',
+            f = dict(stage='a', job='alice-t1-a', cls='outputs', sig='postcheck',
                      detail='postcheck failed: broken acceptance script')
             fp = m.fingerprint(t, f)
-            decisions = h.state / 'tasks/t1/decisions.json'
+            decisions = h.state / 'tasks/alice-t1/decisions.json'
             decisions.write_text(json.dumps([dict(fingerprint=fp, action='skip_reuse', scope='task',
                                                    stage='a', max_uses=None, uses=0, why='Reuse markers', ts=1)]))
             (h.fake / 's3.json').write_text(json.dumps(t['stages'][0]['done_s3']))

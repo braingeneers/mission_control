@@ -44,9 +44,8 @@ may_touch: tools/nrp-monitor/, docs/agents/
   with 2x deadline when the job resumes by skipping finished items); then the normal ladder. Never page Hunter for a timeout directly.
   W6 lost a whole stage at 495/510 because one slow node (pas.pitt.net.internet2.edu) ran one pod 10x slower.
 - Tasks get the full ladder too (v2: one Sonnet `task` agent, then NEEDS_OWNER; the Haiku->Sonnet ladder exists only for legacy jobs).
-- `nrp-task reship` only packs `code.subdir` = the predictor_v3 package; tasks whose code also ships extra package dirs (e.g.
-  `finetune/` from spike-tokenizer-scaling via codeship `extra_pkg_dirs`) could not be reshipped, so four correct Sonnet fixes on
-  ft-tables-w6 stalled waiting for a person. v3: reship packs every dir the task's spec declares.
+- Earlier reship implementations missed secondary code directories. The current shipper uses the declared
+  directory list. See [Shipping code](tasks.md#shipping-code) for the current contract.
 - `task add` without `origin` must be refused (v2 only warns); ft-tables-w6 had none, so its alert named no chat and no chat was woken.
 
 **Agreed design:**

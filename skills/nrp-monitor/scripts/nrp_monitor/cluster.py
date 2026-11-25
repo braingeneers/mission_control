@@ -35,17 +35,53 @@ def _cached(key, read):
     return SNAPSHOT[key]
 
 
-def kubectl(*args, timeout=120):
+def kubectl(*args, timeout=120, **kwargs):
     """The only way the monitor runs kubectl. A call that changes a namespace drops that namespace from the pass snapshot."""
     if SNAPSHOT and args[:1] == ("-n",) and len(args) > 2 and args[2] in MUTATING:
         for key in [k for k in SNAPSHOT if k[1] == args[1]]:
             del SNAPSHOT[key]
-    return subprocess.run(["kubectl", *args], capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(["kubectl", "--context", _m_state.KUBE_CONTEXT, *args], capture_output=True, text=True, timeout=timeout, **kwargs)
+
+
+def delete_owned_job(ns, name, *, wait=False):
+    """Delete only the authenticated owner's exact Job instance."""
+    def refusal(reason):
+        return subprocess.CompletedProcess([], 1, "", "refused to delete Job %s: %s" % (name, reason))
+
+    identity = _m_state.nrp_identity()
+    if not identity:
+        return refusal("configure nrp_username and, if different, nrp_user_annotation in config.json")
+    result = kubectl("-n", ns, "get", "job", name, "-o", "json", "--ignore-not-found")
+    if result.returncode or not result.stdout.strip():
+        return result
+    try:
+        metadata = json.loads(result.stdout)["metadata"]
+        uid = metadata["uid"]
+        owner = (metadata.get("annotations") or {}).get("nrp.ai/username")
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return refusal("could not verify ownership and UID")
+    if owner != identity or not isinstance(uid, str) or not uid:
+        return refusal("nrp.ai/username does not match the configured NRP identity, or the Job has no UID")
+    # The UID precondition prevents deletion of a replacement created after the read.
+    path = "/apis/batch/v1/namespaces/%s/jobs/%s" % tuple(urllib.parse.quote(x, safe="") for x in (ns, name))
+    options = {"apiVersion": "v1", "kind": "DeleteOptions", "preconditions": {"uid": uid},
+               "propagationPolicy": "Foreground" if wait else "Background"}
+    result = kubectl("-n", ns, "delete", "--raw", path, "-f", "-", input=json.dumps(options))
+    if wait and not result.returncode:
+        return kubectl("-n", ns, "wait", "--for=delete", "job/" + name, "--timeout=180s", timeout=240)
+    return result
+
+
+def owner_label(metadata):
+    """Display attribution for jobs with either generation of owner label."""
+    labels = metadata.get("labels") or {}
+    return labels.get(_m_state.OWNER_LABEL_KEY) or labels.get("pv3/user") or ""
 
 
 def my_pods():
     """{name: owner_job_or_None} for the owner's pods that are Running, Pending or Failed (by annotation)."""
-    if not _m_state.USER_ANN:
+    identity = _m_state.nrp_identity()
+    if not identity:
         raise RuntimeError("nrp_user_annotation is not set (config.json or NRP_MONITOR_USER_ANNOTATION): cannot tell which pods are yours")
     r = kubectl("-n", _m_state.NS, "get", "pods", "-o", "json")
     if r.returncode:
@@ -53,7 +89,7 @@ def my_pods():
     out = {}
     for p in json.loads(r.stdout)["items"]:
         m = p["metadata"]
-        if m.get("annotations", {}).get("nrp.ai/username") != _m_state.USER_ANN or m.get("deletionTimestamp"):
+        if m.get("annotations", {}).get("nrp.ai/username") != identity or m.get("deletionTimestamp"):
             continue
         if p["status"].get("phase") not in ("Running", "Pending", "Failed"):
             continue
@@ -83,7 +119,7 @@ def job_state(name, ns):
 
 def job_complete(succeeded, completions, active, complete_cond):
     """A Job is finished successfully only when ALL its completions succeeded. `status.succeeded >= 1` is NOT that: an Indexed Job
-    (pv3 --parallel N, completions=N) has succeeded >= 1 as soon as its first shard exits, while the other shards still run; treating
+    (completions=N) has succeeded >= 1 as soon as its first shard exits, while the other shards still run; treating
     that as success made the monitor check a root marker too early and delete the Job's pods (finch-feature-followup, 2026-11-06).
     Complete=True is authoritative; else succeeded >= spec.completions; completions unset (work-queue Job) = one success and no pod active."""
     if complete_cond:
@@ -113,7 +149,7 @@ def fetch_jobs(ns):
         m = j["metadata"]
         out[m["name"]] = {"state": classify_job(j), "start": _m_state.parse_ts(j.get("status", {}).get("startTime")),
                           "deadline": (j.get("spec") or {}).get("activeDeadlineSeconds"),
-                          "ours": m.get("annotations", {}).get("nrp.ai/username") == _m_state.USER_ANN}
+                          "ours": m.get("annotations", {}).get("nrp.ai/username") == (_m_state.USER_ANN or _m_state.OWNER.get("nrp_username"))}
     return out
 
 
@@ -171,7 +207,7 @@ def apply_manifest(ns, path):
     if problems:
         return "; ".join(problems)
     for extra in (["--dry-run=server"], []):
-        r = kubectl("-n", ns, "apply", *extra, "-f", path, timeout=180)
+        r = kubectl("-n", ns, "create", *extra, "-f", path, timeout=180)
         if r.returncode:
             msg = (r.stderr.strip() or r.stdout.strip())[:400]
             if _m_state.BLOCK_RE.search(msg):
@@ -224,13 +260,13 @@ def namespace_offenders(ns):
         for pct, gi in _m_state.GPU_USE_RE.findall(line):
             usage["gpu"] = {"pct": int(pct), "request": pod_gpu_request(p)}
         out.append({"pod": m.group(2), "owner": "%s/%s" % (ref.get("kind"), ref.get("name")) if ref else "", "username": user,
-                    "service_account": p.get("spec", {}).get("serviceAccountName") or "", "ours": bool(_m_state.USER_ANN) and user == _m_state.USER_ANN,
+                    "owner_label": owner_label(meta), "service_account": p.get("spec", {}).get("serviceAccountName") or "", "ours": bool(_m_state.USER_ANN) and user == _m_state.USER_ANN,
                     "usage": usage, "line": line.strip()[:300]})
     return sorted(out, key=lambda o: o["pod"])
 
 
 def offender_text(o):
-    who = ", ".join(x for x in (o["owner"], ("user " + o["username"]) if o["username"] else "", ("service account " + o["service_account"])
+    who = ", ".join(x for x in (o["owner"], ("user " + o["username"]) if o["username"] else (o.get("owner_label") or ""), ("service account " + o["service_account"])
                                 if o["service_account"] and not o["username"] else "") if x) or "owner unknown"
     use = "; ".join("%s %s" % (k, ("%g/%g (%d%%)" % (v["use"], v["request"], v["pct"])) if "use" in v else
                                ("%d%% of %d GPU" % (v["pct"], v["request"]))) for k, v in o["usage"].items())

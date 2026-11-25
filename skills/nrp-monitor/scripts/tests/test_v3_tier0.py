@@ -65,7 +65,7 @@ class Tier0(Base):
         p = self.fake / "applied.log"
         return p.read_text() if p.exists() else ""
 
-    def oom(self, job="t1-a"):
+    def oom(self, job="alice-t1-a"):
         self.set_job(job, state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
 
     # ------------------------------------------------------------------ OOM -> peak x1.3
@@ -81,10 +81,10 @@ class Tier0(Base):
         self.assertEqual(t["tier0"][0]["memory"], "3Gi")                 # 2Gi x1.3 = 2.6Gi -> 3Gi
         self.assertEqual(t["attempts"][0]["by"], "tier0")
         self.assertIn("observed peak 2.0Gi", t["attempts"][0]["fix"])
-        self.assertIn("memory: 3Gi", self.applied().split("t1-a")[-1])
-        self.assertIn("t1-a", self.cl())
+        self.assertIn("memory: 3Gi", self.applied().split("alice-t1-a")[-1])
+        self.assertIn("alice-t1-a", self.cl())
         self.assertEqual(t["status"], "retrying")
-        self.assertTrue(any("max_over_time" in q and "pod%3D~%22t1-a-.%2A%22" in q for q in Thanos.queries), Thanos.queries)
+        self.assertTrue(any("max_over_time" in q and "pod%3D~%22alice-t1-a-.%2A%22" in q for q in Thanos.queries), Thanos.queries)
         self.assertIn("3Gi", Path(t["stages"][0]["manifest"]).read_text())
         self.assertFalse(self.pushes())
 
@@ -150,9 +150,9 @@ class Tier0(Base):
         self.assertEqual(self.task()["status"], "NEEDS_OWNER")           # the cap is enforced by do_submit; handle_failure escalates
 
     def test_request_stays_within_the_shared_tolerance_of_the_limit(self):
-        m = Path(self.manifest("t1-a"))
-        m.write_text(m.read_text().replace("requests: {cpu: \"500m\", memory: 512Mi}", "requests: {cpu: \"500m\", memory: 400Mi}"))
-        stage = {"id": "a", "job": "t1-a", "manifest": str(m), "done_s3": ["s3://braingeneersdev/t/a"]}
+        m = Path(self.manifest("alice-t1-a"))
+        m.write_text(m.read_text().replace("requests: {cpu: \"500m\", memory: 512Mi,", "requests: {cpu: \"500m\", memory: 400Mi,"))
+        stage = {"id": "a", "job": "alice-t1-a", "manifest": str(m), "done_s3": ["s3://braingeneersdev/t/a"]}
         self.assertEqual(self.add(stages=[stage])[0], 0)
         self.run_pass()
         Thanos.value = 10 * GI
@@ -165,7 +165,7 @@ class Tier0(Base):
 
     # ------------------------------------------------------------------ known node fault -> exclude the node
     def node_fault(self, node="gpu-node-7", message="NVRM: Xid 79: GPU has fallen off the bus"):
-        self.set_job("t1-a", state="FAILED", node=node, term={"reason": "Error", "exitCode": 1}, pod_status={"message": message})
+        self.set_job("alice-t1-a", state="FAILED", node=node, term={"reason": "Error", "exitCode": 1}, pod_status={"message": message})
 
     def test_known_node_fault_excludes_the_node_and_resubmits_without_agent(self):
         self.assertEqual(self.add()[0], 0)
@@ -176,11 +176,11 @@ class Tier0(Base):
         self.assertEqual(len(self.prompts()), 0)
         self.assertEqual(t["tier0"][0], dict(t["tier0"][0], rule="node", node="gpu-node-7", stage="a"))
         self.assertEqual(t["attempts"][0]["by"], "tier0")
-        app = self.applied().split("t1-a")[-1]
+        app = self.applied().split("alice-t1-a")[-1]
         self.assertIn("kubernetes.io/hostname", app)
         self.assertIn("NotIn", app)
         self.assertIn("gpu-node-7", app)
-        self.assertIn("t1-a", self.cl())
+        self.assertIn("alice-t1-a", self.cl())
 
     def test_node_exclusion_merges_into_an_existing_affinity_and_is_idempotent(self):
         import importlib.util; from monitor_imports import machinery
@@ -210,14 +210,14 @@ class Tier0(Base):
         self.assertEqual(self.add()[0], 0)
         self.run_pass()
         for attempt in (1, 2):
-            self.set_job("t1-a", state="FAILED", node="", log="")
+            self.set_job("alice-t1-a", state="FAILED", node="", log="")
             self.run_pass()
             t = self.task()
             self.assertEqual(len(self.prompts()), 0)
             self.assertEqual([x["rule"] for x in t["tier0"]], ["lost"] * attempt)
             self.assertEqual(t["attempts"][-1]["cls"], "infra")
             self.assertEqual(t["attempts"][-1]["by"], "tier0")
-        self.set_job("t1-a", state="FAILED", node="", log="")                # a third loss on the same stage: budget (2) used
+        self.set_job("alice-t1-a", state="FAILED", node="", log="")                # a third loss on the same stage: budget (2) used
         self.run_pass()
         self.assertEqual(len(self.task()["tier0"]), 2)
         self.assertNotEqual(self.task()["status"], "running")
@@ -244,7 +244,7 @@ class Tier0(Base):
 
     # ------------------------------------------------------------------ long Pending reports the scheduler's reason
     def pending_manifest(self):
-        m = Path(self.manifest("t1-a"))
+        m = Path(self.manifest("alice-t1-a"))
         m.write_text(m.read_text().replace("      restartPolicy: Never\n", "      restartPolicy: Never\n"
                      "      affinity:\n        nodeAffinity:\n          requiredDuringSchedulingIgnoredDuringExecution:\n"
                      "            nodeSelectorTerms:\n            - matchExpressions:\n"
@@ -252,11 +252,11 @@ class Tier0(Base):
         return str(m)
 
     def test_long_pending_reports_the_scheduler_reason_and_our_allow_list_once(self):
-        stage = {"id": "a", "job": "t1-a", "manifest": self.pending_manifest(), "done_s3": ["s3://braingeneersdev/t/a"]}
+        stage = {"id": "a", "job": "alice-t1-a", "manifest": self.pending_manifest(), "done_s3": ["s3://braingeneersdev/t/a"]}
         self.assertEqual(self.add(stages=[stage])[0], 0)
         self.run_pass()
         msg = "0/12 nodes are available: 12 node(s) didn't match Pod's node affinity/selector."
-        self.set_job("t1-a", state="pending", node="", pod_status={"phase": "Pending", "conditions": [
+        self.set_job("alice-t1-a", state="pending", node="", pod_status={"phase": "Pending", "conditions": [
             {"type": "PodScheduled", "status": "False", "reason": "Unschedulable", "message": msg}]})
         self.run_pass()
         self.assertEqual([e for e in self.task()["events"] if "Pending" in e], [], "not yet 30 minutes")
@@ -271,7 +271,7 @@ class Tier0(Base):
         self.assertIn("Pending", out)
         self.run_pass()
         self.assertEqual(len([e for e in self.task()["events"] if "Pending" in e]), 1, "same reason: reported once")
-        self.set_job("t1-a", pod_status={"phase": "Pending", "conditions": [
+        self.set_job("alice-t1-a", pod_status={"phase": "Pending", "conditions": [
             {"type": "PodScheduled", "status": "False", "reason": "Unschedulable", "message": "0/12 nodes are available: 12 Insufficient nvidia.com/gpu."}]})
         self.run_pass()
         ev = [e for e in self.task()["events"] if "Pending" in e]
@@ -284,7 +284,7 @@ class Tier0(Base):
         self.assertEqual(self.add()[0], 0)
         self.run_pass()
         import time
-        self.set_job("t1-a", state="running", started=time.time() - 60)
+        self.set_job("alice-t1-a", state="running", started=time.time() - 60)
         self.run_pass()
         self.age_submit()
         self.run_pass()
@@ -294,25 +294,25 @@ class Tier0(Base):
     def test_finished_job_is_deleted_only_when_its_success_marker_exists(self):
         self.assertEqual(self.add()[0], 0)
         self.run_pass()
-        self.set_job("t1-a", state="ok")
+        self.set_job("alice-t1-a", state="ok")
         self.run_pass()                                                  # Job succeeded but the marker is missing
-        self.assertIn("t1-a", self.cl(), "unverified: the Job and its pods are kept for diagnosis")
+        self.assertIn("alice-t1-a", self.cl(), "unverified: the Job and its pods are kept for diagnosis")
         self.assertFalse((self.fake / "deleted.log").exists())
         self.assertEqual(self.task()["failure"]["cls"], "outputs")
 
     def test_finished_job_with_verified_marker_is_deleted_and_logs_kept(self):
         self.assertEqual(self.add()[0], 0)
         self.run_pass()
-        self.set_job("t1-a", state="ok")
-        (self.fake / "s3.json").write_text(json.dumps(["s3://braingeneersdev/alice/test/t1/a.txt"]))
+        self.set_job("alice-t1-a", state="ok")
+        (self.fake / "s3.json").write_text(json.dumps(["s3://braingeneersdev/alice/test/alice-t1/a.txt"]))
         self.run_pass()
-        self.assertEqual((self.fake / "deleted.log").read_text().split(), ["t1-a"])
-        self.assertTrue((self.state / "tasks/t1/logs/t1-a-a1.txt").exists())
+        self.assertEqual((self.fake / "deleted.log").read_text().split(), ["alice-t1-a"])
+        self.assertTrue((self.state / "tasks/alice-t1/logs/alice-t1-a-a1.txt").exists())
 
 
 class Reship(Base):
     """`nrp-task reship` packs every code dir the task declares, with the layout `--ship-code` produced at submission."""
-    SPEC_URI = "s3://braingeneersdev/alice/test/pv3/jobs/t1-a/spec.json"
+    SPEC_URI = "s3://braingeneersdev/alice/test/pv3/jobs/alice-t1-a/spec.json"
     OLD_URI = "s3://braingeneersdev/alice/test/pv3/code/0000000000000000.tgz"
 
     def key(self, uri):
@@ -337,17 +337,17 @@ class Reship(Base):
         git(root, "commit", "-qm", "init")
 
     def register(self, code, repo_dir=None):
-        m = Path(self.manifest("t1-a"))
+        m = Path(self.manifest("alice-t1-a"))
         m.write_text(m.read_text().replace('["python", "-c", "print(1)"]', '["python", "-m", "e", "gate", "--spec", "%s"]' % self.SPEC_URI))
         self.env["NRP_TASK_PYTHON"] = sys.executable
-        stage = {"id": "a", "job": "t1-a", "manifest": str(m), "done_s3": ["s3://braingeneersdev/t/a"]}
+        stage = {"id": "a", "job": "alice-t1-a", "manifest": str(m), "done_s3": ["s3://braingeneersdev/t/a"]}
         rc, out, err = self.add(stages=[stage], code=code)
         self.assertEqual(rc, 0, err)
         store = self.fake / "store"
         store.mkdir(exist_ok=True)
         (store / self.key(self.SPEC_URI)).write_text(json.dumps({"module": "m", "code": {"uri": self.OLD_URI, "sha256": "0" * 64}}))
         self.run_pass()
-        self.set_job("t1-a", state="FAILED")
+        self.set_job("alice-t1-a", state="FAILED")
         return Path(self.task()["code"]["clone"])
 
     def tarball(self):
@@ -363,8 +363,8 @@ class Reship(Base):
         self.assertTrue((clone / "finetune" / "tables.py").exists() and (clone / "bwb" / "clock.py").exists())
         (clone / "finetune" / "tables.py").write_text("A = 2\n")            # the agent's fix is in an EXTRA dir only
         (clone / "predictor_v3" / "job.py").write_text("print(1)\n")
-        self.tool("t1", "commit", "fix tables and job")
-        rc, out = self.tool("t1", "reship", "t1-a")
+        self.tool("alice-t1", "commit", "fix tables and job")
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")
         self.assertEqual(rc, 0, out)
         self.assertIn("reshipped", out)
         self.assertIn("predictor_v3, finetune, bwb", out)
@@ -384,17 +384,17 @@ class Reship(Base):
     def test_reship_no_op_check_covers_every_dir(self):
         self.make_repo(self.repo, {"predictor_v3": {"job.py": "print(1)\n"}, "finetune": {"tables.py": "A = 1\n"}}, with_codeship=True)
         clone = self.register({"repo": str(self.repo), "subdir": "predictor_v3", "extra_pkg_dirs": ["finetune"]})
-        self.assertEqual(self.tool("t1", "reship", "t1-a")[0], 0)           # first reship: the spec still carries a dummy hash
-        rc, out = self.tool("t1", "reship", "t1-a")
+        self.assertEqual(self.tool("alice-t1", "reship", "alice-t1-a")[0], 0)           # first reship: the spec still carries a dummy hash
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")
         self.assertIn("identical", out)                                      # same code in all dirs: nothing to do
         n = len(list((self.fake / "store").iterdir()))
         (clone / "finetune" / "tables.py").write_text("A = 99\n")            # a change in the EXTRA dir only must not be a no-op
-        self.tool("t1", "commit", "extra dir fix")
-        rc, out = self.tool("t1", "reship", "t1-a")
+        self.tool("alice-t1", "commit", "extra dir fix")
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")
         self.assertEqual(rc, 0, out)
         self.assertIn("reshipped", out)
         self.assertEqual(len(list((self.fake / "store").iterdir())), n + 1)  # one more tarball uploaded
-        self.assertIn("identical", self.tool("t1", "reship", "t1-a")[1])
+        self.assertIn("identical", self.tool("alice-t1", "reship", "alice-t1-a")[1])
 
     def test_reship_with_the_package_in_another_checkout_like_ft_tables_w6(self):
         """finetune/ + bwb/ in the task's repo (subdir finetune, so the clone is sparse), predictor_v3 and the packer in another repo."""
@@ -407,8 +407,8 @@ class Reship(Base):
         self.assertTrue((clone / "bwb" / "clock.py").exists(), "relative extras join the sparse checkout")
         self.assertFalse((clone / "predictor_v3").exists())
         (clone / "finetune" / "tables.py").write_text("A = 2\n")
-        self.tool("t1", "commit", "fix a slow table")
-        rc, out = self.tool("t1", "reship", "t1-a")
+        self.tool("alice-t1", "commit", "fix a slow table")
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")
         self.assertEqual(rc, 0, out)
         spec, tf = self.tarball()
         self.assertEqual({n.split("/")[0] for n in tf.getnames()}, {"predictor_v3", "finetune", "bwb"})
@@ -421,7 +421,7 @@ class Reship(Base):
         self.make_repo(other, {"extpkg": {"lib.py": "L = 1\n"}})
         self.make_repo(self.repo, {"predictor_v3": {"job.py": "print(1)\n"}}, with_codeship=True)
         self.register({"repo": str(self.repo), "subdir": "predictor_v3", "extra_pkg_dirs": [str(other / "extpkg")]})
-        rc, out = self.tool("t1", "reship", "t1-a")
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")
         self.assertEqual(rc, 0, out)
         spec, tf = self.tarball()
         self.assertIn("extpkg/lib.py", tf.getnames())
@@ -431,7 +431,7 @@ class Reship(Base):
         self.make_repo(self.repo, {"predictor_v3": {"job.py": "print(1)\n"}}, with_codeship=True)
         clone = self.register({"repo": str(self.repo), "subdir": "predictor_v3", "extra_pkg_dirs": ["gone"]})
         self.assertFalse((clone / "gone").exists())
-        rc, out = self.tool("t1", "reship", "t1-a")
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")
         self.assertNotEqual(rc, 0)
         self.assertIn("extra_pkg_dirs", out)
         self.assertIn("gone", out)
@@ -455,18 +455,18 @@ class Reship(Base):
         self.make_repo(snap, {"finetune": {"tables.py": "A = 1\n"}, "bwb": {"clock.py": "B = 1\n"}})
         self.make_repo(pv3, {"predictor_v3": {"job.py": "print(1)\n"}}, with_codeship=True)
         clone = self.register({"repo": str(snap), "subdir": "finetune"})     # as ft-tables-w6 was registered
-        rc, out = self.tool("t1", "reship", "t1-a")
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")
         self.assertNotEqual(rc, 0)
         self.assertIn("predictor_v3", out)
-        rc, out, err = self.wd("task", "code", "t1", "--pkg-dir", str(pv3 / "predictor_v3"), "--extra-pkg-dir", "finetune", "--extra-pkg-dir", "bwb")
+        rc, out, err = self.wd("task", "code", "alice-t1", "--pkg-dir", str(pv3 / "predictor_v3"), "--extra-pkg-dir", "finetune", "--extra-pkg-dir", "bwb")
         self.assertEqual(rc, 0, err)
         self.assertTrue((clone / "bwb" / "clock.py").exists())
         self.assertEqual(self.task()["code"]["extra_pkg_dirs"], ["finetune", "bwb"])
-        self.assertIn("code dirs reship packs", self.wd("task", "show", "t1")[1])
-        rc, out = self.tool("t1", "reship", "t1-a")
+        self.assertIn("code dirs reship packs", self.wd("task", "show", "alice-t1")[1])
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")
         self.assertEqual(rc, 0, out)
         self.assertEqual({n.split("/")[0] for n in self.tarball()[1].getnames()}, {"predictor_v3", "finetune", "bwb"})
-        rc, out, err = self.wd("task", "code", "t1", "--extra-pkg-dir", "nope")
+        rc, out, err = self.wd("task", "code", "alice-t1", "--extra-pkg-dir", "nope")
         self.assertNotEqual(rc, 0)
         self.assertIn("not in the task's code clone", err)
 
@@ -476,67 +476,67 @@ class StepTasks(PlanBase):
 
     def test_two_tasks_for_one_step_continue_once_when_both_are_done(self):
         self.flag()
-        self.assertEqual(self.add_step("t1a", "1")[0], 0)
-        self.assertEqual(self.add_step("t1b", "1")[0], 0)                  # the second task for the same live step is accepted
-        self.assertEqual([e["task"] for e in self.plan_state()["ledger"]["1"]], ["t1a", "t1b"])
-        self.plan({"cmds": self.next_task_cmds("t2", "2") + [["nrp-task", "report", "CONTINUED", "both cells done; started step 2"]], "result": "CONTINUED"})
-        self.finish("t1a")                                                  # t1a done, t1b still running
-        self.assertEqual(self.task("t1a")["status"], "done")
-        self.assertEqual(len(self.prompts()), 0, "step 1 is not done until t1b is")
-        self.assertNotIn("continuation", self.task("t1a"))
-        self.assertTrue(any("waiting for task(s) t1b" in e for e in self.task("t1a")["events"]))
-        self.finish("t1b")
+        self.assertEqual(self.add_step("alice-t1a", "1")[0], 0)
+        self.assertEqual(self.add_step("alice-t1b", "1")[0], 0)                  # the second task for the same live step is accepted
+        self.assertEqual([e["task"] for e in self.plan_state()["ledger"]["1"]], ["alice-t1a", "alice-t1b"])
+        self.plan({"cmds": self.next_task_cmds("alice-t2", "2") + [["nrp-task", "report", "CONTINUED", "both cells done; started step 2"]], "result": "CONTINUED"})
+        self.finish("alice-t1a")                                                  # alice-t1a done, alice-t1b still running
+        self.assertEqual(self.task("alice-t1a")["status"], "done")
+        self.assertEqual(len(self.prompts()), 0, "step 1 is not done until alice-t1b is")
+        self.assertNotIn("continuation", self.task("alice-t1a"))
+        self.assertTrue(any("waiting for task(s) alice-t1b" in e for e in self.task("alice-t1a")["events"]))
+        self.finish("alice-t1b")
         self.assertEqual(len(self.prompts()), 1, "one continue agent for the step")
-        self.assertEqual(self.task("t1a")["continuation"]["status"], "CONTINUED")
-        self.assertEqual(self.task("t1b")["continuation"]["status"], "COVERED")
-        self.assertIn("continued by task t1a", self.task("t1b")["continuation"]["line"])
-        self.assertEqual(self.task("t2")["on_done"]["from_step"], "2")
+        self.assertEqual(self.task("alice-t1a")["continuation"]["status"], "CONTINUED")
+        self.assertEqual(self.task("alice-t1b")["continuation"]["status"], "COVERED")
+        self.assertIn("continued by task alice-t1a", self.task("alice-t1b")["continuation"]["line"])
+        self.assertEqual(self.task("alice-t2")["on_done"]["from_step"], "2")
         self.run_pass()
         self.assertEqual(len(self.prompts()), 1)
 
     def test_a_sibling_that_needs_the_owner_holds_the_step(self):
         self.flag()
-        self.assertEqual(self.add_step("t1a", "1")[0], 0)
-        self.assertEqual(self.add_step("t1b", "1", mode="watch")[0], 0)
+        self.assertEqual(self.add_step("alice-t1a", "1")[0], 0)
+        self.assertEqual(self.add_step("alice-t1b", "1", mode="watch")[0], 0)
         self.run_pass()
-        self.set_job("t1b-a", state="FAILED", term={"reason": "Error", "exitCode": 1})
-        self.finish("t1a")
+        self.set_job("alice-t1b-a", state="FAILED", term={"reason": "Error", "exitCode": 1})
+        self.finish("alice-t1a")
         self.run_pass()
-        self.assertEqual(self.task("t1b")["status"], "NEEDS_OWNER")
+        self.assertEqual(self.task("alice-t1b")["status"], "NEEDS_OWNER")
         self.assertEqual(len(self.prompts()), 0)
-        self.assertNotIn("continuation", self.task("t1a"))
+        self.assertNotIn("continuation", self.task("alice-t1a"))
 
     def test_a_cancelled_sibling_does_not_hold_the_step(self):
         self.flag()
-        self.assertEqual(self.add_step("t1a", "1")[0], 0)
-        self.assertEqual(self.add_step("t1b", "1")[0], 0)
-        self.assertEqual(self.wd("task", "cancel", "t1b")[0], 0)
+        self.assertEqual(self.add_step("alice-t1a", "1")[0], 0)
+        self.assertEqual(self.add_step("alice-t1b", "1")[0], 0)
+        self.assertEqual(self.wd("task", "cancel", "alice-t1b")[0], 0)
         self.plan({"cmds": [["nrp-task", "report", "WAITING", "nothing to start"]], "result": "WAITING"})
-        self.finish("t1a")
+        self.finish("alice-t1a")
         self.assertEqual(len(self.prompts()), 1)
-        self.assertEqual(self.task("t1a")["continuation"]["status"], "WAITING")
+        self.assertEqual(self.task("alice-t1a")["continuation"]["status"], "WAITING")
 
     def test_one_continue_agent_may_register_several_tasks_for_the_next_step(self):
         self.flag()
-        self.assertEqual(self.add_step("t1", "1")[0], 0)
-        self.plan({"cmds": self.next_task_cmds("t2a", "2") + self.next_task_cmds("t2b", "2")
+        self.assertEqual(self.add_step("alice-t1", "1")[0], 0)
+        self.plan({"cmds": self.next_task_cmds("alice-t2a", "2") + self.next_task_cmds("alice-t2b", "2")
                    + [["nrp-task", "report", "CONTINUED", "started both cells of step 2"]], "result": "CONTINUED"})
-        self.finish("t1")
-        self.assertEqual(self.task("t2a")["on_done"]["from_step"], "2")
-        self.assertEqual(self.task("t2b")["on_done"]["from_step"], "2")
-        self.assertEqual([e["task"] for e in self.plan_state()["ledger"]["2"]], ["t2a", "t2b"])
-        self.assertEqual(self.task("t1")["continuation"]["registered"], ["t2a", "t2b"])
+        self.finish("alice-t1")
+        self.assertEqual(self.task("alice-t2a")["on_done"]["from_step"], "2")
+        self.assertEqual(self.task("alice-t2b")["on_done"]["from_step"], "2")
+        self.assertEqual([e["task"] for e in self.plan_state()["ledger"]["2"]], ["alice-t2a", "alice-t2b"])
+        self.assertEqual(self.task("alice-t1")["continuation"]["registered"], ["alice-t2a", "alice-t2b"])
 
     def test_a_step_started_by_someone_else_is_still_held_for_a_continuation(self):
         self.flag()
-        self.assertEqual(self.add_step("t1", "1")[0], 0)
-        self.assertEqual(self.add_step("t2s", "2")[0], 0)                  # a session already started step 2
-        self.plan({"cmds": self.next_task_cmds("t2x", "2") + [["nrp-task", "report", "WAITING", "step 2 already started"]], "result": "WAITING"})
-        self.finish("t1")
+        self.assertEqual(self.add_step("alice-t1", "1")[0], 0)
+        self.assertEqual(self.add_step("alice-t2s", "2")[0], 0)                  # a session already started step 2
+        self.plan({"cmds": self.next_task_cmds("alice-t2x", "2") + [["nrp-task", "report", "WAITING", "step 2 already started"]], "result": "WAITING"})
+        self.finish("alice-t1")
         outs = (self.fake / "agent_outs.log").read_text().splitlines()[-1]
         self.assertIn("already started once", outs)
         with self.assertRaises(FileNotFoundError):
-            self.task("t2x")
+            self.task("alice-t2x")
 
 
 if __name__ == "__main__":

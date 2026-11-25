@@ -184,7 +184,7 @@ def test_successful_observation_records_done_before_delete(isolated, monkeypatch
     monkeypatch.setattr(stage_jobs, 'save_task_logs', lambda *a: ('fake', ''))
     monkeypatch.setattr(s3, 's3_exists', lambda *a: True)
     monkeypatch.setattr(notify, 'digest', lambda *a: None)
-    monkeypatch.setattr(cluster, 'kubectl', lambda *a, **k: subprocess.CompletedProcess(a, 125, '', 'shadow'))
+    monkeypatch.setattr(cluster, 'delete_owned_job', lambda *a, **k: subprocess.CompletedProcess(a, 0, '', ''))
     with shadow.isolated_pass():
         ladder.observe_task('fake', {'job': {'state': 'ok'}})
     records = [json.loads(line) for line in (isolated / 'shadow-actions.jsonl').read_text().splitlines()]

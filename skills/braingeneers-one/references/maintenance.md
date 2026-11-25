@@ -43,10 +43,16 @@ already available at a different application-recognized location, read it there
 instead of installing a duplicate. Use its containing directory with
 `--skills-dir` if the user requests maintenance there.
 
-Common user locations are `~/.codex/skills`, `~/.claude/skills`,
-`~/.copilot/skills`, `~/.gemini/skills`, and `~/.cursor/skills`. Project installs
-use `.agents/skills` for these apps except Claude Code's `.claude/skills`.
-Actual application configuration takes precedence over these examples.
+For Claude Code and Codex, bootstrap the router in `~/.claude/skills/`.
+When managing that root, `install` and `update` make each selected installed
+skill available to Codex through a link in
+[`~/.agents/skills/`](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills).
+Existing filesystem entries are preserved. For an existing direct install
+elsewhere, continue maintaining it in its own root.
+
+Common user locations for other hosts are `~/.copilot/skills`,
+`~/.gemini/skills`, and `~/.cursor/skills`. Actual application configuration
+takes precedence over these examples.
 
 ## Helper behavior
 

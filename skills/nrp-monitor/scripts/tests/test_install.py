@@ -25,8 +25,28 @@ class Install(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             for f in ("nrp-monitor", "nrp-watchdog", "nrp-util-check", "nrp-task", "nrp-s3-read"):
                 self.assertTrue(os.access(Path(home, ".local/bin", f), os.X_OK), f)
-            self.assertTrue(Path(home, "Library/LaunchAgents/test.nrp-monitor.plist").exists())
+            if os.uname().sysname == "Darwin":
+                self.assertTrue(Path(home, "Library/LaunchAgents/test.nrp-monitor.plist").exists())
+            version = (HERE.parent / "VERSION").read_text().strip()
+            self.assertIn('VERSION = "%s"' % version, Path(home, ".local/bin/nrp-monitor").read_text())
             self.assertIn("config.json is missing", r.stdout)
+
+    def test_non_macos_skips_launchctl_even_with_launchd_requested(self):
+        with tempfile.TemporaryDirectory() as home:
+            root = Path(home)
+            fake_bin = root / "fake-bin"
+            fake_bin.mkdir()
+            for name, script in (("uname", "echo Linux"), ("launchctl", "touch ~/.launchctl-called; exit 1")):
+                executable = fake_bin / name
+                executable.write_text("#!/bin/sh\n" + script + "\n")
+                executable.chmod(0o755)
+            env = dict(os.environ, NRP_MONITOR_SETUP="skip",
+                       PATH=str(fake_bin) + os.pathsep + os.environ["PATH"])
+            env.update(wake_env(home))
+            result = subprocess.run(["sh", str(HERE / "install.sh"), "--launchd"], env=env,
+                                    capture_output=True, text=True, check=True)
+            self.assertIn("skipping scheduler setup", result.stdout)
+            self.assertFalse((root / ".launchctl-called").exists())
 
     def test_nrp_monitor_is_a_copy_wrapper_that_runs_nrp_monitor(self):
         with tempfile.TemporaryDirectory() as home:

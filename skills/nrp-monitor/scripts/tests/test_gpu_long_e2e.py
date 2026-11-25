@@ -3,6 +3,7 @@ real check_pods pass runs, and the alarm must reach the owning chat as an order 
 an undeliverable alarm DMs the owner at once; at 90 min (30 min after the warning) the monitor deletes the Job and fails the stage as util/gpu.
 Run: python3 -m pytest tests/test_gpu_long_e2e.py"""
 import argparse
+import json
 import os
 import stat
 import types
@@ -44,9 +45,14 @@ def env(monitor, tmp_path, monkeypatch):  # noqa: F811
         v["stages"][0].update(state="running")
     m.task_txn(t["name"], live)
     pushes, wakes, kube = [], [], []
-    patches = [patch.object(m, "push", side_effect=lambda msg, key, *a, **k: pushes.append((key, msg))),
+    def kubectl(*args, **kwargs):
+        kube.append(args)
+        metadata = {"uid": "work-17-uid", "annotations": {"nrp.ai/username": "alice"}}
+        return types.SimpleNamespace(returncode=0, stdout=json.dumps({"metadata": metadata}), stderr="")
+
+    patches = [patch.object(m, "USER_ANN", "alice"), patch.object(m, "push", side_effect=lambda msg, key, *a, **k: pushes.append((key, msg))),
                patch.object(m, "my_pods", return_value={POD: "work-17"}),
-               patch.object(m, "kubectl", side_effect=lambda *a, **k: kube.append(a) or types.SimpleNamespace(returncode=0, stdout="", stderr="")),
+               patch.object(m, "kubectl", side_effect=kubectl),
                patch.object(m, "save_task_logs", return_value=None),
                patch.dict(m.WAKE_EXEC, {"t3-cli": lambda target, text: wakes.append((target, text))})]
     for p in patches:
@@ -110,7 +116,7 @@ def test_undeliverable_alarm_dms_owner_on_first_failure(env):
 def test_90min_low_gpu_deletes_job_and_fails_stage(env):
     util(env, w60=LINE % (POD, 100, 60, 30), w90=LINE % (POD, 100, 90, 35))
     run_pass(env)
-    assert ("-n", env.m.NS, "delete", "job", "work-17", "--wait=false") in env.kube, env.kube
+    assert any(call[2:4] == ("delete", "--raw") and call[4].endswith("/jobs/work-17") for call in env.kube), env.kube
     t = env.m.task_load(env.name)
     assert t["stages"][0]["state"] == "failed"
     assert t["failure"]["cls"] == "util" and t["failure"].get("rule") == "gpu"

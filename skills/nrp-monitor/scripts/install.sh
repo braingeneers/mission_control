@@ -14,6 +14,14 @@
 # A fresh install touches none of this and creates nrp-monitor only.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
+version=$(cat "$here/../VERSION")
+case "$version" in ''|*[!0-9.]*) echo "Invalid nrp-monitor VERSION" >&2; exit 1;; esac
+launchd=0
+if [ "$(uname -s)" = Darwin ] && command -v launchctl >/dev/null 2>&1; then
+  launchd=1
+else
+  echo "launchd is unavailable on this platform; skipping scheduler setup."
+fi
 uid=$(id -u)
 user=$(id -un)
 base="$HOME/.local/state"
@@ -40,10 +48,10 @@ wait_lock() {   # wait_lock FILE SECONDS: 0 once free, 1 when still held after S
     sleep 2
   done
 }
-agent_loaded() { command -v launchctl >/dev/null 2>&1 && launchctl print "gui/$uid/$1" >/dev/null 2>&1; }
+agent_loaded() { [ "$launchd" = 1 ] && launchctl print "gui/$uid/$1" >/dev/null 2>&1; }
 
 # Inspect Label values as well as filenames: custom labels need migration too.
-old_labels=$(python3 - "$HOME/Library/LaunchAgents" "$old_label" "${NRP_WATCHDOG_LABEL:-}" <<'PYLABELS'
+old_labels=$(python3 - "$HOME/Library/LaunchAgents" "$old_label" "${NRP_WATCHDOG_LABEL:-}" "$launchd" <<'PYLABELS'
 import pathlib, plistlib, subprocess, sys
 labels = {sys.argv[2]}
 if sys.argv[3].endswith('.nrp-watchdog'): labels.add(sys.argv[3])
@@ -52,7 +60,8 @@ for p in pathlib.Path(sys.argv[1]).glob('*.plist'):
     except Exception: label = p.stem
     if label.endswith('.nrp-watchdog') and all(c.isalnum() or c in '._-' for c in label): labels.add(label)
 try:
-    for line in subprocess.check_output(['launchctl', 'list'], text=True, stderr=subprocess.DEVNULL).splitlines():
+    lines = subprocess.check_output(['launchctl', 'list'], text=True, stderr=subprocess.DEVNULL).splitlines() if sys.argv[4] == '1' else []
+    for line in lines:
         label = line.split()[-1] if line.split() else ''
         if label.endswith('.nrp-watchdog') and all(c.isalnum() or c in '._-' for c in label): labels.add(label)
 except (OSError, subprocess.CalledProcessError): pass
@@ -172,7 +181,10 @@ fi
 mkdir -p "$HOME/.local/bin" "$state/templates" "$HOME/Library/LaunchAgents"
 for f in nrp-monitor nrp-util-check nrp-s3-read; do python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$here/$f"; done; sh -n "$here/nrp-task"   # syntax check without writing bytecode into the skill
 cp -R "$here/nrp_monitor" "$HOME/.local/bin/"
-install -m 755 "$here/nrp-monitor" "$HOME/.local/bin/nrp-monitor.new" && mv "$HOME/.local/bin/nrp-monitor.new" "$HOME/.local/bin/nrp-monitor"
+sed "s/@NRP_MONITOR_VERSION@/$version/" "$here/nrp-monitor" > "$HOME/.local/bin/nrp-monitor.new"
+chmod 755 "$HOME/.local/bin/nrp-monitor.new"
+mv "$HOME/.local/bin/nrp-monitor.new" "$HOME/.local/bin/nrp-monitor"
+printf '%s\n' "$here/../VERSION" > "$state/SKILL_VERSION_PATH"
 # `nrp-watchdog` (the former name) stays a working, quiet command for old handoffs and hooks: a tiny wrapper (a copy, never a symlink into ~/Desktop) that execs the sibling nrp-monitor.
 printf '%s\n' '#!/bin/sh' '# former name of nrp-monitor; kept so existing handoffs and hooks keep working.' 'exec "$(dirname "$0")/nrp-monitor" "$@"' > "$HOME/.local/bin/nrp-watchdog.new"
 chmod 755 "$HOME/.local/bin/nrp-watchdog.new" && mv "$HOME/.local/bin/nrp-watchdog.new" "$HOME/.local/bin/nrp-watchdog"
@@ -187,7 +199,9 @@ for t in "$here"/templates/*.md; do
   if [ -f "$state/templates/$b" ] && ! cmp -s "$t" "$state/templates/$b"; then cp "$state/templates/$b" "$state/templates/$b.bak"; fi
   cp "$t" "$state/templates/$b"
 done
-sed -e "s#@HOME@#$HOME#g" -e "s#@LABEL@#$label#g" "$here/nrp-monitor.plist.template" > "$plist"
+if [ "$launchd" = 1 ]; then
+  sed -e "s#@HOME@#$HOME#g" -e "s#@LABEL@#$label#g" "$here/nrp-monitor.plist.template" > "$plist"
+fi
 commit=$(git -C "$here" rev-parse --short HEAD 2>/dev/null || echo unknown)
 dirty=$(git -C "$here" status --porcelain -- . 2>/dev/null | head -1)
 echo "commit $commit${dirty:+ (+uncommitted changes)}  installed $(date '+%Y-%m-%dT%H:%M:%S')" > "$state/INSTALLED"
@@ -204,7 +218,7 @@ if [ ! -f "$state/agents.json" ]; then
 fi
 want_load=0
 [ "${1:-}" = "--launchd" ] && want_load=1
-if [ "$want_load" = 1 ] || [ "$old_loaded" = 1 ]; then
+if [ "$launchd" = 1 ] && { [ "$want_load" = 1 ] || [ "$old_loaded" = 1 ]; }; then
   launchctl bootout "gui/$uid/$label" 2>/dev/null || true
   launchctl bootstrap "gui/$uid" "$plist"
   if [ "$want_load" = 1 ]; then

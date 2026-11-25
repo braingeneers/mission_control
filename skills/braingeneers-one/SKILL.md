@@ -150,7 +150,8 @@ or publication target. Do not route unrelated requests into this suite.
    current application's skill locations. Prefer the specialist already selected
    by the application; preserve project overrides. Read its complete `SKILL.md`
    and follow relevant references. Do not substitute the summary above for it.
-2. If missing, use the helper below to install it beside this router. This is
+2. If missing, use the helper below to install it beside this router. The standard Claude Code and Codex setup
+   shares one installation through Codex user skill links. This is
    expected setup for the requested lab task; do not ask the user to install
    each specialist. All approved upstreams are in
    [the catalog](references/catalog.json). Do not install arbitrary discovered skills.

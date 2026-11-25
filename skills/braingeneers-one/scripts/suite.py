@@ -236,12 +236,29 @@ class Suite:
                     result[name] = "unmanaged filesystem object"
         return result
 
+    def codex_link(self, destination):
+        """Expose the canonical Claude Code install to Codex."""
+        home = Path.home()
+        if self.root != home / ".claude/skills" or not (destination / "SKILL.md").is_file():
+            return {}
+        link = home / ".agents/skills" / destination.name
+        try:
+            link.parent.mkdir(parents=True, exist_ok=True)
+            link.symlink_to(destination, target_is_directory=True)
+        except FileExistsError:
+            if not link.is_symlink() or Path(os.path.abspath(link.parent / os.readlink(link))) != destination:
+                return {"codex_link_note": f"Existing path preserved: {link}"}
+        except OSError as exc:
+            return {"codex_link_note": f"Could not create {link}: {exc}"}
+        return {"codex_link": str(link)}
+
     def install(self, name, update=False):
         item = self.catalog[name]
         destination = self.root / name
         present = destination.exists() or destination.is_symlink()
         if present and not update:
-            return {"name": name, "status": "already installed; read existing instructions", "path": str(destination)}
+            return {"name": name, "status": "already installed; read existing instructions",
+                    "path": str(destination), **self.codex_link(destination)}
         if not present and update:
             return {"name": name, "status": "not installed; left absent"}
         before = None
@@ -250,7 +267,7 @@ class Suite:
             before = fingerprint(destination)
         commit, tree = self.latest(item)
         if present and current == tree:
-            return {"name": name, "status": "current"}
+            return {"name": name, "status": "current", **self.codex_link(destination)}
         self.root.mkdir(parents=True, exist_ok=True)
         # Stage on the destination filesystem so rename is atomic and works across cache mounts.
         with tempfile.TemporaryDirectory(prefix=".braingeneers-stage-", dir=self.root) as stage:
@@ -286,6 +303,7 @@ class Suite:
         result = {"name": name, "status": "updated" if present else "installed", "path": str(destination)}
         if backup:
             result["backup"] = str(backup)
+        result.update(self.codex_link(destination))
         return result
 
 

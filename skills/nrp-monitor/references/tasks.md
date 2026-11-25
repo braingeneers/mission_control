@@ -9,17 +9,15 @@ Required: `name` (lowercase letters, digits and `-`, at most 40), `goal`, `appro
 
 - `approved`: the user's approval in their own words with the date. Not a summary of your own judgment.
 - `notes` (at most 4 KB): what a fresh agent needs: how the Job works, what a good result looks like, where outputs go.
-- `code`: `{repo, subdir?, commit?, pkg_dir?, extra_pkg_dirs?}`. Registers a clone the fix agents may edit on a branch `monitor/<task>`.
-  For pv3 Jobs that run shipped code, `nrp-task reship` packs **every code dir the task declares**: the `predictor_v3` package
-  (`pkg_dir`, else `subdir` when it is `predictor_v3`, else `<clone>/predictor_v3`) plus each `extra_pkg_dirs` entry, packed beside it
-  exactly as `--ship-code` with `PV3_CODE_EXTRA_PACKAGES` did at submission (`finetune/...`, `bwb/...` next to `predictor_v3/...`).
-  A relative extra dir is inside `repo` (cloned with the task, so agents can fix it); an absolute or `~` one is another checkout, read in
-  place at reship (not editable by agents). At most 8, each a distinct package name, no `..`. Declare them for a task registered without
-  them with `nrp-monitor task code NAME --pkg-dir DIR --extra-pkg-dir finetune --extra-pkg-dir bwb`.
-  **Set `subdir`** to the folder the task runs from: only it and the relative `extra_pkg_dirs` are checked out. Without `subdir` the
-  whole repo is cloned, which is refused above 200 MiB unless `full_checkout: true` (say why in `notes`). The clone lives in
-  `~/.cache/nrp-tasks/<task>/repo` and is deleted 3 days after the task ends (7 while an `on_done` continuation is still unregistered);
-  commits past `base` are kept as `~/.local/state/nrp-monitor/tasks/<task>/code.bundle` and `next-add` restores the clone when needed.
+- `code`: `{repo, subdir?, commit?, dirs?, bundle_prefix?, branch_prefix?}`. Registers a Git clone on
+  `monitor/<task>`. Set `subdir` to the working folder and `dirs` to the clone-relative folders to ship.
+  Shipping defaults to `subdir`, or the clone root when it is unset. The sparse clone includes `subdir` and the
+  declared code directories. Without `subdir` the whole repo is cloned, which is refused above 200 MiB unless
+  `full_checkout: true` (say why in `notes`). Set or change the shipping directories with
+  `nrp-monitor task code NAME --replace --dir path/to/code --dir path/to/other-code`.
+  The clone lives at `~/.cache/nrp-tasks/<task>/repo` and is pruned 3 days after the task ends
+  (7 while an `on_done` continuation is still unregistered). The monitor can restore it from the source repo
+  and its saved `~/.local/state/nrp-monitor/tasks/<task>/code.bundle`.
 - `namespace` (default `braingeneers`), `mode` (`auto`: agents repair and resubmit, `watch`: any failure goes to the
   person), `max_retries` (nonnegative integer; default `max(4, ceil(n_stages/4))`; explicit values win), `label`.
 - `origin` (**required** for `task add`): `{title, link, assistant?, collaborator?, harness?, session?, cwd?}` of the chat or ticket the work came from.
@@ -62,25 +60,61 @@ Derive the deadline from measured runtime with margin; the queue counts toward i
 
 ## Shipping code
 
-Never ship code in a ConfigMap or Secret: they live in NRP's shared etcd, and 590 `code.tgz` ConfigMaps (140 MB) got pod creation blocked in
-`braingeneers` on 2026-11-24. `nrp-task configmap` is replaced by `NRP_TASK=<task> nrp-task ship NAME [--from SUBDIR]` (`NAME` starts with the task name):
-it packs the task's code clone into a tarball, uploads it to S3 under the task's output prefix and prints the Job startup lines (download, untar, run). A fix
-that changes code ships a new tarball (a new `NAME`) and points the manifest at the new S3 URI; no Kubernetes object is created for it. An image rebuild is
-the other route. If a manifest still mounts a ConfigMap for code, replace it before submitting. At the end of a task, check for ConfigMaps it created:
-`kubectl -n braingeneers get cm`, and delete your own (policy and the namespace-size command: `nrp-cluster` skill, "ConfigMaps, Secrets and etcd").
+Ship code in the image or as a disposable S3 build artifact. Keep code out of ConfigMaps and Secrets.
+The Git source repo is authoritative.
+
+1. Declare the directories in `code.dirs`. The bundle preserves paths from the clone root. The shipper commits
+   changes in those directories on the task branch and packs the selected regular files directly from that
+   commit. Untracked files require a repeatable `--add PATH`. Credential-like paths
+   are refused even when declared. Symlinks and excluded caches stay out of the archive.
+2. Use `NRP_TASK=<task> nrp-task ship NAME [--from SUBDIR] [--add PATH ...]` to print the Job container env and a startup command
+   that downloads, verifies the SHA-256, extracts and runs from the bundle root. `NAME` starts with the task name.
+   `--from` selects one directory for this invocation. The manifest records that selection for recovery.
+   To initialize or update the monitor's stored manifest in place, put an `NRP_CODE_URI` entry (an empty value is
+   sufficient) in exactly one container or init container, then run `NRP_TASK=<task> nrp-task reship JOB` before
+   the stage is eligible to submit or after its previous Job has finished. The job's startup must consume
+   `NRP_CODE_URI` and `NRP_CODE_SHA256`, either through the printed command or its own entrypoint.
+3. Shipping pushes to the source checkout's `origin` as `nrp-tasks/<owner>/<task>` before any S3 upload. Set
+   `code.branch_prefix` in the task or `code_branch_prefix` in the owner's `config.json` to change that
+   directory. The default S3 prefix is `s3://braingeneerscache/nrp-monitor/code/<owner>`, with bundle names
+   `<sha256>.tgz`. Objects in that bucket expire after 90 days. Override the directory with
+   `code.bundle_prefix` (or `task code --bundle-prefix`) or the owner's `code_bundle_prefix`. Use a prefix
+   with a lifecycle rule for build artifacts. Keep `s3://braingeneerscache/braindance/` reserved for its existing use.
+4. Submit and resubmit verify the exact S3 object. When it has expired, the monitor rebuilds the recorded SHA-256
+   from the recorded Git commit, fetching the commit when needed. It refuses to submit if the digest cannot
+   be reproduced. Job env and task state record the bundle SHA-256, repo, commit, remote, branch, directories
+   and push status. The monitor preserves the submitted provenance in the stage's completion record
+   (`done_code`) after it verifies the success markers.
+5. After the task finishes, use `nrp-monitor task code-cleanup NAME --dry-run` to inspect the changes, then
+   run without `--dry-run` to push `nrp-run/<owner>/<task>/<stage>` tags for all submitted pushed commits and delete the
+   remote task branch. A tag conflict or newer branch tip prevents deletion. Keep these tags for reproducibility.
+
+Shipping refuses missing credentials, a missing remote, or a rejected push. For one-off debugging,
+`ship --allow-unpushed` or `reship --allow-unpushed` permits a failed push and records
+`NRP_CODE_PUSHED=false` and `NRP_CODE_DIRTY=true` in the Job env and completion record. Such a bundle
+still comes from a local commit. Never use unpushed runs for reported results.
+
+**Legacy pv3 adapter.** Existing registrations with the old package paths or job spec continue to use
+`pkg_dir` and `extra_pkg_dirs` and update the existing S3 spec and bundle location. `code.adapter: "pv3"`
+selects that behavior explicitly. To migrate a stage, first give its job startup support for the generic env,
+declare its clone-relative directories with `task code --replace --dir`, then initialize the env and
+reship when the previous Job has finished. Jobs already running can finish with the legacy adapter.
+
+New task Jobs and S3 checks carry `nrp-monitor/owner`. Diagnostics also read `pv3/user` on existing pods.
+Account utilization and ownership checks still use the NRP-provided `nrp.ai/username` annotation.
 
 ## Example
 
 ```json
 {
-  "name": "demo-extract",
+  "name": "<user>-extract",
   "goal": "Extract features for dataset X with the approved image",
   "approved": "Alice, 2026-11-09 in chat: go ahead with the extract run",
   "notes": "One Job per dataset. A good result is features.npz plus DONE. Resources were sized from the 2026-11-08 pilot.",
   "origin": {"title": "Dataset X features", "link": "https://example.org/the-chat"},
   "digest_only": "Throwaway probe; nobody reads the result",
   "stages": [
-    {"id": "extract", "job": "demo-extract-a", "manifest": "manifests/demo-extract-a.yaml",
+    {"id": "extract", "job": "<user>-extract-a", "manifest": "manifests/<user>-extract-a.yaml",
      "done_s3": ["s3://braingeneersdev/alice/demo/extract/DONE"]}
   ]
 }
@@ -97,7 +131,7 @@ every argument; it is their only shell tool for task work.
 ## Smoke/profile sizing
 
 The script never chooses or launches a full fan-out on its own after profiling. Register a few representative
-smoke/profile jobs, including the largest/longest item. Mark stages `purpose: "smoke"` or `purpose: "profile"`
+smoke/profile jobs sized as described in [nrp-cluster](../../nrp-cluster/SKILL.md#smokeprofile-sizing). Mark stages `purpose: "smoke"` or `purpose: "profile"`
 (boolean `smoke`/`profile` also accepted). Registration refuses Job `spec.parallelism` or `spec.completions`
 above `smoke_max_jobs` in nrp-cluster's shared utilization-policy.json (default 3). Select inputs before registration;
 the script cannot infer the largest input. After a successful profile, the Tier 2 fixer or coordinator chat decides
@@ -224,3 +258,32 @@ one owner DM and pauses idle coordinator check-ins. The owner continues with
 `nrp-monitor plan resume PLAN [--note TEXT]` or `nrp-monitor plan sync PATH#PLAN`
 after updating approval. For a finished task linked to a plan, `task needs-owner`
 hands the plan to the owner without changing the task.
+
+
+Use the configured NRP username followed by a hyphen for both task and Job names.
+Job manifests require `restartPolicy: Never`, `backoffLimit: 0`, a TTL of at least
+3600 seconds and ephemeral-storage requests and limits on every container, including
+init containers. End the command when the work finishes. Registration runs NRP
+preflight when the Claude plugin script is available. Set `NRP_PREFLIGHT_PATH` to
+choose the script explicitly.
+
+Code bundles older than 30 days are refreshed at shipping and before submission,
+including retries. The manifest records the uncompressed tar hash for recovery and
+the gzip hash for transfer verification. Cleanup preserves conflicting provenance tags
+by appending the commit ID.
+
+**2026-11-25 legacy adapter removal note.** Remove the pv3 adapter once no registered
+task uses it. From the monitor's `scripts` directory, scan current task state with
+the same selector used by `nrp-task reship`:
+
+```sh
+python3 - <<'PYSCAN'
+from nrp_monitor import code_shipping, state
+for name in state.task_names():
+    task = state.task_load(name)
+    if task and task.get("code"):
+        for stage in task["stages"]:
+            if code_shipping.shipping_adapter(task["code"], stage.get("manifest")):
+                print(name, stage["id"])
+PYSCAN
+```

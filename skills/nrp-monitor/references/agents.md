@@ -30,7 +30,7 @@ file as `agents.json.bak` and replaces it atomically. Non-interactive: `nrp-moni
 ```json
 {
   "runners": ["claude", "codex"],
-  "models": {"triage": {"claude": "haiku", "codex": "gpt-6.1-sol"}, "repair": {"claude": "sonnet", "codex": "gpt-6.1-sol"}},
+  "models": {"triage": {"claude": "haiku", "codex": "gpt-6.2-sol"}, "repair": {"claude": "sonnet", "codex": "gpt-6.2-sol"}},
   "limits": {"task": {"turns": 60, "budget": 6.0, "timeout": 2700}},
   "followup_ladder": ["triage", "repair", "repair"]
 }
@@ -59,9 +59,9 @@ acceptable before listing `codex`.
 
 When the user has already specified per-tier backends/models, the agent applies them directly with
 `nrp-monitor setup --non-interactive --triage ... --fixer ...`; do not ask the user to run setup.
-Example configuration: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.1-sol then Claude Sonnet for the fixer:
+Example configuration: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.2-sol then Claude Sonnet for the fixer:
 ```sh
-nrp-monitor setup --non-interactive --triage agy:gemini-3.8-flash-low,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
+nrp-monitor setup --non-interactive --triage agy:gemini-3.8-flash-low,claude:haiku --fixer codex:gpt-6.2-sol,claude:sonnet
 ```
 
 ## Antigravity (`agy`, triage only)

@@ -22,7 +22,7 @@ class Origins(Base):
             (['--chat', 'synthetic-codex-session', '--harness', 'codex'], {'harness': 'codex', 'session': 'synthetic-codex-session'}),
         ]:
             before = self.task()['origin']
-            rc, out, err = self.wd('task', 'origin', 't1', '--replace', '--evidence', 'fixture verified', '--by', 'test-editor', *args)
+            rc, out, err = self.wd('task', 'origin', 'alice-t1', '--replace', '--evidence', 'fixture verified', '--by', 'test-editor', *args)
             assert rc == 0, err
             task = self.task()
             assert all(task['origin'][k] == v for k, v in expected.items())
@@ -31,9 +31,9 @@ class Origins(Base):
             assert task['origin_history'][-1]['recorded'] == before['recorded']
             assert task['origin_history'][-1]['replacement_evidence'] == 'fixture verified'
             assert 'by test-editor' in task['events'][-1]
-        assert self.wd('task', 'show', 't1')[1].count('previous origin (') == 3
-        assert 'synthetic-codex-session' in self.wd('task', 'origin', 't1')[1]
-        assert self.wd('task', 'origin', 't1', '--chat', 'bare-session', '--replace', '--evidence', 'fixture')[0] != 0
+        assert self.wd('task', 'show', 'alice-t1')[1].count('previous origin (') == 3
+        assert 'synthetic-codex-session' in self.wd('task', 'origin', 'alice-t1')[1]
+        assert self.wd('task', 'origin', 'alice-t1', '--chat', 'bare-session', '--replace', '--evidence', 'fixture')[0] != 0
 
 
 @pytest.fixture

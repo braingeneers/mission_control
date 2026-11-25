@@ -203,7 +203,7 @@ def gpu_long_pass(a, st, mine):
             text = ("URGENT, ACT NOW: GPU pod %s (Job %s) averaged only %s GPU over the last %d min, under NRP's %d%% floor. This is a cluster "
                  "policy violation in progress: NRP deletes idle GPU pods, records a strike, and three strikes get the account suspended (the "
                  "whole lab loses NRP). STOP THIS JOB NOW: save what you need from its logs, then delete it (`nrp-task delete JOB` for a task, "
-                 "else `kubectl -n %s delete job JOB`). Do not wait for it to finish, do not wait for more data, do not just report. Then work "
+                 "else `nrp-monitor delete-owned-job JOB --namespace %s`). Do not wait for it to finish, do not wait for more data, do not just report. Then work "
                  "out why the GPU sits idle (serial work, CPU phases, data loading, too small a batch) and change the design before any "
                  "resubmit: parallel items per pod, CPU phases in a CPU Job, or a CPU-only request. Never resubmit it unchanged. You have about "
                  "30 minutes: if the Job still runs at the %d-min mark, the monitor deletes it, keeping only the pod log."
@@ -233,12 +233,17 @@ def gpu_long_pass(a, st, mine):
                 _m_stage_jobs.save_task_logs(t, stg, "deleted by the monitor: " + why)
             except Exception as e:  # noqa: BLE001 - logs are best effort; the GPU must be freed regardless
                 _m_state.log("gpu-long %s: log save failed: %s" % (pod, str(e)[:120]))
-            _m_state.task_txn(n, lambda t: _m_state.tstage(t, sid).update(util_deleted="%s (rule gpu, %d-min window): %s" % (why, _m_state.GPU_ENFORCE_WINDOW_MIN, line[:200])))
         target = ["job", owner] if owner else ["pod", pod]
-        rc = _m_cluster.kubectl("-n", _m_state.NS, "delete", *target, "--wait=false").returncode
-        seen.setdefault(pod, {})["deleted"] = _m_state.now()
+        result = (_m_cluster.delete_owned_job(_m_state.NS, owner) if owner else
+                  _m_cluster.kubectl("-n", _m_state.NS, "delete", "pod", pod, "--wait=false"))
+        rc = result.returncode
+        if rc:
+            _m_state.log(result.stderr.strip())
+        else:
+            seen.setdefault(pod, {})["deleted"] = _m_state.now()
         _m_state.log("gpu-long ENFORCE %s (%s %s) rc=%s: %s" % (pod, target[0], target[1], rc, line[:200]))
         if tk and rc == 0:
+            _m_state.task_txn(n, lambda t: _m_state.tstage(t, sid).update(util_deleted="%s (rule gpu, %d-min window): %s" % (why, _m_state.GPU_ENFORCE_WINDOW_MIN, line[:200])))
             _m_ladder.task_fail(tk[0], tk[1], "util", "util:gpu-3h", "deleted by the monitor for NRP GPU utilization (rule gpu, %d-min window)" % _m_state.GPU_ENFORCE_WINDOW_MIN + ": "
                       + why + ". Do not resubmit unchanged: restructure so the GPU stays busy (parallel levels/items per pod, CPU phases "
                       "in a CPU Job), or move the work to a CPU request.", extra={"rule": "gpu", "pod": pod})

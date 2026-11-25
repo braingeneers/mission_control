@@ -1,8 +1,21 @@
 {
-  "version": "2026-11-09",
-  "description": "The numbers the nrp-cluster skill states, in machine-readable form: GPU utilization above gpu_floor of the request on GPU jobs, limits within limit_to_request_tolerance of requests, at most max_concurrent_jobs jobs at once. A monitor (for example nrp-util-check) reads this file; the skill text and this file must agree. A person or lab may add stricter rules in an optional local override.",
+  "version": "2026-11-25",
+  "description": "Shared NRP utilization rules and lab submission caps.",
   "gpu_floor": 0.4,
   "limit_to_request_tolerance": 0.2,
   "max_concurrent_jobs": 400,
-  "smoke_max_jobs": 3
+  "smoke_max_jobs": 3,
+  "cpu_band": [
+    0.2,
+    2.0
+  ],
+  "memory_band": [
+    0.2,
+    1.5
+  ],
+  "small_pod_exempt": {
+    "cpu": 1,
+    "memory_bytes": 2000000000
+  },
+  "account_block_after_violating_pods": 4
 }

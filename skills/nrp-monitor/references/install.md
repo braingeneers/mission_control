@@ -36,7 +36,9 @@ included unverified. The Gemini CLI runner exists for the triage tier only (agen
 1. `sh "<SKILL>/scripts/install.sh"` installs the programs and templates and writes the scheduler definition without
    loading it. `NRP_MONITOR_LABEL=...` overrides the launchd label (default `edu.ucsc.<user>.nrp-monitor`).
 2. Create `~/.local/state/nrp-monitor/config.json`:
-   `{"nrp_user_annotation": "http://cilogon.org/serverE/users/NNNN", "slack_user_id": "U...", "owner_label": "yourname", "owner_name": "Your Name"}`.
+   `{"nrp_username": "yourname", "nrp_user_annotation": "http://cilogon.org/serverE/users/NNNN", "slack_user_id": "U...", "owner_label": "yourname", "owner_name": "Your Name"}`.
+   Optional `code_bundle_prefix` and `code_branch_prefix` override the defaults documented under
+   [Shipping code](tasks.md#shipping-code). Configure Git push credentials for the source repo outside the remote URL.
    `nrp_user_annotation` is the `nrp.ai/username` annotation on your pods (`kubectl -n braingeneers get pod POD -o
    jsonpath='{.metadata.annotations}'`); without it pod checks are off. Without `slack_user_id` the DM is skipped. Each key
    can instead be an environment variable: `NRP_MONITOR_USER_ANNOTATION`, `NRP_MONITOR_SLACK_USER`,
@@ -62,9 +64,9 @@ into the installed skill.
 
 When the user has already specified per-tier backends/models, the agent applies them directly with
 `nrp-monitor setup --non-interactive --triage ... --fixer ...`; do not ask the user to run setup.
-Current live choice: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.1-sol then Claude Sonnet for the fixer:
+Example configuration: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.2-sol then Claude Sonnet for the fixer:
 ```sh
-nrp-monitor setup --non-interactive --triage agy:gemini-3.8-flash-low,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
+nrp-monitor setup --non-interactive --triage agy:gemini-3.8-flash-low,claude:haiku --fixer codex:gpt-6.2-sol,claude:sonnet
 ```
 
 Migration unloads the old scheduler, then waits up to 300 seconds for the pass lock (`NRP_MONITOR_MIGRATE_WAIT`).
@@ -73,3 +75,11 @@ rewrites absolute path string values in readable JSON (not embedded prose or key
 The old plist is archived in the state directory. The new label loads if the old one was loaded or `--launchd` was given.
 A timeout aborts without moving state; the old scheduler stays unloaded, so retry install after the pass finishes.
 Reinstallation does not repeat migration; fresh installs create only the new state directory. Actions are printed.
+
+
+Set `nrp_username` to your NRP username, which prefixes registered tasks and Jobs.
+Set `nrp_user_annotation` to the exact NRP-set `nrp.ai/username` value when it differs
+from the username. Without configuration the monitor tries `kubectl auth whoami`.
+If the response cannot supply a DNS-compatible username, set `nrp_username` explicitly.
+Set `kube_context` to override `nautilus`. Run `scripts/install.sh` from the updated
+skill to refresh the binary. On macOS, pass `--launchd` to reload the scheduler.

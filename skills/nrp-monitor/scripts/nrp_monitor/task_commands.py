@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -49,13 +50,21 @@ def cmd_task_watch(a):
 
 
 def cmd_task_code(a):
-    """`task code NAME [--pkg-dir D] [--extra-pkg-dir D ...] [--replace]`: declare the code dirs `nrp-task reship` packs for a task registered
-    without them (for example finetune/ from another repo). Relative = inside the task's clone (added to its sparse checkout), absolute = another checkout."""
-    from . import nrp_task as _m_nrp_task  # Local import breaks orchestration cycle; patches stay on the defining module.
+    """Declare clone-relative shipping directories or update legacy adapter paths."""
+    from . import code_shipping
     t = _m_state.task_load(a.name)
     if not t or not t.get("code"):
         sys.exit("no task %s with a code clone" % a.name)
     code = dict(t["code"])
+    if a.dir and (a.pkg_dir or a.extra_pkg_dir):
+        sys.exit("declare generic directories with --dir or legacy directories with the adapter flags")
+    if a.dir:
+        code.pop("pkg_dir", None)
+        code.pop("extra_pkg_dirs", None)
+        code["dirs"] = list(dict.fromkeys(([] if a.replace else code.get("dirs", [])) + a.dir))
+        code["adapter"] = "generic"
+    if a.bundle_prefix:
+        code["bundle_prefix"] = a.bundle_prefix
     if a.pkg_dir:
         code["pkg_dir"] = a.pkg_dir
     new = list(a.extra_pkg_dir or [])
@@ -64,20 +73,47 @@ def cmd_task_code(a):
     if bad:
         sys.exit("task code refused: " + "; ".join(bad))
     clone = Path(code["clone"])
-    for x in code["extra_pkg_dirs"]:
+    for x in code.get("dirs", []) + code["extra_pkg_dirs"]:
         if not os.path.isabs(os.path.expanduser(x)) and not (clone / x).is_dir() and code.get("subdir"):
             _m_task_registry.git("sparse-checkout", "add", x, cwd=str(clone))
             _m_task_registry.git("checkout", "-q", cwd=str(clone))
         if not os.path.isabs(os.path.expanduser(x)) and not (clone / x).is_dir():
             sys.exit("task code refused: %s is not in the task's code clone %s (it must be committed in %s)" % (x, clone, code["repo"]))
     try:
-        _m_nrp_task.reship_dirs(code)
+        adapter = code_shipping.shipping_adapter(code, t["stages"][0]["manifest"])
+        if adapter:
+            pkg, extras = adapter.reship_dirs(code)
+            dirs = [pkg, *extras]
+        else:
+            _, dirs = code_shipping.code_dirs(code)
     except _m_state.ChainError as e:
         sys.exit("task code refused: %s" % e)
-    if not _m_state.task_txn(a.name, lambda t: (t["code"].update({k: code[k] for k in ("pkg_dir", "extra_pkg_dirs") if code.get(k)}),
-                                      _m_state.tev(t, "code dirs declared by operator: pkg %s, extra %s" % (code.get("pkg_dir") or "default", ", ".join(code["extra_pkg_dirs"]) or "none")))):
+    fields = ("adapter", "dirs", "bundle_prefix", "pkg_dir", "extra_pkg_dirs")
+    declared = ", ".join(map(str, dirs))
+    def update(t):
+        for key in fields:
+            if key in code:
+                t["code"][key] = code[key]
+            else:
+                t["code"].pop(key, None)
+        _m_state.tev(t, "code dirs declared by operator: " + declared)
+
+    if not _m_state.task_txn(a.name, update):
         sys.exit("no task %s" % a.name)
-    print("task %s: reship packs %s%s" % (a.name, code.get("pkg_dir") or "predictor_v3 (default)", " + " + ", ".join(code["extra_pkg_dirs"]) if code["extra_pkg_dirs"] else ""))
+    print("task %s: reship packs %s" % (a.name, declared))
+    return 0
+
+
+def cmd_task_code_cleanup(a):
+    from . import code_shipping
+
+    task = _m_state.task_load(a.name)
+    if not task:
+        sys.exit("no task %s" % a.name)
+    try:
+        code_shipping.cleanup_task_code(task, dry_run=a.dry_run)
+    except (_m_state.ChainError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
+        sys.exit("code cleanup refused: %s" % exc)
     return 0
 
 
@@ -136,7 +172,9 @@ def cmd_task_show(a):
         print("previous origin (%s): %s" % (old.get("replaced_at", "?"), _m_wake.origin_plain(old)))
     if t.get("reason"):
         print("reason: " + t["reason"])
-    if (t.get("code") or {}).get("extra_pkg_dirs") or (t.get("code") or {}).get("pkg_dir"):
+    if (t.get("code") or {}).get("dirs"):
+        print("code dirs reship packs: " + ", ".join(t["code"]["dirs"]))
+    elif (t.get("code") or {}).get("extra_pkg_dirs") or (t.get("code") or {}).get("pkg_dir"):
         print("code dirs reship packs: pkg %s; extra %s" % (t["code"].get("pkg_dir") or "default", ", ".join(t["code"].get("extra_pkg_dirs") or []) or "none"))
     print("postcheck: " + json.dumps(t.get("postcheck_result")))
     print("stage outputs: " + json.dumps({s["id"]: s.get("outputs", {}) for s in t["stages"]}))
@@ -153,6 +191,11 @@ def cmd_task_show(a):
                   _m_state.iso(w["at"]) if w.get("at") else "?", (w.get("reason") or "")[:200]))
     for s in t["stages"]:
         print("  %-14s %-8s %s attempt %d  %s" % (s["id"], s["state"], s["job"], s.get("attempt", 1), s["manifest"]))
+        provenance = s.get("done_code") or s.get("submitted_code")
+        if provenance:
+            unpushed = provenance.get("NRP_CODE_PUSHED") == "false"
+            print("    code commit %s%s" % (provenance.get("NRP_CODE_COMMIT", "?"),
+                                             " (unpushed, debug only)" if unpushed else ""))
         if s["state"] == "pending" and s.get("after_s3"):                 # gate on another task's success marker
             for u in (s["waiting_on"] if "waiting_on" in s else s["after_s3"]):
                 print("      waiting-on %s" % u)

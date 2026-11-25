@@ -264,8 +264,8 @@ class EndToEnd(unittest.TestCase):
         h.add()
         self.man = h.task()['stages'][0]['manifest']
         h.run_pass()
-        h.set_job('t1-a', state='FAILED', term={'reason': 'OOMKilled', 'exitCode': 137})
-        h.plan({'cmds': [['sh', "sed -i '' 's/512Mi/1Gi/g' %s" % self.man], ['nrp-task', 'submit', 't1-a', '--reason', 'OOM -> 1Gi'],
+        h.set_job('alice-t1-a', state='FAILED', term={'reason': 'OOMKilled', 'exitCode': 137})
+        h.plan({'cmds': [['sh', "sed -i '' 's/512Mi/1Gi/g' %s" % self.man], ['nrp-task', 'submit', 'alice-t1-a', '--reason', 'OOM -> 1Gi'],
                          ['nrp-task', 'report', 'RESUBMITTED', 'OOM -> 1Gi']], 'result': 'RESUBMITTED: OOM -> 1Gi'})
 
     def use_limited_claude(self):
@@ -293,7 +293,7 @@ class EndToEnd(unittest.TestCase):
         state = json.loads((h.state / 'runners.json').read_text())
         self.assertGreater(state['claude']['until'], time.time())
         # the next failure does not touch the blocked Claude again
-        h.set_job('t1-a', state='FAILED', term={'reason': 'Error', 'exitCode': 1}, log='Traceback\nKeyError: "x"')
+        h.set_job('alice-t1-a', state='FAILED', term={'reason': 'Error', 'exitCode': 1}, log='Traceback\nKeyError: "x"')
         h.plan({'cmds': [['nrp-task', 'report', 'STOPPED', 'give up']], 'result': 'STOPPED: give up'})
         h.run_pass()
         self.assertEqual((h.fake / 'claude_calls.log').read_text().count('x'), 1, 'claude was asked once, then skipped until its reset')
@@ -379,9 +379,8 @@ class Owner(unittest.TestCase):
         self.assertEqual((m.USER_ANN, m.SLACK_USER), ('b', 'U2'))
 
     def test_without_config_nothing_is_assumed(self):
-        import getpass
         m = self.load(None)
-        self.assertEqual((m.USER_ANN, m.SLACK_USER, m.OWNER_LABEL), ('', '', getpass.getuser()))
+        self.assertEqual((m.USER_ANN, m.SLACK_USER, m.OWNER_LABEL), ('', '', 'nrp-monitor'))
         with patch.object(m, 'log'):
             self.assertFalse(m.slack_dm('x'), 'no Slack user: no request is made')
             with self.assertRaises(RuntimeError):
@@ -400,13 +399,13 @@ class Continuation(unittest.TestCase):
         rc, _, err = h.add()
         self.assertEqual(rc, 0, err)
         self.assertIn('no continuation', err)
-        rc, _, err = h.add(name='t2', digest_only='an input check, nothing is pending after it')
+        rc, _, err = h.add(name='alice-t2', digest_only='an input check, nothing is pending after it')
         self.assertEqual(rc, 0, err)
         self.assertNotIn('no continuation', err)
-        self.assertEqual(h.task('t2')['digest_only'], 'an input check, nothing is pending after it')
-        rc, _, err = h.add(name='t3', followup='report the row count')
+        self.assertEqual(h.task('alice-t2')['digest_only'], 'an input check, nothing is pending after it')
+        rc, _, err = h.add(name='alice-t3', followup='report the row count')
         self.assertNotIn('no continuation', err)
-        rc, _, err = h.add(name='t4', digest_only='x')
+        rc, _, err = h.add(name='alice-t4', digest_only='x')
         self.assertNotEqual(rc, 0)
         self.assertIn('digest_only', err)
 
@@ -416,13 +415,13 @@ class Continuation(unittest.TestCase):
         rc, _, err = h.add()
         self.assertNotEqual(rc, 0)
         self.assertIn('no continuation', err)
-        self.assertEqual(h.add(name='t2', digest_only='nothing is pending after this one')[0], 0)
+        self.assertEqual(h.add(name='alice-t2', digest_only='nothing is pending after this one')[0], 0)
 
     def test_finishing_without_a_continuation_lands_in_the_digest_as_such(self):
         h = self.h
-        h.add(stages=[{"id": "a", "job": "t1-a", "manifest": h.manifest("t1-a"), "done_s3": ["s3://braingeneersdev/t/a.txt"]}])
+        h.add(stages=[{"id": "a", "job": "alice-t1-a", "manifest": h.manifest("alice-t1-a"), "done_s3": ["s3://braingeneersdev/t/a.txt"]}])
         h.run_pass()
-        h.set_job('t1-a', state='ok')
+        h.set_job('alice-t1-a', state='ok')
         (h.fake / 's3.json').write_text(json.dumps(['s3://braingeneersdev/t/a.txt']))
         h.run_pass()
         self.assertEqual(h.task()['status'], 'done')

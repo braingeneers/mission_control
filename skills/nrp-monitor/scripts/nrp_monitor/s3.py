@@ -22,7 +22,7 @@ def s3_incluster_on():
 def s3_check_job_manifest(name, args, script=_m_state.S3_JOB_SCRIPT):
     """Job that runs `bash -c SCRIPT s3check ARGS...` with the in-cluster Ceph endpoint (pods reach it when the laptop cannot reach the public one)."""
     from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    labels = {"pv3/user": _m_state.OWNER_LABEL, "nrp-monitor/kind": "s3check"}
+    labels = {_m_state.OWNER_LABEL_KEY: _m_state.OWNER_LABEL, "nrp-monitor/kind": "s3check"}
     return {"apiVersion": "batch/v1", "kind": "Job", "metadata": {"name": name, "namespace": _m_state.NS, "labels": labels},
             "spec": {"activeDeadlineSeconds": 300, "backoffLimit": 0, "ttlSecondsAfterFinished": 3600,
                      "template": {"metadata": {"labels": labels}, "spec": {
@@ -45,14 +45,13 @@ def s3_check_job_manifest(name, args, script=_m_state.S3_JOB_SCRIPT):
 
 def incluster_job(script, args, log_flag):
     """Run ONE short in-cluster Job (read-only S3 script), wait at most S3_JOB_WAIT_S, return its logs (str) or None when it could not
-    be created or gave no logs; the Job is always deleted by name. `log_flag` is the `kubectl logs` size flag, e.g. --tail=60."""
+    be created or gave no logs; cleanup checks the Job owner. `log_flag` is the `kubectl logs` size flag, e.g. --tail=60."""
     from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     name = "nrpmon-s3check-%s" % uuid.uuid4().hex[:8]
     text = None
     try:
-        r = subprocess.run(["kubectl", "-n", _m_state.NS, "create", "-f", "-"], input=json.dumps(s3_check_job_manifest(name, args, script)),
-                           capture_output=True, text=True, timeout=60)
+        r = _m_cluster.kubectl("-n", _m_state.NS, "create", "-f", "-", input=json.dumps(s3_check_job_manifest(name, args, script)), timeout=60)
         if r.returncode:
             _m_state.log("s3 in-cluster check: could not create Job: %s" % (r.stderr or r.stdout).strip()[-150:])
             return None
@@ -72,7 +71,9 @@ def incluster_job(script, args, log_flag):
         _m_state.log("s3 in-cluster check: %s: %s" % (type(e).__name__, str(e)[:120]))
     finally:
         try:
-            _m_cluster.kubectl("-n", _m_state.NS, "delete", "job", name, "--wait=false", timeout=60)
+            result = _m_cluster.delete_owned_job(_m_state.NS, name)
+            if result.returncode:
+                _m_state.log(result.stderr.strip())
         except Exception as e:
             _m_state.log("s3 in-cluster check: delete of Job %s failed: %s" % (name, str(e)[:100]))
     _m_state.log("s3 in-cluster Job %s ran (%s)" % (name, "logs read" if text is not None else "no logs"))

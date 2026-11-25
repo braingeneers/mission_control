@@ -80,10 +80,10 @@ class ExactTasks(unittest.TestCase):
         tt.T.run_pass, tt.T.age_submit)
 
     def one(self, uri=B + "/DONE", **kw):
-        rc, out, err = self.add(stages=[{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": [uri]}], **kw)
+        rc, out, err = self.add(stages=[{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": [uri]}], **kw)
         self.assertEqual(rc, 0, out + err)
         self.run_pass()
-        self.set_job("t1-a", state="ok")
+        self.set_job("alice-t1-a", state="ok")
 
     def s3(self, *uris):
         (self.fake / "s3.json").write_text(json.dumps(list(uris)))
@@ -95,7 +95,7 @@ class ExactTasks(unittest.TestCase):
         t = self.task()
         self.assertEqual(t["status"], "NEEDS_OWNER")
         self.assertIn("does not exist", t["reason"])
-        self.assertIn("t1-a", self.cl(), "no delete on a prefix hit")
+        self.assertIn("alice-t1-a", self.cl(), "no delete on a prefix hit")
         self.assertNotEqual(t["stages"][0]["state"], "done")
 
     def test_complete_marker_succeeds_and_deletes_the_job(self):
@@ -103,7 +103,7 @@ class ExactTasks(unittest.TestCase):
         self.s3(B + "/DONE")
         self.run_pass()
         self.assertEqual(self.task()["status"], "done")
-        self.assertNotIn("t1-a", self.cl())
+        self.assertNotIn("alice-t1-a", self.cl())
 
     def test_access_denied_is_retried_never_success(self):
         self.one()
@@ -114,7 +114,7 @@ class ExactTasks(unittest.TestCase):
         t = self.task()
         self.assertNotEqual(t["stages"][0]["state"], "done")
         self.assertGreaterEqual(t["stages"][0].get("s3_errors", 0), 2)
-        self.assertIn("t1-a", self.cl())
+        self.assertIn("alice-t1-a", self.cl())
         (self.fake / "aws_403").unlink()
         self.run_pass()
         self.assertEqual(self.task()["status"], "done")
@@ -122,7 +122,7 @@ class ExactTasks(unittest.TestCase):
     def test_vanished_job_with_only_a_sibling_marker_is_not_done(self):
         self.one(max_retries=0)
         c = json.loads((self.fake / "cluster.json").read_text())
-        del c["jobs"]["t1-a"]
+        del c["jobs"]["alice-t1-a"]
         (self.fake / "cluster.json").write_text(json.dumps(c))
         self.age_submit()
         self.s3(B + "/DONE.1")
@@ -130,10 +130,10 @@ class ExactTasks(unittest.TestCase):
         self.assertNotEqual(self.task()["stages"][0]["state"], "done")
 
     def test_add_refuses_prefix_style_done_s3_and_warns_only_on_exact_existing(self):
-        rc, out, err = self.add(stages=[{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": ["s3://braingeneersdev/alice/x/"]}])
+        rc, out, err = self.add(stages=[{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": ["s3://braingeneersdev/alice/x/"]}])
         self.assertNotEqual(rc, 0)
         self.assertIn("single objects", out + err)
-        self.s3("s3://braingeneersdev/alice/test/t1/a.txt.old")
+        self.s3("s3://braingeneersdev/alice/test/alice-t1/a.txt.old")
         rc, out, err = self.add()
         self.assertEqual(rc, 0, out + err)
         self.assertNotIn("ALREADY exists", out + err, "a sibling key is not the marker")
@@ -172,32 +172,32 @@ class IndexedTasks(unittest.TestCase):
         tt.T.run_pass, tt.T.age_submit)
 
     def test_task_partial_indexed_job_waits_without_deleting(self):
-        self.add(stages=[{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": [B + "/DONE"]}], max_retries=0)
+        self.add(stages=[{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": [B + "/DONE"]}], max_retries=0)
         self.run_pass()
-        self.set_job("t1-a", state="running", completions=50, succeeded=16)
+        self.set_job("alice-t1-a", state="running", completions=50, succeeded=16)
         (self.fake / "s3.json").write_text(json.dumps([B + "/DONE.0", B + "/DONE.1"]))
         self.run_pass()
         self.run_pass()
         t = self.task()
         self.assertEqual(t["status"], "running", t.get("reason"))
         self.assertEqual(t["stages"][0]["state"], "running")
-        self.assertIn("t1-a", self.cl())
+        self.assertIn("alice-t1-a", self.cl())
         self.assertEqual(self.pushes(), [])
-        self.set_job("t1-a", state="ok", completions=50, succeeded=50)
+        self.set_job("alice-t1-a", state="ok", completions=50, succeeded=50)
         (self.fake / "s3.json").write_text(json.dumps([B + "/DONE.0", B + "/DONE"]))
         self.run_pass()
         self.assertEqual(self.task()["status"], "done")
-        self.assertNotIn("t1-a", self.cl())
+        self.assertNotIn("alice-t1-a", self.cl())
 
     def test_task_job_state_helper_matches_indexed_rule(self):
-        self.add(stages=[{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": [B + "/DONE"]}], max_retries=0)
+        self.add(stages=[{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": [B + "/DONE"]}], max_retries=0)
         self.run_pass()
-        self.set_job("t1-a", state="running", completions=4, succeeded=1)
+        self.set_job("alice-t1-a", state="running", completions=4, succeeded=1)
         env = dict(self.env)
-        code = ("import sys;sys.path.insert(0,%r);from nrp_monitor import cluster as w;print(w.job_state('t1-a','braingeneers'))" % str(self.bin))
+        code = ("import sys;sys.path.insert(0,%r);from nrp_monitor import cluster as w;print(w.job_state('alice-t1-a','braingeneers'))" % str(self.bin))
         r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=dict(env, PATH=self.env["PATH"]))
         self.assertEqual(r.stdout.strip(), "running", r.stderr[-300:])
-        self.set_job("t1-a", state="ok", completions=4, succeeded=4)
+        self.set_job("alice-t1-a", state="ok", completions=4, succeeded=4)
         r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=dict(env, PATH=self.env["PATH"]))
         self.assertEqual(r.stdout.strip(), "ok", r.stderr[-300:])
 

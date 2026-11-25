@@ -1,54 +1,27 @@
 ---
-description: Monitor running Kubernetes jobs on the NRP Nautilus cluster
+description: Inspect Braingeneers Kubernetes Jobs on Nautilus and clean up their resources
 ---
 
-# Monitor NRP Job
+# Monitor an NRP Job
 
-// turbo-all
+Use upstream `nrp-run` → Watch without hammering the API and Collect and clean
+up. For the intended Job name, set `NAME` and inspect only its pods:
 
-1. List all jobs in the braingeneers namespace:
-```powershell
-$env:Path = "$env:Path;$HOME\.kube\bin"; kubectl get jobs -n braingeneers 2>&1
+```bash
+kubectl --context=nautilus -n braingeneers get job "$NAME"
+kubectl --context=nautilus -n braingeneers get pods -l "job-name=$NAME"
+kubectl --context=nautilus -n braingeneers logs --tail=50 "$POD"
+kubectl --context=nautilus -n braingeneers describe pod "$POD"
 ```
 
-2. List all pods (shows status: Running, Completed, Error, etc.):
-```powershell
-$env:Path = "$env:Path;$HOME\.kube\bin"; kubectl get pods -n braingeneers 2>&1
-```
+Set `POD` to the relevant pod listed above. Report status, log evidence, and
+measured utilization. Before Job TTL removes pods and logs, persist the
+evidence needed for review. Clean up owned finished/failed Jobs and any
+associated ConfigMap, helper pod, or scratch PVC.
 
-3. Ask the user which pod they want to monitor (or use the most recent one).
-
-4. Get the last 50 lines of logs from the pod:
-```powershell
-$env:Path = "$env:Path;$HOME\.kube\bin"; kubectl logs --tail=50 <pod-name> -n braingeneers 2>&1
-```
-
-5. If the user wants real-time streaming, use:
-```powershell
-$env:Path = "$env:Path;$HOME\.kube\bin"; kubectl logs -f <pod-name> -n braingeneers 2>&1
-```
-
-6. If there are errors, get detailed pod info:
-```powershell
-$env:Path = "$env:Path;$HOME\.kube\bin"; kubectl describe pod <pod-name> -n braingeneers 2>&1
-```
-
-7. Report back with:
-   - Job status (Running/Completed/Failed)
-   - Key log output
-   - Any errors or warnings
-   - Resource utilization if available
-
-## Cleanup (when done)
-
-8. To delete a completed or failed job (and any ConfigMap, helper pod or scratch PVC you made for it; never force-delete):
-```powershell
-$env:Path = "$env:Path;$HOME\.kube\bin"; kubectl delete job <job-name> -n braingeneers 2>&1
-```
-
-## Troubleshooting
-
-- **ImagePullBackOff**: Image not found on Docker Hub. Run `/build-push`.
-- **Pending**: Not enough cluster resources. Try reducing requests.
-- **OOMKilled**: Out of memory. Increase memory limits.
-- **Error/CrashLoopBackOff**: Check logs for application errors.
+- For `ImagePullBackOff`, verify the registry, image digest, and pull access.
+- For Pending, read scheduling Events and check hardware selectors before resizing.
+- For `OOMKilled`, follow [smoke/profile sizing](../../SKILL.md#smokeprofile-sizing).
+  On exit 137, check for ephemeral-storage eviction before increasing memory.
+- For low-utilization admission denial, follow the
+  [namespace-wide check](../../SKILL.md#resource-sizing-and-utilization).

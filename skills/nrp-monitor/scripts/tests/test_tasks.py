@@ -25,6 +25,7 @@ TEST_ORIGIN = {"title": "test chat", "link": "https://example.test/chat/test-thr
 FAKE_KUBECTL = r'''#!/usr/bin/env python3
 import json, os, sys, time
 d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fake"); a = sys.argv[1:]
+if a[:1] == ["--context"]: a = a[2:]
 open(d + "/kubectl.log", "a").write(" ".join(a) + "\n")
 if a[:1] == ["-n"]: a = a[2:]
 cl = json.load(open(d + "/cluster.json"))
@@ -35,7 +36,7 @@ def jobobj(n, j):
     st = dict(st, startTime=ts(j.get("start", time.time() - 600)))
     if "succeeded" in j: st["succeeded"] = j["succeeded"]                      # partial Indexed Job: running pods + finished shards
     if j.get("reason"): st["conditions"] = [{"type": "Failed", "status": "True", "reason": j["reason"]}]
-    return {"metadata": {"name": n, "annotations": {"nrp.ai/username": "%s"}}, "spec": dict({"activeDeadlineSeconds": j.get("deadline", 3600)}, **({"completions": j["completions"]} if "completions" in j else {})), "status": st}
+    return {"metadata": {"name": n, "uid": n + "-uid", "annotations": {"nrp.ai/username": "%s"}}, "spec": dict({"activeDeadlineSeconds": j.get("deadline", 3600)}, **({"completions": j["completions"]} if "completions" in j else {})), "status": st}
 def pods(n, j):
     if not any(k in j for k in ("term", "started", "wait", "node", "pod_status")): return []
     cs = {"state": {}}
@@ -49,6 +50,7 @@ if a[:2] == ["get", "jobs"]:
     print(json.dumps({"items": [jobobj(n, j) for n, j in cl["jobs"].items()]}))
 elif a[:2] == ["get", "job"]:
     j = cl["jobs"].get(a[2])
+    if not j and "--ignore-not-found" in a: sys.exit(0)
     if not j: sys.stderr.write('Error from server (NotFound): jobs "%%s" not found\n' %% a[2]); sys.exit(1)
     if "-o" in a and a[a.index("-o") + 1] == "json": print(json.dumps(jobobj(a[2], j)))
     else: print("{}/{}/{}/{}/".format(j.get("succeeded", 1 if j["state"] == "ok" else ""), 1 if j["state"] == "FAILED" else "", 1 if j["state"] == "running" else "", j.get("completions", "")), end="")
@@ -64,14 +66,17 @@ elif a[0] == "logs":
 elif a[0] == "describe":
     print("fake describe " + " ".join(a[1:]))
 elif a[0] == "delete":
-    n = a[2]
+    n = a[2].rsplit("/", 1)[-1]
+    if "--raw" in a: assert json.load(sys.stdin)["preconditions"]["uid"] == n + "-uid"
     if n in cl["jobs"]: del cl["jobs"][n]; save(); open(d + "/deleted.log", "a").write(n + "\n")
     else: sys.stderr.write('Error from server (NotFound): jobs "%%s" not found\n' %% n); sys.exit(1)
-elif a[0] == "apply":
+elif a[0] == "wait":
+    assert a[2].split("/")[-1] not in cl["jobs"]
+elif a[0] in ("apply", "create") and "-" not in a:
     f = a[a.index("-f") + 1]
     if os.path.exists(d + "/apply_block"): sys.stderr.write("admission webhook denied the request: Your pods resources utilization is too low\n"); sys.exit(1)
     import yaml
-    m = yaml.safe_load(open(f)); n = m["metadata"]["name"]
+    m = yaml.safe_load(open(f)); n = m.get("metadata", {}).get("name", "probe")
     if "--dry-run=server" in a: print("job.batch/%%s created (server dry run)" %% n); sys.exit(0)
     if n in cl["jobs"]: sys.stderr.write("field is immutable\n"); sys.exit(1)
     cl["jobs"][n] = {"state": "running", "start": time.time()}; save()
@@ -101,7 +106,7 @@ if "head-object" in sys.argv:                                          # exact o
     if os.path.exists(d + "/aws_fail"): sys.stderr.write("Could not connect to the endpoint URL\n"); sys.exit(255)
     if os.path.exists(d + "/aws_403"): sys.stderr.write("An error occurred (403) when calling the HeadObject operation: Forbidden\n"); sys.exit(254)
     if os.path.exists(d + "/aws_garbage"): print("<html>proxy page</html>"); sys.exit(0)
-    if u in json.load(open(d + "/s3.json")): print(json.dumps({"ETag": '"x"', "ContentLength": 0})); sys.exit(0)   # EXACT, never a prefix
+    if u in json.load(open(d + "/s3.json")) or os.path.exists(d + "/store/" + hashlib.md5(u.encode()).hexdigest()): print(json.dumps({"ETag": '"x"', "ContentLength": 0, "LastModified": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()})); sys.exit(0)   # EXACT, never a prefix
     sys.stderr.write("An error occurred (404) when calling the HeadObject operation: Not Found\n"); sys.exit(254)
 have = json.load(open(d + "/s3.json"))
 if "cp" in sys.argv:                                                   # upload / download against a content store (reship tests)
@@ -109,6 +114,13 @@ if "cp" in sys.argv:                                                   # upload 
     store = d + "/store"; os.makedirs(store, exist_ok=True)
     key = lambda u: store + "/" + hashlib.md5(u.encode()).hexdigest()
     if dst.startswith("s3://"):
+        required_ref = os.environ.get("TEST_REQUIRE_PUSHED_REF")
+        if required_ref:
+            ref = open(required_ref).read().strip()
+            expected_file = os.environ.get("TEST_REQUIRE_PUSHED_COMMIT_FILE")
+            expected = open(expected_file).read().strip() if expected_file else None
+            if expected and ref != expected:
+                sys.exit("task branch did not contain the expected commit before S3 upload")
         open(d + "/uploads.log", "a").write(src + " " + dst + "\n")
         try: open(key(dst), "wb").write(sys.stdin.buffer.read() if src == "-" else open(src, "rb").read())
         except OSError: pass
@@ -163,8 +175,8 @@ spec:
         image: python:3.11-slim
         command: ["python", "-c", "print(1)"]
         resources:
-          requests: {cpu: "500m", memory: %(mem)s}
-          limits: {cpu: "500m", memory: %(mem)s}
+          requests: {cpu: "500m", memory: %(mem)s, ephemeral-storage: 1Gi}
+          limits: {cpu: "500m", memory: %(mem)s, ephemeral-storage: 1Gi}
 """
 
 
@@ -183,11 +195,11 @@ class T(unittest.TestCase):
         shutil.copy(HERE / "nrp-task", self.bin / "nrp-task")
         shutil.copytree(HERE / "templates", self.state / "templates")
         # Preserve coverage of the switchable pre-deputy ladder; batch A tests exercise default-on separately.
-        (self.state / "config.json").write_text(json.dumps({"deputy_enabled": False, "ladder": {"triage_judge": True}}))
+        (self.state / "config.json").write_text(json.dumps({"nrp_username": "alice", "nrp_user_annotation": USER, "deputy_enabled": False, "ladder": {"triage_judge": True}}))
         (self.fake / "cluster.json").write_text('{"jobs": {}}')
         (self.fake / "s3.json").write_text("[]")
         self.env = {"PATH": "%s:/usr/bin:/bin" % self.bin, "HOME": str(self.tmp), "NRP_MONITOR_OWNER_NAME": "Sam", "FAKE_DIR": str(self.fake),
-                    "NRP_MONITOR_STATE": str(self.state), "NRP_TASK_CACHE": str(self.tmp / "cache"),
+                    "NRP_MONITOR_STATE": str(self.state), "NRP_MONITOR_NRP_USERNAME": "alice", "NRP_MONITOR_USER_ANNOTATION": USER, "NRP_TASK_CACHE": str(self.tmp / "cache"),
                     "NRP_MONITOR_NO_PUSH": "1", "NRP_MONITOR_SLACK_URL": "http://127.0.0.1:9/never"}
         self.env.update(wake_env(self.tmp))
         # a code repo with a bug
@@ -217,7 +229,7 @@ class T(unittest.TestCase):
         p.write_text(text)
         return str(p)
 
-    def add(self, name="t1", stages=None, **kw):
+    def add(self, name="alice-t1", stages=None, **kw):
         stages = stages or [{"id": "a", "job": name + "-a", "manifest": self.manifest(name + "-a"),
                              "done_s3": ["s3://braingeneersdev/alice/test/%s/a.txt" % name]}]
         kw.setdefault("origin", TEST_ORIGIN)                 # v3: `task add` refuses a task without an origin chat
@@ -227,7 +239,7 @@ class T(unittest.TestCase):
         f.write_text(json.dumps(spec))
         return self.wd("task", "add", str(f))
 
-    def add_unattributed(self, name="t1", **kw):
+    def add_unattributed(self, name="alice-t1", **kw):
         """A task registered before v3 (no origin): add with one, then strip it, since `task add` now refuses a missing origin."""
         rc, out, err = self.add(name, **kw)
         p = self.state / "tasks" / name / "task.json"
@@ -236,7 +248,7 @@ class T(unittest.TestCase):
         p.write_text(json.dumps(t))
         return rc, out, err
 
-    def task(self, n="t1"):
+    def task(self, n="alice-t1"):
         return json.loads((self.state / "tasks" / n / "task.json").read_text())
 
     def cl(self):
@@ -262,7 +274,7 @@ class T(unittest.TestCase):
         self.assertEqual(rc, 0, err)
         return out
 
-    def age_submit(self, n="t1"):
+    def age_submit(self, n="alice-t1"):
         """Make 'submitted' old enough for the vanished-Job grace."""
         p = self.state / "tasks" / n / "task.json"
         t = json.loads(p.read_text())
@@ -276,85 +288,85 @@ class T(unittest.TestCase):
         rc, _, err = self.add(approved="")
         self.assertNotEqual(rc, 0)
         self.assertIn("approved", err)
-        rc, _, err = self.add(stages=[{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": ["s3://nosuchbucket/x/y"]}])
+        rc, _, err = self.add(stages=[{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": ["s3://nosuchbucket/x/y"]}])
         self.assertIn("bucket nosuchbucket", err)
-        rc, _, err = self.add(stages=[{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": []}])
+        rc, _, err = self.add(stages=[{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": []}])
         self.assertIn("done_s3", err)
 
     def test_existing_legacy_clone_branch_remains_usable(self):
         self.assertEqual(self.add(code={"repo": str(self.repo), "subdir": "job"})[0], 0)
         t = self.task()
         clone = t["code"]["clone"]
-        subprocess.run(["git", "branch", "-m", "watchdog/t1"], cwd=clone, check=True)
-        t["code"]["branch"] = "watchdog/t1"
-        (self.state / "tasks/t1/task.json").write_text(json.dumps(t))
-        (Path(clone) / "job/new.py").write_text("value = 1\n")
-        rc, out = self.tool("t1", "commit", "legacy branch fix")
+        subprocess.run(["git", "branch", "-m", "watchdog/alice-t1"], cwd=clone, check=True)
+        t["code"]["branch"] = "watchdog/alice-t1"
+        (self.state / "tasks/alice-t1/task.json").write_text(json.dumps(t))
+        (Path(clone) / "job/run.py").write_text("value = 1\n")
+        rc, out = self.tool("alice-t1", "commit", "legacy branch fix")
         self.assertEqual(rc, 0, out)
-        self.assertIn("on watchdog/t1", out)
+        self.assertIn("on watchdog/alice-t1", out)
 
     def test_smoke_cap_reads_custom_shared_policy(self):
         shutil.copy(HERE / "nrp-util-check", self.bin / "nrp-util-check")
         policy = self.tmp / "policy.json"
         policy.write_text(json.dumps({"gpu_floor": .4, "max_concurrent_jobs": 400, "smoke_max_jobs": 1}))
         self.env["NRP_UTIL_POLICY"] = str(policy)
-        m = self.manifest("t1-a")
+        m = self.manifest("alice-t1-a")
         p = Path(m)
         p.write_text(p.read_text().replace("backoffLimit: 0", "backoffLimit: 0\n  completions: 2"))
-        rc, _, err = self.add(stages=[dict(id="a", job="t1-a", manifest=m, done_s3=["s3://braingeneersdev/t/a"], purpose="smoke")])
+        rc, _, err = self.add(stages=[dict(id="a", job="alice-t1-a", manifest=m, done_s3=["s3://braingeneersdev/t/a"], purpose="smoke")])
         self.assertNotEqual(rc, 0)
         self.assertIn("1..1 (smoke_max_jobs)", err)
 
     def test_smoke_profile_caps_total_completions_and_parallelism(self):
         for mark in ({"purpose": "smoke"}, {"purpose": "profile"}, {"smoke": True}, {"profile": True}):
             for key in ("parallelism", "completions"):
-                m = self.manifest("t1-a")
+                m = self.manifest("alice-t1-a")
                 p = Path(m)
                 p.write_text(p.read_text().replace("backoffLimit: 0", "backoffLimit: 0\n  %s: 4" % key))
-                stage = dict(id="a", job="t1-a", manifest=m, done_s3=["s3://braingeneersdev/t/a"], **mark)
+                stage = dict(id="a", job="alice-t1-a", manifest=m, done_s3=["s3://braingeneersdev/t/a"], **mark)
                 rc, _, err = self.add(stages=[stage])
                 self.assertNotEqual(rc, 0, err)
                 self.assertIn("smoke_max_jobs", err)
 
     def test_profile_accepts_three_and_preserves_intent(self):
-        m = self.manifest("t1-a")
+        m = self.manifest("alice-t1-a")
         p = Path(m)
         p.write_text(p.read_text().replace("backoffLimit: 0", "backoffLimit: 0\n  completions: 3\n  parallelism: 2"))
-        stage = dict(id="a", job="t1-a", manifest=m, done_s3=["s3://braingeneersdev/t/a"], purpose="profile")
+        stage = dict(id="a", job="alice-t1-a", manifest=m, done_s3=["s3://braingeneersdev/t/a"], purpose="profile")
         rc, _, err = self.add(stages=[stage])
         self.assertEqual(rc, 0, err)
         self.assertEqual(self.task()["stages"][0]["purpose"], "profile")
 
     def test_add_refuses_manifest_breaking_house_rules(self):
-        m = self.manifest("t1-a", **{"backoffLimit: 0": "backoffLimit: 3", 'print(1)': 'import time; time.sleep(1)", "sleep 99999'})
-        rc, _, err = self.add(stages=[{"id": "a", "job": "t1-a", "manifest": m, "done_s3": ["s3://braingeneersdev/x/a"]}])
+        m = self.manifest("alice-t1-a", **{"backoffLimit: 0": "backoffLimit: 3", 'print(1)': 'import time; time.sleep(1)", "sleep 99999'})
+        rc, _, err = self.add(stages=[{"id": "a", "job": "alice-t1-a", "manifest": m, "done_s3": ["s3://braingeneersdev/x/a"]}])
         self.assertNotEqual(rc, 0)
         self.assertIn("backoffLimit must be 0", err)
-        self.assertIn("no long sleep", err)
-        rc, _, err = self.add(stages=[{"id": "a", "job": "t1-a", "manifest": self.manifest("other"), "done_s3": ["s3://braingeneersdev/x/a"]}])
+        self.assertIn("no trailing or long sleep", err)
+        rc, _, err = self.add(stages=[{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("other"), "done_s3": ["s3://braingeneersdev/x/a"]}])
         self.assertIn("metadata.name", err)
 
     def test_add_warns_on_existing_output(self):
-        (self.fake / "s3.json").write_text(json.dumps(["s3://braingeneersdev/alice/test/t1/a.txt"]))
+        (self.fake / "s3.json").write_text(json.dumps(["s3://braingeneersdev/alice/test/alice-t1/a.txt"]))
         rc, _, err = self.add()
         self.assertEqual(rc, 0, err)
         self.assertIn("ALREADY exists", err)
 
     # ---------------------------------------------------------------- happy path
     def test_two_stages_submit_success_chain_silent(self):
-        stages = [{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": ["s3://braingeneersdev/t/a.txt"]},
-                  {"id": "b", "job": "t1-b", "manifest": self.manifest("t1-b"), "after": ["a"], "done_s3": ["s3://braingeneersdev/t/b.txt"]}]
+        stages = [{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": ["s3://braingeneersdev/t/a.txt"]},
+                  {"id": "b", "job": "alice-t1-b", "manifest": self.manifest("alice-t1-b"), "after": ["a"], "done_s3": ["s3://braingeneersdev/t/b.txt"]}]
         self.assertEqual(self.add(stages=stages)[0], 0)
         self.run_pass()
-        self.assertIn("t1-a", self.cl())
-        self.assertNotIn("t1-b", self.cl())
-        self.set_job("t1-a", state="ok")
+        self.assertIn("alice-t1-a", self.cl())
+        self.assertNotIn("alice-t1-b", self.cl())
+        self.set_job("alice-t1-a", state="ok")
         (self.fake / "s3.json").write_text(json.dumps(["s3://braingeneersdev/t/a.txt"]))
         self.run_pass()
-        self.assertNotIn("t1-a", self.cl(), "finished Job deleted after its logs were saved")
-        self.assertTrue((self.state / "tasks/t1/logs/t1-a-a1.txt").exists())
-        self.assertIn("t1-b", self.cl(), "next stage submitted by the script, no agent")
-        self.set_job("t1-b", state="ok")
+        self.assertNotIn("alice-t1-a", self.cl(), "finished Job deleted after its logs were saved")
+        self.assertTrue((self.state / "tasks/alice-t1/logs/alice-t1-a-a1.txt").exists())
+        self.assertIn("alice-t1-b", self.cl(), "next stage submitted by the script, no agent")
+        self.set_job("alice-t1-b", state="ok")
         (self.fake / "s3.json").write_text(json.dumps(["s3://braingeneersdev/t/a.txt", "s3://braingeneersdev/t/b.txt"]))
         self.run_pass()
         self.assertEqual(self.task()["status"], "done")
@@ -364,10 +376,10 @@ class T(unittest.TestCase):
         self.assertIn("all 2 stage(s) done", out)
 
     def test_success_without_output_is_a_failure(self):
-        self.add(stages=[{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": ["s3://braingeneersdev/t/a.txt"]}],
+        self.add(stages=[{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": ["s3://braingeneersdev/t/a.txt"]}],
                  max_retries=0)
         self.run_pass()
-        self.set_job("t1-a", state="ok")
+        self.set_job("alice-t1-a", state="ok")
         self.run_pass()
         t = self.task()
         self.assertEqual(t["status"], "NEEDS_OWNER")
@@ -375,14 +387,24 @@ class T(unittest.TestCase):
 
     # ---------------------------------------------------------------- the e2e story (fake): OOM -> code bug -> repeated -> 1 push
     def test_oom_then_code_bug_then_repeated_failure_pushes_once(self):
+        import yaml
+
+        remote = self.tmp / "git-upstream"
+        subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", str(remote)], check=True)
         self.add(code={"repo": str(self.repo), "subdir": "job"})
         t = self.task()
         clone = t["code"]["clone"]
         man = t["stages"][0]["manifest"]
+        doc = yaml.safe_load(Path(man).read_text())
+        doc["spec"]["template"]["spec"]["containers"][0]["env"] = [{"name": "NRP_CODE_URI", "value": ""}]
+        Path(man).write_text(yaml.safe_dump(doc))
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")
+        self.assertEqual(rc, 0, out)
         self.run_pass()
         # 1) OOM -> resources -> agent doubles memory and resubmits (silent)
-        self.set_job("t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
-        self.plan({"cmds": [["sh", "sed -i '' 's/512Mi/1Gi/g' %s" % man], ["nrp-task", "submit", "t1-a", "--reason", "OOM at 512Mi -> 1Gi"],
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
+        self.plan({"cmds": [["sh", "sed -i '' 's/512Mi/1Gi/g' %s" % man], ["nrp-task", "submit", "alice-t1-a", "--reason", "OOM at 512Mi -> 1Gi"],
                             ["nrp-task", "report", "RESUBMITTED", "OOM at 512Mi -> 1Gi"]], "result": "RESUBMITTED: OOM -> 1Gi"})
         self.run_pass()
         t = self.task()
@@ -392,27 +414,30 @@ class T(unittest.TestCase):
         self.assertIn("class resources", self.prompts()[0].read_text())
         self.assertIn("1Gi", (self.fake / "applied.log").read_text().splitlines()[-1])
         # 2) code bug -> agent fixes in the clone, commits, ships the code to S3, resubmits (silent)
-        self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1},
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1},
                      log="Traceback (most recent call last):\n  File \"run.py\", line 2\nKeyError: 'sise'")
         self.plan({"cmds": [["sh", "sed -i '' s/sise/size/ %s/job/run.py" % clone], ["nrp-task", "commit", "fix KeyError sise -> size"],
-                            ["nrp-task", "ship", "t1-code-fix1"],
-                            ["nrp-task", "submit", "t1-a", "--reason", "KeyError typo -> fixed"],
+                            ["nrp-task", "reship", "alice-t1-a"],
+                            ["nrp-task", "submit", "alice-t1-a", "--reason", "KeyError typo -> fixed"],
                             ["nrp-task", "report", "RESUBMITTED", "KeyError typo fixed"]], "result": "RESUBMITTED: typo"})
         self.run_pass()
         t = self.task()
         self.assertEqual([x["cls"] for x in t["attempts"]], ["resources", "code"])
         self.assertTrue(t["attempts"][1]["sig"].startswith("code:keyerror"))
-        log = subprocess.run(["git", "log", "--oneline", "monitor/t1"], cwd=clone, capture_output=True, text=True).stdout
-        self.assertIn("monitor fix (t1)", log)
-        self.assertIn("/code/t1-code-fix1/", (self.fake / "uploads.log").read_text())
+        log = subprocess.run(["git", "log", "--oneline", "monitor/alice-t1"], cwd=clone, capture_output=True, text=True).stdout
+        self.assertIn("monitor fix (alice-t1)", log)
+        uri = t["stages"][0]["submitted_code"]["NRP_CODE_URI"]
+        uploads = (self.fake / "uploads.log").read_text().splitlines()
+        self.assertEqual(len(uploads), 2)
+        self.assertTrue(uploads[-1].endswith(uri))
         self.assertEqual(self.pushes(), [], "retries are silent")
         # 3) transient error -> agent resubmits unchanged; the same error again -> escalate, no agent, ONE push
         err = "Traceback...\nbotocore.exceptions.EndpointConnectionError: Could not connect to the endpoint URL"
-        self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log=err)
-        self.plan({"cmds": [["nrp-task", "submit", "t1-a", "--reason", "transient S3 error -> resubmit unchanged"]], "result": "RESUBMITTED"})
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log=err)
+        self.plan({"cmds": [["nrp-task", "submit", "alice-t1-a", "--reason", "transient S3 error -> resubmit unchanged"]], "result": "RESUBMITTED"})
         self.run_pass()
         self.assertEqual(self.task()["attempts"][-1]["cls"], "infra")
-        self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log=err)
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log=err)
         n_prompts = len(self.prompts())
         self.run_pass()
         self.run_pass()
@@ -435,9 +460,9 @@ class T(unittest.TestCase):
         self.add()
         self.run_pass()
         import time
-        self.set_job("t1-a", started=time.time() - 3500)
+        self.set_job("alice-t1-a", started=time.time() - 3500)
         self.run_pass()                                                   # records pod_started
-        self.set_job("t1-a", state="FAILED", reason="DeadlineExceeded", deadline=3600, start=time.time() - 3700)
+        self.set_job("alice-t1-a", state="FAILED", reason="DeadlineExceeded", deadline=3600, start=time.time() - 3700)
         self.run_pass()
         t = self.task()
         self.assertEqual(t["status"], "NEEDS_OWNER")
@@ -449,7 +474,7 @@ class T(unittest.TestCase):
     def test_queue_deadline_is_retryable(self):
         self.add()
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", reason="DeadlineExceeded")
+        self.set_job("alice-t1-a", state="FAILED", reason="DeadlineExceeded")
         self.plan({"cmds": [["nrp-task", "report", "STOPPED", "need more info"]], "result": "STOPPED: need more info"})
         self.run_pass()
         self.assertIn("class queue", self.prompts()[0].read_text())
@@ -457,7 +482,7 @@ class T(unittest.TestCase):
     def fix_prompt(self):
         self.add()
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", reason="DeadlineExceeded")
+        self.set_job("alice-t1-a", state="FAILED", reason="DeadlineExceeded")
         self.plan({"cmds": [["nrp-task", "report", "STOPPED", "need more info"]], "result": "STOPPED: need more info"})
         self.run_pass()
         return self.prompts()[0].read_text()
@@ -483,7 +508,7 @@ class T(unittest.TestCase):
     def test_agent_stop_pushes_its_diagnosis_once(self):
         self.add()
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="ValueError: input shape mismatch")
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="ValueError: input shape mismatch")
         self.plan({"cmds": [["nrp-task", "report", "STOPPED", "input file has 3 channels, code expects 4: Sam decides which"]],
                    "result": "STOPPED: input has 3 channels"})
         self.run_pass()
@@ -495,7 +520,7 @@ class T(unittest.TestCase):
     def test_watch_mode_pushes_on_failure(self):
         self.add(mode="watch")
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
         self.run_pass()
         self.assertEqual(self.prompts(), [])
         self.assertEqual(len(self.pushes()), 1)
@@ -503,7 +528,7 @@ class T(unittest.TestCase):
     def test_denials_are_monitor_faults(self):
         self.add()
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="KeyError: x")
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="KeyError: x")
         self.plan({"cmds": [], "result": "could not run kubectl", "denials": [{"tool_name": "Bash", "tool_input": {"command": "kubectl get job"}}]})
         self.run_pass()
         dig = (self.state / "digest.log").read_text()
@@ -515,19 +540,114 @@ class T(unittest.TestCase):
         self.add(code={"repo": str(self.repo), "subdir": "job"})
         self.run_pass()
         self.set_job("someone-else", state="ok")
-        rc, out = self.tool("t1", "logs", "someone-else")
+        rc, out = self.tool("alice-t1", "logs", "someone-else")
         self.assertNotEqual(rc, 0)
         self.assertIn("one of this task's Jobs", out)
-        rc, out = self.tool("t1", "delete", "t1-a")                       # running, no failure
+        rc, out = self.tool("alice-t1", "delete", "alice-t1-a")                       # running, no failure
         self.assertNotEqual(rc, 0)
-        rc, out = self.tool("t1", "ship", "other-name")
-        self.assertIn("must be t1-", out)
-        rc, out = self.tool("t1", "submit", "t1-a", "--reason", "x")      # running
+        rc, out = self.tool("alice-t1", "ship", "other-name")
+        self.assertIn("must be alice-t1-", out)
+        rc, out = self.tool("alice-t1", "submit", "alice-t1-a", "--reason", "x")      # running
         self.assertIn("nothing to submit", out)
         rc, out = self.tool("nope", "show")
         self.assertIn("NRP_TASK", out)
-        rc, out = self.tool("t1", "show")
+        rc, out = self.tool("alice-t1", "show")
         self.assertEqual(rc, 0)
+
+    def test_generic_reship_recovers_expired_bundle_and_tags_success(self):
+        import yaml
+        from nrp_monitor import code_shipping
+
+        remote = self.tmp / "upstream.git"
+        subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", str(remote)], check=True)
+
+        manifest = Path(self.manifest("alice-t1-a"))
+        doc = yaml.safe_load(manifest.read_text())
+        containers = doc["spec"]["template"]["spec"]["containers"]
+        containers[0]["env"] = [{"name": "NRP_CODE_URI", "value": ""},
+                                {"name": "OTHER", "value": "untouched"}]
+        manifest.write_text(yaml.safe_dump(doc))
+        marker = "s3://braingeneersdev/generic/DONE"
+        stage = {"id": "a", "job": "alice-t1-a", "manifest": str(manifest), "done_s3": [marker]}
+        rc, _, err = self.add(stages=[stage], code={"repo": str(self.repo), "subdir": "job",
+                              "dirs": ["job"], "bundle_prefix": "s3://test-cache/code",
+                              "branch_prefix": "test-tasks"})
+        self.assertEqual(rc, 0, err)
+        task = self.task()
+        clone = Path(task["code"]["clone"])
+        local_ref = clone / ".git/refs/heads/monitor/alice-t1"
+        branch = remote / "refs/heads/test-tasks/alice/alice-t1"
+        self.env["TEST_REQUIRE_PUSHED_REF"] = str(branch)
+        self.env["TEST_REQUIRE_PUSHED_COMMIT_FILE"] = str(local_ref)
+        (clone / "job/new-script.sh").write_text("echo test\n")
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a", "--add", "job/new-script.sh")
+        self.assertEqual(rc, 0, out)
+        recorded = self.task()["code_bundles"]["alice-t1-a"]
+        sha = recorded["NRP_CODE_SHA256"]
+        uri = "s3://test-cache/code/" + sha + ".tgz"
+        commit = recorded["NRP_CODE_COMMIT"]
+        self.assertEqual(recorded["NRP_CODE_URI"], uri)
+        self.assertNotIn("NRP_CODE_REPO", recorded)
+        self.assertEqual(recorded["NRP_CODE_REMOTE"], str(remote.resolve()))
+        self.assertEqual(recorded["NRP_CODE_PUSHED"], "true")
+        self.assertEqual(recorded["NRP_CODE_DIRTY"], "false")
+        self.assertEqual(branch.read_text().strip(), commit)
+        self.assertEqual(local_ref.read_text().strip(), commit)
+        updated = yaml.safe_load(Path(task["stages"][0]["manifest"]).read_text())
+        env = updated["spec"]["template"]["spec"]["containers"][0]["env"]
+        self.assertIn({"name": "OTHER", "value": "untouched"}, env)
+        self.assertIn({"name": "NRP_CODE_SHA256", "value": sha}, env)
+        stored = self.fake / "store" / hashlib.md5(uri.encode()).hexdigest()
+        with tarfile.open(stored) as archive:
+            self.assertEqual(archive.extractfile("job/new-script.sh").read(), b"echo test\n")
+        rebuilt = self.tmp / "rebuilt.tgz"
+        self.assertEqual(code_shipping.pack(clone, commit, [Path("job")], rebuilt), (sha, recorded["NRP_CODE_TAR_SHA256"]))
+        self.assertEqual(rebuilt.read_bytes(), stored.read_bytes())
+        # An expired archive is recovered from Git even after the working tree changes.
+        stored.unlink()
+        (clone / "job/new-script.sh").write_text("echo uncommitted\n")
+        self.run_pass()
+        self.assertEqual(self.task()["stages"][0]["submitted_code"], recorded)
+        self.assertEqual(stored.read_bytes(), rebuilt.read_bytes())
+        self.assertIn("restored expired code bundle", json.dumps(self.task()["events"]))
+        self.set_job("alice-t1-a", state="ok")
+        (self.fake / "s3.json").write_text(json.dumps([marker]))
+        self.run_pass()
+        self.assertEqual(self.task()["stages"][0]["done_code"], recorded)
+        rc, out, err = self.wd("task", "code-cleanup", "alice-t1", "--dry-run")
+        self.assertEqual(rc, 0, err)
+        tag = remote / "refs/tags/nrp-run/alice/alice-t1/a"
+        self.assertIn("refs/tags/nrp-run/alice/alice-t1/a", out)
+        self.assertIn("refs/heads/test-tasks/alice/alice-t1", out)
+        self.assertTrue(branch.exists())
+        self.assertFalse(tag.exists())
+        self.assertEqual(self.wd("task", "code-cleanup", "alice-t1")[0], 0)
+        self.assertFalse(branch.exists())
+        self.assertEqual(tag.read_text().strip(), commit)
+        self.assertEqual(self.wd("task", "code-cleanup", "alice-t1")[0], 0)
+
+    def test_unpushed_debug_code_marks_completion_record(self):
+        import yaml
+
+        manifest = Path(self.manifest("alice-t1-a"))
+        doc = yaml.safe_load(manifest.read_text())
+        doc["spec"]["template"]["spec"]["containers"][0]["env"] = [{"name": "NRP_CODE_URI", "value": ""}]
+        manifest.write_text(yaml.safe_dump(doc))
+        marker = "s3://braingeneersdev/debug/DONE"
+        stages = [{"id": "a", "job": "alice-t1-a", "manifest": str(manifest), "done_s3": [marker]}]
+        self.assertEqual(self.add(stages=stages, code={"repo": str(self.repo), "dirs": ["job"]})[0], 0)
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a", "--allow-unpushed")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("DEBUG ONLY", out)
+        self.run_pass()
+        self.set_job("alice-t1-a", state="ok")
+        (self.fake / "s3.json").write_text(json.dumps([marker]))
+        self.run_pass()
+        done = self.task()["stages"][0]["done_code"]
+        self.assertEqual(done["NRP_CODE_PUSHED"], "false")
+        self.assertEqual(done["NRP_CODE_DIRTY"], "true")
+        self.assertIn("unpushed, debug only", self.wd("task", "show", "alice-t1")[1])
 
     def test_ship_archive_and_retired_configmap_command(self):
         self.assertEqual(self.add(code={"repo": str(self.repo), "subdir": "job"})[0], 0)
@@ -535,42 +655,53 @@ class T(unittest.TestCase):
         source = clone / "job"
         (source / "weights.pt").write_bytes(b"excluded")
         (source / "large.py").write_bytes(os.urandom(1024 * 1024))
-        rc, out = self.tool("t1", "ship", "t1-bundle", "--from", "job")
+        rc, out = self.tool("alice-t1", "ship", "alice-t1-bundle", "--from", "job")
+        self.assertNotEqual(rc, 0)
+        self.assertIn("no push remote", out)
+        self.assertFalse((self.fake / "uploads.log").exists())
+        rc, out = self.tool("alice-t1", "ship", "alice-t1-bundle", "--from", "job", "--allow-unpushed", "--add", "job/large.py")
         self.assertEqual(rc, 0, out)
         uri = out.splitlines()[0]
-        self.assertRegex(uri, r"^s3://braingeneersdev/alice/test/t1/code/t1-bundle/[0-9a-f]{16}\.tgz$")
-        self.assertIn("s3 cp " + uri, out)
+        self.assertRegex(uri, r"^s3://braingeneerscache/nrp-monitor/code/[^/]+/[0-9a-f]{64}\.tgz$")
+        self.assertIn('s3 cp "$NRP_CODE_URI"', out)
+        self.assertIn("DEBUG ONLY", out)
+        record = self.task()["code_bundles"]["alice-t1-bundle"]
+        self.assertEqual(record["NRP_CODE_PUSHED"], "false")
+        self.assertEqual(record["NRP_CODE_DIRTY"], "true")
         self.assertIn("tar -xzf", out)
         stored = self.fake / "store" / hashlib.md5(uri.encode()).hexdigest()
         self.assertGreater(stored.stat().st_size, 900 * 1024)
         with tarfile.open(stored) as bundle:
             names = set(bundle.getnames())
-            self.assertTrue({".", "./run.py", "./large.py"} <= names)
+            self.assertEqual(names, {"job/run.py", "job/large.py"})
             self.assertFalse(any("weights.pt" in name for name in names))
         work = self.tmp / "work"
-        snippet = "\n".join(out.splitlines()[2:])
-        snippet = snippet.replace("/work", str(work)).replace("YOUR_JOB_COMMAND", "python3 run.py")
+        work.mkdir()
+        snippet = out[out.index("code_dir=$(mktemp"):]
+        snippet = snippet.replace("/work", str(work)).replace("YOUR_JOB_COMMAND", "python3 job/run.py")
         # The fixture starts with a typo. Verify the shell ran the extracted script.
-        result = subprocess.run(["sh", "-c", snippet], env=self.env, capture_output=True, text=True, timeout=30)
+        if not shutil.which("sha256sum", path=self.env["PATH"]):
+            snippet = snippet.replace("sha256sum -c -", "shasum -a 256 -c -")
+        result = subprocess.run(["sh", "-c", snippet], env=dict(self.env, **record), capture_output=True, text=True, timeout=30)
         self.assertIn("KeyError: 'sise'", result.stderr)
-        self.assertEqual((work / "code" / "run.py").read_bytes(), (source / "run.py").read_bytes())
-        self.assertIn("shipped code t1-bundle from job", json.dumps(self.task()))
+        self.assertEqual(next(work.glob("nrp-code.*/job/run.py")).read_bytes(), (source / "run.py").read_bytes())
+        self.assertIn("shipped code alice-t1-bundle", json.dumps(self.task()))
         with (source / "large.py").open("wb") as f:
             f.truncate(31 * 1024 * 1024)
-        rc, out = self.tool("t1", "ship", "t1-oversized")
+        rc, out = self.tool("alice-t1", "ship", "alice-t1-oversized", "--allow-unpushed")
         self.assertNotEqual(rc, 0)
         self.assertIn("exceeds 30 MiB", out)
-        self.assertIn("inside the clone", self.tool("t1", "ship", "t1-bundle", "--from", "..")[1])
-        rc, out = self.tool("", "configmap", "t1-bundle")
+        self.assertIn("inside the clone", self.tool("alice-t1", "ship", "alice-t1-bundle", "--from", "..")[1])
+        rc, out = self.tool("", "configmap", "alice-t1-bundle")
         self.assertNotEqual(rc, 0)
         self.assertEqual(out, "Code bundles in ConfigMaps are banned on NRP. Use nrp-task ship.")
         self.assertEqual(len((self.fake / "uploads.log").read_text().splitlines()), 1)
         self.assertNotIn("create configmap", (self.fake / "kubectl.log").read_text() if (self.fake / "kubectl.log").exists() else "")
 
     def test_configmap_guard_checks_archive_keys_and_combined_size(self):
-        manifest = Path(self.manifest("t1-a"))
+        manifest = Path(self.manifest("alice-t1-a"))
         original = manifest.read_text()
-        stage = dict(id="a", job="t1-a", manifest=str(manifest), done_s3=["s3://braingeneersdev/t/done"])
+        stage = dict(id="a", job="alice-t1-a", manifest=str(manifest), done_s3=["s3://braingeneersdev/t/done"])
         cm = dict(kind="ConfigMap", apiVersion="v1", metadata={"name": "bad-bundle"})
         cases = [{"binaryData": {"code" + suffix: "YQ=="}} for suffix in (".tgz", ".tar", ".tar.gz", ".zip")]
         cases.append({"data": {"text": "x" * 9000}, "binaryData": {"blob": "YQ==" * 2000}})
@@ -585,7 +716,7 @@ class T(unittest.TestCase):
         self.assertEqual(self.add(stages=[stage])[0], 0)
         registered = Path(self.task()["stages"][0]["manifest"])
         registered.write_text(original + "\n---\n" + json.dumps(dict(cm, **cases[-1])))
-        rc, out = self.tool("t1", "submit", "t1-a", "--reason", "test guard")
+        rc, out = self.tool("alice-t1", "submit", "alice-t1-a", "--reason", "test guard")
         self.assertNotEqual(rc, 0)
         self.assertIn("ConfigMap bad-bundle", out)
         self.assertIn("nrp-task ship", out)
@@ -593,13 +724,13 @@ class T(unittest.TestCase):
 
     def test_existing_code_configmap_volume_still_submits(self):
         import yaml
-        manifest = Path(self.manifest("t1-a"))
+        manifest = Path(self.manifest("alice-t1-a"))
         doc = yaml.safe_load(manifest.read_text())
         pod = doc["spec"]["template"]["spec"]
         pod["volumes"] = [{"name": "code", "configMap": {"name": "old-code-bundle", "items": [{"key": "code.tgz", "path": "code.tgz"}]}}]
         pod["containers"][0]["volumeMounts"] = [{"name": "code", "mountPath": "/code"}]
         manifest.write_text(json.dumps(doc))
-        stage = dict(id="a", job="t1-a", manifest=str(manifest), done_s3=["s3://braingeneersdev/t/done"])
+        stage = dict(id="a", job="alice-t1-a", manifest=str(manifest), done_s3=["s3://braingeneersdev/t/done"])
         self.assertEqual(self.add(stages=[stage])[0], 0)
         self.run_pass()
         self.assertIn("old-code-bundle", (self.fake / "applied.log").read_text())
@@ -626,10 +757,10 @@ class T(unittest.TestCase):
     def test_retry_cap_enforced_in_submit(self):
         self.add(max_retries=1)
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
-        self.plan({"cmds": [["nrp-task", "submit", "t1-a", "--reason", "r1"]], "result": "RESUBMITTED"})
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
+        self.plan({"cmds": [["nrp-task", "submit", "alice-t1-a", "--reason", "alice-r1"]], "result": "RESUBMITTED"})
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="KeyError: y")
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="KeyError: y")
         self.run_pass()                                                   # cap 1 used -> escalate without agent
         self.assertEqual(self.task()["status"], "NEEDS_OWNER")
         self.assertIn("retry cap", self.task()["reason"])
@@ -644,32 +775,32 @@ class T(unittest.TestCase):
         self.assertIn("NRP RED ALERT", self.pushes()[0])
         (self.fake / "apply_block").unlink()
         self.run_pass()                                                      # probe not due yet: still held
-        self.assertNotIn("t1-a", self.cl())
+        self.assertNotIn("alice-t1-a", self.cl())
         ra = self.state / "red_alert.json"
         ra.write_text(json.dumps(dict(json.loads(ra.read_text()), probed={})))
         self.run_pass()                                                      # the probe passes: cleared, the held submit goes
-        self.assertIn("t1-a", self.cl())
+        self.assertIn("alice-t1-a", self.cl())
         self.assertEqual(self.task()["status"], "running")
 
     def test_resume_after_hunter(self):
         self.add(mode="watch")
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
         self.run_pass()
-        rc, out, err = self.wd("task", "resume", "t1", "--note", "raised memory by hand")
+        rc, out, err = self.wd("task", "resume", "alice-t1", "--note", "raised memory by hand")
         self.assertEqual(rc, 0, err)
         self.run_pass()
-        self.assertEqual(self.cl()["t1-a"]["state"], "running")
+        self.assertEqual(self.cl()["alice-t1-a"]["state"], "running")
         self.assertEqual(self.task()["status"], "running")
         self.assertIn("the next pass resubmits", out)
 
     def test_resume_skip_says_skipped_not_resubmitted(self):
         self.add(mode="watch")
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
         self.run_pass()
         sid = self.task()["stages"][0]["id"]
-        rc, out, err = self.wd("task", "resume", "t1", "--skip", sid, "--note", "outputs verified by hand")
+        rc, out, err = self.wd("task", "resume", "alice-t1", "--skip", sid, "--note", "outputs verified by hand")
         self.assertEqual(rc, 0, err)
         self.assertIn("skipped (marked done): %s" % sid, out)
         self.assertNotIn("resubmits", out)
@@ -679,13 +810,13 @@ class T(unittest.TestCase):
         self.add()
         self.run_pass()
         c = json.loads((self.fake / "cluster.json").read_text())
-        del c["jobs"]["t1-a"]
+        del c["jobs"]["alice-t1-a"]
         (self.fake / "cluster.json").write_text(json.dumps(c))
         self.age_submit()
-        self.plan({"cmds": [["nrp-task", "submit", "t1-a", "--reason", "vanished -> resubmit"]], "result": "RESUBMITTED"})
+        self.plan({"cmds": [["nrp-task", "submit", "alice-t1-a", "--reason", "vanished -> resubmit"]], "result": "RESUBMITTED"})
         self.run_pass()
         self.assertEqual(self.task()["attempts"][0]["cls"], "infra")
-        self.assertIn("t1-a", self.cl())
+        self.assertIn("alice-t1-a", self.cl())
 
     # ---------------------------------------------------------------- v2.1: WIP clone, GPU approval, pv3 reship
     def test_clone_carries_untracked_source_files(self):
@@ -701,16 +832,16 @@ class T(unittest.TestCase):
         self.assertIn("1 untracked source file(s)", err)
         self.assertIn("1 untracked file(s)", err)                   # blob.bin reported, not silent
         log = subprocess.run(["git", "log", "--oneline"], cwd=clone, capture_output=True, text=True).stdout
-        self.assertIn("untracked source files at task add", log)
+        self.assertNotIn("untracked source files at task add", log)
 
     def gpu_manifest(self, job):
         p = self.manifest(job)
-        text = Path(p).read_text().replace("memory: 512Mi}", 'memory: 512Mi, nvidia.com/gpu: "1"}')
+        text = Path(p).read_text().replace("memory: 512Mi,", 'memory: 512Mi, nvidia.com/gpu: "1",')
         Path(p).write_text(text)
         return p
 
     def test_gpu_stage_needs_an_approval_date(self):
-        st = {"id": "a", "job": "t1-a", "manifest": self.gpu_manifest("t1-a"), "done_s3": ["s3://braingeneersdev/t/a"]}
+        st = {"id": "a", "job": "alice-t1-a", "manifest": self.gpu_manifest("alice-t1-a"), "done_s3": ["s3://braingeneersdev/t/a"]}
         rc, _, err = self.add(stages=[st])
         self.assertNotEqual(rc, 0)
         self.assertIn("gpu_ok_until", err)
@@ -720,13 +851,13 @@ class T(unittest.TestCase):
         self.assertEqual(rc, 0, err)
 
     def test_gpu_retry_after_approval_day_escalates_once_without_agent(self):
-        st = {"id": "a", "job": "t1-a", "manifest": self.gpu_manifest("t1-a"), "done_s3": ["s3://braingeneersdev/t/a"],
+        st = {"id": "a", "job": "alice-t1-a", "manifest": self.gpu_manifest("alice-t1-a"), "done_s3": ["s3://braingeneersdev/t/a"],
               "gpu_ok_until": "2026-11-06"}
         self.env["NRP_MONITOR_TODAY"] = "2026-11-06"
         self.assertEqual(self.add(stages=[st])[0], 0)
         self.run_pass()
-        self.assertIn("t1-a", self.cl())                            # approved day: submitted
-        self.set_job("t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
+        self.assertIn("alice-t1-a", self.cl())                            # approved day: submitted
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
         self.env["NRP_MONITOR_TODAY"] = "2026-11-07"                # the day after Sam's OK
         n = len(self.prompts())
         self.run_pass()
@@ -736,15 +867,13 @@ class T(unittest.TestCase):
         self.assertIn("GPU APPROVAL", t["reason"])
         self.assertEqual(len(self.prompts()), n, "no fix agent for an unapproved GPU retry")
         self.assertEqual(len(self.pushes()), 1)
-        rc, out, err = self.wd("task", "resume", "t1", "--gpu-ok-until", "2026-11-08")
+        rc, out, err = self.wd("task", "resume", "alice-t1", "--gpu-ok-until", "2026-11-08")
         self.assertEqual(rc, 0, err)
         self.assertEqual(self.task()["stages"][0]["gpu_ok_until"], "2026-11-08")
 
     def test_reship_points_spec_at_the_clones_code(self):
         # a pv3-shaped repo: predictor_v3/utils/jobs/codeship.py is the real module (stdlib only)
-        real = Path(__file__).resolve().parent / "fixtures" / "codeship_pv3.py"      # vendored real packer
-        if not real.exists():
-            self.skipTest("codeship.py not found")
+        real = HERE / "tests" / "fixtures" / "codeship_pv3.py"
         pkg = self.repo / "predictor_v3"
         (pkg / "utils" / "jobs").mkdir(parents=True)
         for d in (pkg, pkg / "utils", pkg / "utils" / "jobs"):
@@ -753,11 +882,11 @@ class T(unittest.TestCase):
         (pkg / "job.py").write_text("print(1/0)\n")
         for c in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "pv3"]):
             subprocess.run(["git", *c], cwd=self.repo, check=True, capture_output=True)
-        spec_uri = "s3://braingeneersdev/alice/test/pv3/jobs/t1-a/spec.json"
-        m = Path(self.manifest("t1-a"))
+        spec_uri = "s3://braingeneersdev/alice/test/pv3/jobs/alice-t1-a/spec.json"
+        m = Path(self.manifest("alice-t1-a"))
         m.write_text(m.read_text().replace('["python", "-c", "print(1)"]', '["python", "-m", "e", "gate", "--spec", "%s"]' % spec_uri))
         self.env["NRP_TASK_PYTHON"] = sys.executable
-        stage = {"id": "a", "job": "t1-a", "manifest": str(m), "done_s3": ["s3://braingeneersdev/t/a"]}
+        stage = {"id": "a", "job": "alice-t1-a", "manifest": str(m), "done_s3": ["s3://braingeneersdev/t/a"]}
         self.assertEqual(self.add(stages=[stage], code={"repo": str(self.repo), "subdir": "predictor_v3"})[0], 0)
         import hashlib
         old_uri = "s3://braingeneersdev/alice/test/pv3/code/0000000000000000.tgz"
@@ -765,14 +894,14 @@ class T(unittest.TestCase):
         store.mkdir()
         (store / hashlib.md5(spec_uri.encode()).hexdigest()).write_text(json.dumps({"module": "m", "code": {"uri": old_uri, "sha256": "0" * 64}}))
         self.run_pass()
-        rc, out = self.tool("t1", "reship", "t1-a")
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")
         self.assertNotEqual(rc, 0)
         self.assertIn("still running", out)                          # a running Job is never reshipped
-        self.set_job("t1-a", state="FAILED")
+        self.set_job("alice-t1-a", state="FAILED")
         clone = self.task()["code"]["clone"]
         (Path(clone) / "predictor_v3" / "job.py").write_text("print(1)\n")        # the agent's fix
-        self.tool("t1", "commit", "fix div by zero")
-        rc, out = self.tool("t1", "reship", "t1-a")
+        self.tool("alice-t1", "commit", "fix div by zero")
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")
         self.assertEqual(rc, 0, out)
         self.assertIn("reshipped", out)
         spec = json.loads((store / hashlib.md5(spec_uri.encode()).hexdigest()).read_text())
@@ -783,35 +912,35 @@ class T(unittest.TestCase):
         import io, tarfile
         tf = tarfile.open(fileobj=io.BytesIO((store / hashlib.md5(spec["code"]["uri"].encode()).hexdigest()).read_bytes()), mode="r:gz")
         self.assertEqual(tf.extractfile("predictor_v3/job.py").read(), b"print(1)\n")
-        rc, out = self.tool("t1", "reship", "t1-a")                 # same code again: nothing to do
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")                 # same code again: nothing to do
         self.assertIn("identical", out)
 
     def test_reship_refuses_job_without_s3_spec(self):
         self.add(code={"repo": str(self.repo), "subdir": "job"})
-        self.set_job("t1-a", state="FAILED")
-        rc, out = self.tool("t1", "reship", "t1-a")
+        self.set_job("alice-t1-a", state="FAILED")
+        rc, out = self.tool("alice-t1", "reship", "alice-t1-a")
         self.assertNotEqual(rc, 0)
-        self.assertIn("--spec", out)
+        self.assertIn("declare NRP_CODE_URI", out)
 
     def test_dry_run_changes_nothing(self):
         self.add()
-        before = (self.state / "tasks/t1/task.json").read_text()
+        before = (self.state / "tasks/alice-t1/task.json").read_text()
         rc, out, err = self.wd("run", "--dry-run", "--tasks-only")
         self.assertEqual(rc, 0, err)
         self.assertIn("would submit stage a", out)
-        self.assertEqual(before, (self.state / "tasks/t1/task.json").read_text())
+        self.assertEqual(before, (self.state / "tasks/alice-t1/task.json").read_text())
         self.assertEqual(self.cl(), {})
 
     # ---------------------------------------------------------------- after_s3 gate (T71d)
     GATE = "s3://braingeneersdev/alice/test/upstream/done.json"
 
     def gated(self, extra=None, **kw):
-        stages = [{"id": "g", "job": "t1-g", "manifest": self.manifest("t1-g"), "after_s3": [self.GATE],
+        stages = [{"id": "g", "job": "alice-t1-g", "manifest": self.manifest("alice-t1-g"), "after_s3": [self.GATE],
                    "done_s3": ["s3://braingeneersdev/t/g.txt"]}] + (extra or [])
         return self.add(stages=stages, **kw)
 
     def test_after_s3_validation(self):
-        base = {"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": ["s3://braingeneersdev/t/a.txt"]}
+        base = {"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": ["s3://braingeneersdev/t/a.txt"]}
         for bad in ("s3://braingeneersdev/x", ["not-a-uri"], ["s3://braingeneersdev/"], [3]):
             rc, _, err = self.add(stages=[dict(base, after_s3=bad)])
             self.assertNotEqual(rc, 0, bad)
@@ -825,14 +954,14 @@ class T(unittest.TestCase):
 
     def test_after_s3_keeps_stage_pending_until_every_key_exists(self):
         two = "s3://braingeneersdev/alice/test/upstream/second.json"
-        stages = [{"id": "g", "job": "t1-g", "manifest": self.manifest("t1-g"), "after_s3": [self.GATE, two],
+        stages = [{"id": "g", "job": "alice-t1-g", "manifest": self.manifest("alice-t1-g"), "after_s3": [self.GATE, two],
                    "done_s3": ["s3://braingeneersdev/t/g.txt"]}]
         self.assertEqual(self.add(stages=stages)[0], 0)
         for _ in range(2):                                      # passes with nothing there: nothing submitted, silent
             self.run_pass()
             self.assertEqual(self.cl(), {})
         self.assertEqual(self.task()["stages"][0]["state"], "pending")
-        rc, out, _ = self.wd("task", "show", "t1")
+        rc, out, _ = self.wd("task", "show", "alice-t1")
         self.assertIn("waiting-on %s" % self.GATE, out)
         self.assertIn("waiting-on %s" % two, out)
         self.assertEqual(self.pushes(), [])
@@ -840,44 +969,44 @@ class T(unittest.TestCase):
         (self.fake / "s3.json").write_text(json.dumps([self.GATE]))      # only one of the two keys
         self.run_pass()
         self.assertEqual(self.cl(), {})
-        out = self.wd("task", "show", "t1")[1]
+        out = self.wd("task", "show", "alice-t1")[1]
         self.assertIn("waiting-on %s" % two, out)
         self.assertNotIn("waiting-on %s" % self.GATE, out)
         (self.fake / "s3.json").write_text(json.dumps([self.GATE, two]))
         self.run_pass()
-        self.assertIn("t1-g", self.cl(), "submitted on the first pass after the last key appeared")
+        self.assertIn("alice-t1-g", self.cl(), "submitted on the first pass after the last key appeared")
         self.assertEqual(self.task()["stages"][0]["state"], "running")
         self.assertTrue(any("every after_s3 key exists" in e for e in self.task()["events"]))
 
     def test_after_s3_waiting_stage_does_not_block_other_stages(self):
-        free = {"id": "f", "job": "t1-f", "manifest": self.manifest("t1-f"), "done_s3": ["s3://braingeneersdev/t/f.txt"]}
+        free = {"id": "f", "job": "alice-t1-f", "manifest": self.manifest("alice-t1-f"), "done_s3": ["s3://braingeneersdev/t/f.txt"]}
         self.assertEqual(self.gated(extra=[free])[0], 0)
         self.run_pass()
-        self.assertIn("t1-f", self.cl())
-        self.assertNotIn("t1-g", self.cl())
+        self.assertIn("alice-t1-f", self.cl())
+        self.assertNotIn("alice-t1-g", self.cl())
 
     def test_after_s3_combines_with_after(self):
-        stages = [{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": ["s3://braingeneersdev/t/a.txt"]},
-                  {"id": "b", "job": "t1-b", "manifest": self.manifest("t1-b"), "after": ["a"], "after_s3": [self.GATE],
+        stages = [{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": ["s3://braingeneersdev/t/a.txt"]},
+                  {"id": "b", "job": "alice-t1-b", "manifest": self.manifest("alice-t1-b"), "after": ["a"], "after_s3": [self.GATE],
                    "done_s3": ["s3://braingeneersdev/t/b.txt"]}]
         self.assertEqual(self.add(stages=stages)[0], 0)
         (self.fake / "s3.json").write_text(json.dumps([self.GATE]))      # the key is there but stage a is not done
         self.run_pass()
-        self.assertIn("t1-a", self.cl())
-        self.assertNotIn("t1-b", self.cl())
-        self.set_job("t1-a", state="ok")
+        self.assertIn("alice-t1-a", self.cl())
+        self.assertNotIn("alice-t1-b", self.cl())
+        self.set_job("alice-t1-a", state="ok")
         (self.fake / "s3.json").write_text(json.dumps([self.GATE, "s3://braingeneersdev/t/a.txt"]))
         self.run_pass()
-        self.assertIn("t1-b", self.cl())
+        self.assertIn("alice-t1-b", self.cl())
 
     def test_after_s3_dry_run_says_waiting_and_changes_nothing(self):
         self.gated()
-        before = (self.state / "tasks/t1/task.json").read_text()
+        before = (self.state / "tasks/alice-t1/task.json").read_text()
         rc, out, err = self.wd("run", "--dry-run", "--tasks-only")
         self.assertEqual(rc, 0, err)
         self.assertIn("waits on %s" % self.GATE, out)
         self.assertNotIn("would submit", out)
-        self.assertEqual(before, (self.state / "tasks/t1/task.json").read_text())
+        self.assertEqual(before, (self.state / "tasks/alice-t1/task.json").read_text())
         (self.fake / "s3.json").write_text(json.dumps([self.GATE]))
         self.assertIn("would submit stage g", self.wd("run", "--dry-run", "--tasks-only")[1])
         self.assertEqual(self.cl(), {})
@@ -886,7 +1015,7 @@ class T(unittest.TestCase):
         self.add()
         self.assertNotIn("after_s3", self.task()["stages"][0])
         self.run_pass()
-        self.assertIn("t1-a", self.cl())
+        self.assertIn("alice-t1-a", self.cl())
 
 
 if __name__ == "__main__":

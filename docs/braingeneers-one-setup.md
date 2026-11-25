@@ -87,31 +87,23 @@ References: [login options](https://cli.github.com/manual/gh_auth_login),
 
 ## 4. Install for the correct assistant
 
-Use the matching identifier and user scope explicitly. The defaults may select
-a different assistant or install only into the current project.
-
-| Assistant | `AGENT` value | Usual skill directory under the user's home |
-| --- | --- | --- |
-| Codex | `codex` | `.codex/skills` |
-| Claude Code | `claude-code` | `.claude/skills` |
-| GitHub Copilot | `github-copilot` | `.copilot/skills` |
-| Gemini CLI | `gemini-cli` | `.gemini/skills` |
-| Cursor | `cursor` | `.cursor/skills` |
-
-Replace `AGENT` below with that identifier, then run:
+For Claude Code and Codex, install one shared copy under
+`~/.claude/skills/` and expose it to Codex through a link in
+[`~/.agents/skills/`](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills).
+This works on a Codex-only machine. Check both paths for an existing skill
+first and follow its maintenance instructions if present.
 
 ```bash
-gh skill install braingeneers/mission_control braingeneers-one@main --agent AGENT --scope user
+gh skill install braingeneers/mission_control braingeneers-one@main --agent claude-code --scope user
 ```
 
-For the reported Claude Code case, `AGENT` is `claude-code`. Read the resulting
-installation path; actual application configuration and CLI output take
-precedence over the usual directories above. Check for an existing skill first.
-If present, inspect it and use its maintenance instructions rather than forcing
-a replacement. Preserve pins, local edits, symlinks, unrelated skills, and
-project overrides. Do not install the whole repository's skill catalog.
+The verification step below makes the installed router discoverable by Codex.
 
-See [GitHub CLI's skill installation reference](https://cli.github.com/manual/gh_skill_install).
+For GitHub Copilot, Gemini CLI, or Cursor, use the first command with
+`--agent github-copilot`, `--agent gemini-cli`, or `--agent cursor`, respectively,
+and read the path reported by GitHub CLI. Preserve existing pins, local edits,
+symlinks, and project overrides. See the
+[GitHub CLI skill installation reference](https://cli.github.com/manual/gh_skill_install).
 
 ## 5. Verify the installed copy
 
@@ -128,6 +120,15 @@ is needed. If Python is unavailable, follow the installed
 [maintenance instructions](../skills/braingeneers-one/references/maintenance.md#requirements)
 to help with normal setup without changing the user's default Python or
 bypassing managed-machine restrictions.
+
+For the shared Claude Code and Codex setup, register the Codex link:
+
+```bash
+python3 ~/.claude/skills/braingeneers-one/scripts/suite.py install braingeneers-one
+```
+
+The same helper creates Codex links when installing or updating specialists.
+It reports any existing entry that points elsewhere and preserves it.
 
 Run the installed helper, substituting the actual interpreter and path:
 
