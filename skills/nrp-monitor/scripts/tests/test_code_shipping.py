@@ -54,3 +54,17 @@ def test_cache_location_precedence_and_reserved_prefix(monkeypatch):
     assert code_shipping.bundle_prefix({"bundle_prefix": "s3://test/task"}) == "s3://test/task"
     with pytest.raises(ValueError, match="outside braingeneerscache/braindance"):
         code_shipping.bundle_prefix({"bundle_prefix": "s3://braingeneerscache/braindance/code"})
+
+
+@pytest.mark.parametrize("path", ["a/.ssh/config", "keys/id_rsa", "id_ed25519.pub", "kubeconfig.yaml",
+                                  "credentials.json", "token.json", "braingeneers_jwt_token.json", "x/.env.local"])
+def test_credential_like_paths_are_denied(path):
+    from pathlib import Path
+    assert code_shipping.denied(Path(path))
+
+
+@pytest.mark.parametrize("path", ["predictor_v3/utils/catalog/id_migration.py", "data/id_map.csv",
+                                  "model/tokenizer.json", "src/identity.py"])
+def test_ordinary_paths_are_not_denied(path):
+    from pathlib import Path
+    assert not code_shipping.denied(Path(path))

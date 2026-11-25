@@ -29,7 +29,8 @@ REMOTE_ENV = "NRP_CODE_REMOTE"
 BRANCH_ENV = "NRP_CODE_BRANCH"
 PUSHED_ENV = "NRP_CODE_PUSHED"
 ENV_NAMES = (URI_ENV, SHA_ENV, TAR_SHA_ENV, REPO_ENV, COMMIT_ENV, DIRTY_ENV, DIRS_ENV, REMOTE_ENV, BRANCH_ENV, PUSHED_ENV)
-DENIED = ("kubeconfig*", "*.pem", "*.key", "id_*", "credentials*.json", "token*.json",
+DENIED = ("kubeconfig*", "*.pem", "*.key", "id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*",
+          "credentials*.json", "token.json", "*_token.json", "*-token.json",
           ".env*", "*.p12", "service-account*.json", ".aws", ".ssh", ".netrc")
 SKIP_NAMES = {*state.CODE_SKIP, ".aws", ".env", ".ssh", ".netrc"}
 
