@@ -124,6 +124,7 @@ contracts, after deciding whether documentation alone answers the question.
 | Map or refresh a code repository's `.code-summaries/` navigation index before reading its source | `summarize-codebase` |
 | Trace a manuscript figure, caption, number, or paragraph to its builder, data, and render; keep paper figures in sync with code | `paper-map` |
 | Style, check, or assemble publication figures (legends, whitespace, role-based text sizes, the Styler) | `figure-style` |
+| Search, retrieve, or add scientific literature, models, methods, datasets, and citation links in the Lit-Map knowledge base | `lit-map` |
 
 For Workflows portal runs, including Recipes that run on NRP, start with
 `workflow-authoring` and use its bundled run waiter for monitoring. Nextflow
@@ -174,17 +175,27 @@ requirements, nonstandard installations, and troubleshooting. Use absolute paths
 and the available Python interpreter; `<ONE>` below means this skill directory.
 
 ```bash
-python3 "<ONE>/scripts/suite.py" status
+python3 "<ONE>/scripts/suite.py" status --table
 python3 "<ONE>/scripts/suite.py" install data-explorer-cli-access
 python3 "<ONE>/scripts/suite.py" update
 ```
 
 On first use, and at most once per day thereafter, run `status --daily` while
 idle, before starting specialist operations. It checks installed suite members,
-including this router, and caches a successful check. Briefly offer any updates;
-**apply updates only when the user requests them**. A request to check is not a
-request to update. `status` without `--daily` always checks immediately. If the
-check fails, explain briefly in plain language, for example: "I couldn't check
+including this router, and caches a successful check. Briefly offer available
+updates and apply them only when requested. Users can opt in to automatic daily
+updates with `schedule enable`. The schedule runs `update --auto` for unmodified
+managed copies. If enabled, let it handle routine updates. A request to check
+alone does not authorize an update, a reset, or a schedule change.
+
+When status shows a stuck modified copy, tell the user that local edits prevent
+updates and that `reset NAME` backs up the edits before reinstalling. When it
+shows a dangling link, tell the user that the linked folder is missing and to
+restore that folder or fix the link. Maintainers can link to a live Git checkout
+and update that checkout themselves.
+
+`status` without `--daily` always checks immediately. If the check fails,
+explain briefly in plain language. For example, "I couldn't check
 whether newer Braingeneers instructions are available. I can still help using
 the instructions already installed." State any effect on the user's task
 accurately; an unavailable update check does not verify or invalidate the

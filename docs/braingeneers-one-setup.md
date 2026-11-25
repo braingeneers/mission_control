@@ -184,3 +184,29 @@ GitHub access. A
 pending** when appropriate; do not keep reinstalling, changing accounts, or
 logging in again to solve organization membership. Direct the user to
 `#braingeneers-helpdesk` on UCSC GI Slack for lab access assistance.
+
+## Keep the installed instructions current
+
+Manual maintenance is the default. Ask your assistant to check with
+`suite.py status --table` and apply available updates with `suite.py update`.
+To opt in to daily updates, run these commands using the installed router.
+
+```bash
+python3 ~/.claude/skills/braingeneers-one/scripts/suite.py schedule enable
+python3 ~/.claude/skills/braingeneers-one/scripts/suite.py schedule status
+```
+
+The daily job updates unmodified managed copies from their source repositories.
+Claude and Codex share those copies through the Codex links. Use
+`schedule disable` to turn the job off. If Linux has no systemd user manager,
+the helper prints a crontab entry you can add or remove yourself.
+
+A modified managed copy is **stuck** because automatic and manual updates
+preserve local edits. Use `suite.py reset NAME` to back up the edited copy
+and reinstall from its source. The output includes the backup and a summary
+of the files you changed. Maintainers can also symlink a skill to a live Git
+checkout and update that checkout directly. The helper preserves those links.
+For a dangling link, restore the linked checkout or repair the link manually.
+
+See the [maintenance reference](../skills/braingeneers-one/references/maintenance.md)
+for scheduler and troubleshooting details.

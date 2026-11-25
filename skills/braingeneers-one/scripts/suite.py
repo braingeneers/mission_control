@@ -8,8 +8,10 @@ import hashlib
 import importlib.util
 import json
 import os
+import plistlib
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -35,6 +37,10 @@ TRACKING = {"github-repo", "github-ref", "github-tree-sha", "github-path", "gith
 
 
 class Failure(Exception):
+    pass
+
+
+class Unmanaged(Failure):
     pass
 
 
@@ -76,12 +82,15 @@ def without_tracking(header):
     return result
 
 
-def files_at(directory):
+def files_at(directory, local_links=False):
     if directory.is_symlink() or not directory.is_dir():
         raise Failure("Symlink or non-directory installation; preserve and maintain through its owner.")
     files = {}
     for item in directory.rglob("*"):
         if item.is_symlink():
+            if local_links:
+                files[item.relative_to(directory).as_posix()] = None
+                continue
             raise Failure("Contains a symlink; preserve and maintain through its owner.")
         if item.is_dir():
             continue
@@ -91,8 +100,10 @@ def files_at(directory):
     return files
 
 
-def fingerprint(directory):
-    return {name: hashlib.sha256(data).hexdigest() for name, data in files_at(directory).items()}
+def fingerprint(directory, local_links=False):
+    return {name: hashlib.sha256(data).hexdigest() if data is not None else
+            "symlink:" + os.readlink(directory / name)
+            for name, data in files_at(directory, local_links).items()}
 
 
 def blob_sha(data):
@@ -139,7 +150,7 @@ class Suite:
         header, _ = frontmatter((directory / "SKILL.md").read_bytes())
         meta = header.get("metadata", {})
         if meta.get("github-pinned"):
-            raise Failure("Explicitly pinned; left unchanged.")
+            raise Unmanaged("Explicitly pinned; left unchanged.")
         repo = str(meta.get("github-repo", "")).rstrip("/")
         if repo.endswith(".git"):
             repo = repo[:-4]
@@ -147,7 +158,7 @@ class Suite:
                 or repo != "https://github.com/" + item["repo"]
                 or meta.get("github-path") != item["path"]
                 or not re.fullmatch(r"[0-9a-f]{40}", str(meta.get("github-tree-sha", "")))):
-            raise Failure("Unknown source or path; left unchanged.")
+            raise Unmanaged("Unknown source or path; left unchanged.")
         return meta
 
     def verify(self, item, directory, tree_sha):
@@ -161,18 +172,18 @@ class Suite:
         expected = {entry["path"]: entry for entry in tree["tree"] if entry["type"] != "tree"}
         local = files_at(directory)
         if local.keys() != expected.keys():
-            raise Failure("Local files added or missing; left unchanged.")
+            raise Unmanaged("Local files added or missing; left unchanged.")
         for name, entry in expected.items():
             if entry["type"] != "blob" or entry["mode"] not in ("100644", "100755"):
-                raise Failure("Unsupported upstream object; left unchanged.")
+                raise Unmanaged("Unsupported upstream object; left unchanged.")
             if Path(name).name == "SKILL.md":
                 upstream = api(f"repos/{item['repo']}/git/blobs/{entry['sha']}")
                 original_header, original_body = frontmatter(base64.b64decode(upstream["content"]))
                 local_header, local_body = frontmatter(local[name])
                 if without_tracking(local_header) != without_tracking(original_header) or local_body != original_body:
-                    raise Failure("Local instructions modified; left unchanged.")
+                    raise Unmanaged("Local instructions modified; left unchanged.")
             elif blob_sha(local[name]) != entry["sha"]:
-                raise Failure("Local files modified; left unchanged.")
+                raise Unmanaged("Local files modified; left unchanged.")
 
     def enroll(self, item):
         directory = self.root / item["name"]
@@ -181,7 +192,7 @@ class Suite:
         recorded = self.state["managed"].get(item["name"])
         if recorded:
             if recorded["files"] != current or recorded["tree"] != meta["github-tree-sha"]:
-                raise Failure("Changed since last managed installation; left unchanged.")
+                raise Unmanaged("Changed since last managed installation; left unchanged.")
         else:
             self.verify(item, directory, meta["github-tree-sha"])
             self.state["managed"][item["name"]] = {"files": current, "tree": meta["github-tree-sha"]}
@@ -197,43 +208,91 @@ class Suite:
             raise Failure("Skill directory missing upstream; left unchanged.")
         return commit, match["sha"]
 
+    def entries(self):
+        local = {path.name for path in self.root.iterdir()} if self.root.exists() else set()
+        return sorted((local | self.catalog.keys()) - {"synced"})
+
+    def link_status(self, destination):
+        link = Path.home() / ".agents/skills" / destination.name
+        return ("ok" if link.is_symlink() and (link / "SKILL.md").is_file()
+                and link.resolve() == destination.resolve() else "missing")
+
+    def local_status(self, name):
+        destination = self.root / name
+        item = self.catalog.get(name, {})
+        row = {"name": name, "source": item.get("repo", "-"), "state": "n/a",
+               "codex_link": self.link_status(destination)}
+        if destination.is_symlink():
+            row["source"] = os.readlink(destination)
+            if destination.exists():
+                row["mode"] = "external link"
+            else:
+                row.update(mode="dangling link", state="stuck",
+                           reason="DANGLING LINK. Restore its target or repair the link.")
+        elif not destination.exists():
+            row["mode"] = "not installed"
+        elif not destination.is_dir():
+            row["mode"] = "unmanaged file"
+        elif name not in self.state["managed"] or not item:
+            row["mode"] = "unmanaged dir"
+        elif fingerprint(destination, local_links=True) != self.state["managed"][name]["files"]:
+            row.update(mode="modified copy", state="stuck",
+                       reason=f"Local edits prevent all updates. Run suite.py reset {name} to back them up and reinstall.")
+        else:
+            row["mode"] = "managed copy"
+        return row
+
     def status(self, daily=False):
         now = time.time()
         cache = self.state.get("check", {})
         interval = 86400 if cache.get("complete") else 3600
-        if daily and 0 <= now - cache.get("time", 0) < interval:
-            # Never present a cached freshness result for subsequently edited files.
-            if cache.get("files") == self.installed_fingerprints():
-                return {"cached": True, **cache}
+        snapshot = self.installed_fingerprints()
+        if daily and 0 <= now - cache.get("time", 0) < interval and cache.get("files") == snapshot:
+            return {"cached": True, **cache}
         rows, complete = [], True
-        for name, item in self.catalog.items():
-            directory = self.root / name
-            if not directory.exists() and not directory.is_symlink():
-                rows.append({"name": name, "status": "not installed"})
-                continue
+        for name in self.entries():
+            row = {"name": name, "mode": "unmanaged dir", "state": "n/a",
+                   "source": self.catalog.get(name, {}).get("repo", "-"), "codex_link": "missing"}
             try:
-                current = self.enroll(item)
-                _, latest = self.latest(item)
-                rows.append({"name": name, "status": "current" if current == latest else "update available"})
-            except (Failure, OSError, ValueError, yaml.YAMLError) as exc:
-                rows.append({"name": name, "status": "skipped / freshness unknown", "reason": str(exc)})
-                # Pins, edits, and unmanaged installs are not failures of the network check.
-                # Still throttle incomplete attempts only one hour, rather than claiming freshness.
+                row = self.local_status(name)
+                if name in self.catalog and row["mode"] in ("managed copy", "unmanaged dir"):
+                    # Bootstrap pristine gh installs, including the router. Auto updates
+                    # only use existing records and never perform this enrollment.
+                    try:
+                        current = self.enroll(self.catalog[name])
+                    except Unmanaged as exc:
+                        row["reason"] = str(exc)
+                    else:
+                        row["mode"] = "managed copy"
+                        _, latest = self.latest(self.catalog[name])
+                        row["state"] = "current" if current == latest else "behind"
+            except OPERATION_ERRORS as exc:
                 complete = False
-        check = {"time": now, "complete": complete, "results": rows, "files": self.installed_fingerprints()}
+                row["reason"] = str(exc)
+                row["status"] = "skipped / freshness unknown"
+            row.setdefault("status", {"behind": "update available", "current": "current"}
+                           .get(row["state"], row["mode"]))
+            rows.append(row)
+        check = {"time": now, "complete": complete, "results": rows, "files": snapshot}
         self.state["check"] = check
         self.save()
         return {"cached": False, **check}
 
     def installed_fingerprints(self):
         result = {}
-        for name in self.catalog:
-            directory = self.root / name
-            if directory.exists() or directory.is_symlink():
+        for name in self.entries():
+            path = self.root / name
+            entry = {"codex_link": self.link_status(path)}
+            if path.is_symlink():
+                entry.update(target=os.readlink(path), exists=path.exists())
+            elif path.is_dir() and name in self.catalog:
                 try:
-                    result[name] = fingerprint(directory)
-                except Failure:
-                    result[name] = "unmanaged filesystem object"
+                    entry["files"] = fingerprint(path, local_links=True)
+                except (Failure, OSError):
+                    entry["files"] = None
+            elif path.exists():
+                entry["type"] = "dir" if path.is_dir() else "file"
+            result[name] = entry
         return result
 
     def codex_link(self, destination):
@@ -249,24 +308,29 @@ class Suite:
             if not link.is_symlink() or Path(os.path.abspath(link.parent / os.readlink(link))) != destination:
                 return {"codex_link_note": f"Existing path preserved: {link}"}
         except OSError as exc:
-            return {"codex_link_note": f"Could not create {link}: {exc}"}
+            return {"codex_link_error": f"Could not create {link}: {exc}"}
         return {"codex_link": str(link)}
 
-    def install(self, name, update=False):
+    def install(self, name, update=False, reset=False):
         item = self.catalog[name]
         destination = self.root / name
         present = destination.exists() or destination.is_symlink()
-        if present and not update:
+        if reset:
+            if self.local_status(name)["mode"] != "modified copy":
+                raise Failure("Reset requires a modified managed copy.")
+        elif present and not update:
             return {"name": name, "status": "already installed; read existing instructions",
                     "path": str(destination), **self.codex_link(destination)}
         if not present and update:
             return {"name": name, "status": "not installed; left absent"}
         before = None
         if present:
-            current = self.enroll(item)
-            before = fingerprint(destination)
+            original = destination.lstat()
+            before = fingerprint(destination, local_links=reset)
+            if not reset:
+                current = self.enroll(item)
         commit, tree = self.latest(item)
-        if present and current == tree:
+        if present and not reset and current == tree:
             return {"name": name, "status": "current", **self.codex_link(destination)}
         self.root.mkdir(parents=True, exist_ok=True)
         # Stage on the destination filesystem so rename is atomic and works across cache mounts.
@@ -281,13 +345,23 @@ class Suite:
             downloaded = fingerprint(staged)
             backup = None
             if present:
-                if fingerprint(destination) != before:
+                if (not os.path.samestat(original, destination.lstat())
+                        or fingerprint(destination, local_links=reset) != before):
                     raise Failure("Installation changed while downloading; left unchanged.")
                 # Keep backups outside application discovery; rename fails safely across filesystems.
-                backups = self.root.parent / ".braingeneers-one-backups"
-                backups.mkdir(exist_ok=True)
+                backups = (self.state_dir / "backups" if reset else
+                           self.root.parent / ".braingeneers-one-backups")
+                backups.mkdir(parents=True, exist_ok=True)
                 root_id = hashlib.sha256(str(self.root).encode()).hexdigest()[:16]
                 backup = backups / (root_id + "-" + name + "-" + str(time.time_ns()))
+                if reset:
+                    diff = backup.with_suffix(".diff.txt")
+                    managed = self.state["managed"][name]["files"]
+                    changes = [
+                        f"{'added' if path not in managed else 'removed' if path not in before else 'modified'} {path!r}"
+                        for path in sorted(before.keys() | managed.keys()) if before.get(path) != managed.get(path)
+                    ]
+                    diff.write_text("\n".join(changes) + "\n")
                 destination.rename(backup)
             elif destination.exists() or destination.is_symlink():
                 raise Failure("Installation appeared while downloading; left unchanged.")
@@ -300,11 +374,110 @@ class Suite:
         self.state["managed"][name] = {"files": downloaded, "tree": tree}
         self.state.pop("check", None)
         self.save()
-        result = {"name": name, "status": "updated" if present else "installed", "path": str(destination)}
+        result = {"name": name, "status": "reset" if reset else "updated" if present else "installed",
+                  "path": str(destination)}
+        if reset:
+            result["diff_summary"] = str(diff)
         if backup:
             result["backup"] = str(backup)
         result.update(self.codex_link(destination))
         return result
+
+
+SCHEDULE_LABEL = "org.braingeneers.one-update"
+OPERATION_ERRORS = (Failure, OSError, ValueError, KeyError, yaml.YAMLError)
+
+
+def scheduler_command(args, check=False):
+    result = subprocess.run(args, capture_output=True, text=True, timeout=30)
+    if check and result.returncode:
+        raise Failure(f"Scheduler command failed: {' '.join(args[:3])}. Check your user scheduler.")
+    return result.returncode == 0
+
+
+def schedule(action, root, state_dir):
+    home = Path.home()
+    runner = root / "braingeneers-one/scripts/suite.py"
+    argv = [sys.executable, str(runner), "--skills-dir", str(root),
+            "--state-dir", str(state_dir), "update", "--auto"]
+    environment = {key: os.environ[key] for key in ("PATH", "GH_CONFIG_DIR", "XDG_CONFIG_HOME")
+                   if key in os.environ}
+    if action == "enable" and not runner.is_file():
+        raise Failure(f"Install Braingeneers One at {runner.parent.parent} before enabling the schedule.")
+
+    if sys.platform == "darwin":
+        path = home / "Library/LaunchAgents" / (SCHEDULE_LABEL + ".plist")
+        domain = f"gui/{os.getuid()}"
+        target = f"{domain}/{SCHEDULE_LABEL}"
+        loaded = scheduler_command(["launchctl", "print", target])
+        if action == "status":
+            return "Daily updates enabled." if loaded else "Daily updates disabled."
+        if loaded:
+            scheduler_command(["launchctl", "bootout", target], check=True)
+        if action == "enable":
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(plistlib.dumps({
+                "Label": SCHEDULE_LABEL,
+                "ProgramArguments": argv,
+                "EnvironmentVariables": environment,
+                "StartCalendarInterval": {"Hour": 9, "Minute": 0},
+                "StandardOutPath": str(state_dir / "auto.log"),
+                "StandardErrorPath": str(state_dir / "auto-errors.log"),
+            }))
+            scheduler_command(["launchctl", "bootstrap", domain, str(path)], check=True)
+        else:
+            path.unlink(missing_ok=True)
+    elif sys.platform.startswith("linux"):
+        unit_dir = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config")) / "systemd/user"
+        service = unit_dir / (SCHEDULE_LABEL + ".service")
+        timer = unit_dir / (SCHEDULE_LABEL + ".timer")
+        systemctl = ["systemctl", "--user"]
+        try:
+            available = scheduler_command(systemctl + ["show-environment"])
+        except FileNotFoundError:
+            available = False
+        if not available:
+            if action == "enable":
+                command_line = shlex.join(["env", *(f"{key}={value}" for key, value in environment.items()), *argv])
+                return "User systemd unavailable. Add this line with crontab -e:\n0 9 * * * " + command_line.replace("%", "\\%")
+            if action == "disable" and timer.exists():
+                raise Failure("User systemd unavailable. Restore access to your user manager and retry disabling the timer.")
+            return "User systemd unavailable. Inspect crontab -l or remove the update line with crontab -e."
+        if action == "status":
+            enabled = scheduler_command(systemctl + ["is-enabled", "--quiet", timer.name])
+            active = scheduler_command(systemctl + ["is-active", "--quiet", timer.name])
+            return "Daily updates enabled." if enabled and active else "Daily updates disabled."
+        if action == "enable":
+            unit_dir.mkdir(parents=True, exist_ok=True)
+            # systemd performs its own specifier and environment expansion.
+            quoted = [json.dumps(arg.replace("%", "%%").replace("$", "$$"), ensure_ascii=False) for arg in argv]
+            settings = "".join("Environment=" + json.dumps(f"{key}={value}".replace("%", "%%"),
+                                                           ensure_ascii=False) + "\n"
+                               for key, value in environment.items())
+            service.write_text("[Service]\nType=oneshot\n" + settings + "ExecStart=" + " ".join(quoted) + "\n")
+            timer.write_text("[Timer]\nOnCalendar=*-*-* 09:00:00\nPersistent=true\n[Install]\nWantedBy=timers.target\n")
+            scheduler_command(systemctl + ["daemon-reload"], check=True)
+            scheduler_command(systemctl + ["enable", "--now", timer.name], check=True)
+        elif timer.exists():
+            scheduler_command(systemctl + ["disable", "--now", timer.name], check=True)
+            timer.unlink()
+            service.unlink(missing_ok=True)
+            scheduler_command(systemctl + ["daemon-reload"], check=True)
+    else:
+        raise Failure("Scheduling is supported on macOS and Linux.")
+    return "Daily updates enabled." if action == "enable" else "Daily updates disabled."
+
+
+def print_status_table(output):
+    rows = [["NAME", "MODE", "SOURCE", "STATE", "CODEX LINK"]]
+    rows.extend([row[key] for key in ("name", "mode", "source", "state", "codex_link")]
+                for row in output["results"])
+    widths = [max(map(len, column)) for column in zip(*rows)]
+    for row in rows:
+        print("  ".join(value.ljust(width) for value, width in zip(row, widths)).rstrip())
+    for row in output["results"]:
+        if row.get("reason"):
+            print(f"{row['name']}: {row['reason']}")
 
 
 def main():
@@ -314,11 +487,22 @@ def main():
     sub = parser.add_subparsers(dest="operation", required=True)
     status = sub.add_parser("status", help="Check installed suite members without updating")
     status.add_argument("--daily", action="store_true", help="Reuse a recent check")
+    status_format = status.add_mutually_exclusive_group()
+    status_format.add_argument("--json", action="store_true", help="Print JSON (default)")
+    status_format.add_argument("--table", action="store_true", help="Print a human-readable table")
     install = sub.add_parser("install", help="Install one missing catalog member")
     install.add_argument("name")
     update = sub.add_parser("update", help="Apply requested updates to installed suite members")
     update.add_argument("names", nargs="*")
+    update.add_argument("--auto", action="store_true", help="Quietly update unmodified managed copies")
+    reset = sub.add_parser("reset", help="Back up a modified managed copy and reinstall")
+    reset.add_argument("name")
+    scheduling = sub.add_parser("schedule", help="Manage the opt-in daily update job")
+    scheduling.add_argument("action", choices=("enable", "disable", "status"))
     args = parser.parse_args()
+    auto = args.operation == "update" and args.auto
+    if auto and args.names:
+        parser.error("update --auto checks all managed skills and accepts no names.")
     root = (args.skills_dir or ONE.parent).expanduser().absolute()
     # Resolving __file__ loses a symlink's installation context; do not infer placement in a checkout.
     if args.skills_dir is None and root.name != "skills":
@@ -327,20 +511,36 @@ def main():
         parser.error("Source checkout: specify the application's --skills-dir explicitly.")
     root_id = hashlib.sha256(str(root).encode()).hexdigest()[:16]
     cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    state_dir = (args.state_dir or cache / "braingeneers-one" / root_id).expanduser()
+    state_dir = (args.state_dir or cache / "braingeneers-one" / root_id).expanduser().absolute()
+    if args.operation == "schedule":
+        try:
+            if args.action == "enable":
+                state_dir.mkdir(parents=True, exist_ok=True)
+            print(schedule(args.action, root, state_dir))
+            return 0
+        except (Failure, OSError, subprocess.TimeoutExpired) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
     state_dir.mkdir(parents=True, exist_ok=True)
     lock = state_dir / "running.lock"
     try:
         lock.mkdir()
     except FileExistsError:
+        if auto:
+            return 0
         sys.exit(f"Another helper may be running. If it was interrupted, verify it stopped, then trash {lock}.")
     suite = None
     try:
         suite = Suite(root, state_dir)
         if args.operation == "status":
             output = suite.status(args.daily)
+            if args.table:
+                print_status_table(output)
+            else:
+                print(json.dumps({key: value for key, value in output.items() if key != "files"}, indent=2))
+            return 0 if output["complete"] else 1
         else:
-            names = [args.name] if args.operation == "install" else (args.names or list(suite.catalog))
+            names = [args.name] if args.operation in ("install", "reset") else (args.names or list(suite.catalog))
             unknown = set(names) - suite.catalog.keys()
             if unknown:
                 raise Failure("Not in the approved catalog: " + ", ".join(sorted(unknown)))
@@ -348,15 +548,25 @@ def main():
             output = []
             for name in names:
                 try:
-                    output.append(suite.install(name, update=args.operation == "update"))
-                except (Failure, OSError, ValueError, yaml.YAMLError) as exc:
+                    if auto and (name not in suite.state["managed"]
+                                 or suite.local_status(name)["mode"] != "managed copy"):
+                        continue
+                    output.append(suite.install(name, update=args.operation == "update",
+                                                reset=args.operation == "reset"))
+                except OPERATION_ERRORS as exc:
                     output.append({"name": name, "status": "skipped / failed", "reason": str(exc)})
-        # Fingerprints stay internal; output is bounded and useful for agents and people.
-        public = {key: value for key, value in output.items() if key != "files"} if isinstance(output, dict) else output
-        print(json.dumps(public, indent=2))
-        failed = (not output.get("complete", False)) if isinstance(output, dict) else any(row["status"] == "skipped / failed" for row in output)
-        return 1 if failed else 0
-    except (Failure, OSError, ValueError, yaml.YAMLError) as exc:
+        errors = [(row["name"], row.get("reason") or row["codex_link_error"])
+                  for row in output if row["status"] == "skipped / failed" or row.get("codex_link_error")]
+        if auto:
+            updated = [row["name"] for row in output if row["status"] == "updated"]
+            if updated:
+                print("Updated Braingeneers skills: " + ", ".join(updated))
+            for name, reason in errors:
+                print(f"{name}: {reason}", file=sys.stderr)
+        else:
+            print(json.dumps(output, indent=2))
+        return 1 if errors else 0
+    except OPERATION_ERRORS as exc:
         print(str(exc), file=sys.stderr)
         return 1
     finally:
