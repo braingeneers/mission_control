@@ -1044,7 +1044,7 @@ services:
   # Braingeneers workflow launch and run-monitoring web app.
   # Images are built and pushed from github.com/braingeneers/workflows.
   workflows-backend:
-    image: braingeneers/workflows-backend:20261125-256c6eacb6ab
+    image: braingeneers/workflows-backend:20261125-47c049b61430
     container_name: workflows-backend
     restart: unless-stopped
     entrypoint: /secrets/entrypoint-secrets-setup.sh
@@ -1073,6 +1073,7 @@ services:
       # Temporary. Remove each exclusion when NRP confirms that host is stable, then recreate the backend.
       K8S_DRIVER_EXCLUDED_NODES: '["nautilus-ext-gpu01.fullerton.edu","prp-gpu-2.t2.ucsd.edu"]'
       LAUNCHER_MOUNT_TIMEOUT_SECONDS: "1800"
+      LAUNCH_BUNDLE_FETCHER_IMAGE: "braingeneers/workflows-launch-bundle-fetcher@sha256:c553b9cf073dbbe0619d38ee2ba76228e76d21998fdc93668cc8054891525cca"
       NOTIFICATION_DISPATCH_ENABLED: "true"
       NOTIFICATION_SERVICE_URL: "http://notification-service:8000"
       DATA_EXPLORER_INTERNAL_URL: "http://data-explorer:8000"
@@ -1094,7 +1095,7 @@ services:
         condition: service_healthy
 
   workflows:
-    image: braingeneers/workflows-frontend:20261125-256c6eacb6ab
+    image: braingeneers/workflows-frontend:20261125-47c049b61430
     container_name: workflows
     restart: unless-stopped
     expose:

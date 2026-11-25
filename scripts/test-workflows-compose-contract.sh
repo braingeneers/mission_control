@@ -38,6 +38,16 @@ if [[ ! "${frontend_image}" =~ ^braingeneers/workflows-frontend:[0-9]{8}-[0-9a-f
     fail "workflows must use an immutable date/SHA image, got ${frontend_image}"
 fi
 assert_equal "${backend_tag}" "${frontend_tag}" "Workflows backend/frontend image tags"
+
+fetcher_image="$(service_value workflows-backend '.environment.LAUNCH_BUNDLE_FETCHER_IMAGE // empty')"
+if [[ ! "${fetcher_image}" =~ ^braingeneers/workflows-launch-bundle-fetcher@sha256:[0-9a-f]{64}$ ]]; then
+    fail "Workflows launch bundle fetcher must be pinned by digest"
+fi
+assert_equal \
+    "$(service_value workflows-backend '.command | index("/secrets/prp-s3-credentials/credentials:/root/.aws/credentials") != null')" \
+    "true" \
+    "Workflows shared AWS credentials file"
+
 assert_equal \
     "$(service_value workflows-backend '.environment.WORKSPACE_PVC_CLAIM')" \
     "flowforge-nextflow-work-west" \
