@@ -60,6 +60,15 @@ any agent. Never set it for a stage that restarts from scratch).
 `activeDeadlineSeconds` set, `backoffLimit: 0`, `ttlSecondsAfterFinished` of at least 3600, no long sleep, name matches.
 Derive the deadline from measured runtime with margin; the queue counts toward it.
 
+## Shipping code
+
+Never ship code in a ConfigMap or Secret: they live in NRP's shared etcd, and 590 `code.tgz` ConfigMaps (140 MB) got pod creation blocked in
+`braingeneers` on 2026-11-24. `nrp-task configmap` is replaced by `NRP_TASK=<task> nrp-task ship NAME [--from SUBDIR]` (`NAME` starts with the task name):
+it packs the task's code clone into a tarball, uploads it to S3 under the task's output prefix and prints the Job startup lines (download, untar, run). A fix
+that changes code ships a new tarball (a new `NAME`) and points the manifest at the new S3 URI; no Kubernetes object is created for it. An image rebuild is
+the other route. If a manifest still mounts a ConfigMap for code, replace it before submitting. At the end of a task, check for ConfigMaps it created:
+`kubectl -n braingeneers get cm`, and delete your own (policy and the namespace-size command: `nrp-cluster` skill, "ConfigMaps, Secrets and etcd").
+
 ## Example
 
 ```json

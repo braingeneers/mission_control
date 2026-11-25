@@ -105,6 +105,7 @@ Customize these files for your pipeline:
 | **Resource limits** | Must be within 20% of requests |
 | **GPU utilization** | Must be >40% or you get flagged |
 | **A100 GPUs** | Require reservation at [nrp.ai/reservations](https://nrp.ai/reservations) |
+| **ConfigMaps are not storage** | Never put code, archives, data or results in a ConfigMap or Secret (shared etcd); use the image or an S3 tarball, and delete any ConfigMap you create. See NRP_SETUP.md |
 | **No protected data** | No HIPAA, PII, FERPA, or FISMA data |
 | **Workload purging** | Deployments purged after 2 weeks |
 

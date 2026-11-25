@@ -69,7 +69,7 @@ content = response.choices[0].message.content
 # Validate and use content without logging sensitive inputs or outputs.
 ```
 
-Disable client retries when the application owns retry classification and durable resume. If using `max_tokens` or `max_output_tokens`, keep it well below the selected model's context limit; never set it equal to the full context window.
+Disable client retries when the application owns retry classification and durable resume. Do not set `max_tokens` or `max_output_tokens` unless the client requires it; then use about 1/3 to 1/4 of the model's context window (NRP's API-access page), never the full context window.
 
 ## Cache Isolation And Data Handling
 
@@ -80,7 +80,7 @@ Send only data permitted by the NRP acceptable-use policy and the application's 
 ## Batch Reliability
 
 - Retry connection failures, timeouts, HTTP 408/409/425, 429, and 5xx responses with exponential backoff and jitter. Do not retry authentication, authorization, invalid-model, or malformed-request failures without changing configuration.
-- Follow the current fair-use page. Reduce concurrency when latency increases, and use one request at a time for large-context calls when required.
+- Follow the current fair-use page. As read on 2026-11-24: the gateway answers HTTP 429 beyond 48,000 output tokens per minute per API token and model, each model has a per-user concurrency cap (2 to 16), and requests using at least 35% of a model's context are limited to 1 concurrent request per user. Reduce concurrency when latency increases, and use one request at a time for large-context calls when required.
 - Bound retries inside one request loop, persist each successful result, then fail with a distinct retryable outcome so the workflow or Job layer can resume. Do not keep a broken Job alive with `sleep infinity`.
 - Validate structured responses before accepting them. On retry, state the validation failure without logging raw prompts, response bodies, headers, or credentials.
 - Cache successful results using keys that include the model, prompt/schema version, relevant input hashes, and any date or configuration that changes the answer. Do not publish partial final output when required calls remain unresolved.

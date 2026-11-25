@@ -3,11 +3,13 @@
 No cluster, S3, Slack or model: a fake kubectl / aws / osascript / claude sit first on PATH, a scratch state dir is used,
 and NRP_MONITOR_NO_PUSH routes pushes to the fake banner log. The fake agent runs the real `nrp-task` commands listed
 in fake/agent_plan.json. Run: python3 tests/test_tasks.py"""
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -77,8 +79,16 @@ elif a[0] == "apply":
 elif a[0] == "create" and "--dry-run=server" in a:                          # the RED ALERT admission probe
     if os.path.exists(d + "/apply_block"): sys.stderr.write("admission webhook denied the request: Your pods resources utilization is too low\n"); sys.exit(1)
     print("job.batch/probe created (server dry run)")
-elif a[:2] == ["create", "configmap"]:
-    open(d + "/configmaps.log", "a").write(a[2] + "\n"); print("configmap/%%s created" %% a[2])
+elif a[:2] == ["get", "--raw"] and "/configmaps?" in a[2]:
+    from urllib.parse import parse_qs, urlsplit
+    params = parse_qs(urlsplit(a[2]).query)
+    limit = int(params["limit"][0])
+    assert limit == 50
+    offset = int(params.get("continue", ["0+"])[0][:-1])
+    items = cl.get("configmaps", [])
+    end = offset + limit
+    print(json.dumps({"metadata": {"continue": str(end) + "+" if end < len(items) else ""},
+                      "items": items[offset:end]}))
 else:
     sys.stderr.write("fake kubectl: unsupported %%s\n" %% a); sys.exit(2)
 ''' % USER
@@ -381,11 +391,11 @@ class T(unittest.TestCase):
         self.assertEqual(t["attempts"][0]["sig"], "oom@512Mi")
         self.assertIn("class resources", self.prompts()[0].read_text())
         self.assertIn("1Gi", (self.fake / "applied.log").read_text().splitlines()[-1])
-        # 2) code bug -> agent fixes in the clone, commits, rebuilds the ConfigMap, resubmits (silent)
+        # 2) code bug -> agent fixes in the clone, commits, ships the code to S3, resubmits (silent)
         self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1},
                      log="Traceback (most recent call last):\n  File \"run.py\", line 2\nKeyError: 'sise'")
         self.plan({"cmds": [["sh", "sed -i '' s/sise/size/ %s/job/run.py" % clone], ["nrp-task", "commit", "fix KeyError sise -> size"],
-                            ["nrp-task", "configmap", "t1-code-fix1"],
+                            ["nrp-task", "ship", "t1-code-fix1"],
                             ["nrp-task", "submit", "t1-a", "--reason", "KeyError typo -> fixed"],
                             ["nrp-task", "report", "RESUBMITTED", "KeyError typo fixed"]], "result": "RESUBMITTED: typo"})
         self.run_pass()
@@ -394,7 +404,7 @@ class T(unittest.TestCase):
         self.assertTrue(t["attempts"][1]["sig"].startswith("code:keyerror"))
         log = subprocess.run(["git", "log", "--oneline", "monitor/t1"], cwd=clone, capture_output=True, text=True).stdout
         self.assertIn("monitor fix (t1)", log)
-        self.assertIn("t1-code-fix1", (self.fake / "configmaps.log").read_text())
+        self.assertIn("/code/t1-code-fix1/", (self.fake / "uploads.log").read_text())
         self.assertEqual(self.pushes(), [], "retries are silent")
         # 3) transient error -> agent resubmits unchanged; the same error again -> escalate, no agent, ONE push
         err = "Traceback...\nbotocore.exceptions.EndpointConnectionError: Could not connect to the endpoint URL"
@@ -510,7 +520,7 @@ class T(unittest.TestCase):
         self.assertIn("one of this task's Jobs", out)
         rc, out = self.tool("t1", "delete", "t1-a")                       # running, no failure
         self.assertNotEqual(rc, 0)
-        rc, out = self.tool("t1", "configmap", "other-name")
+        rc, out = self.tool("t1", "ship", "other-name")
         self.assertIn("must be t1-", out)
         rc, out = self.tool("t1", "submit", "t1-a", "--reason", "x")      # running
         self.assertIn("nothing to submit", out)
@@ -518,6 +528,100 @@ class T(unittest.TestCase):
         self.assertIn("NRP_TASK", out)
         rc, out = self.tool("t1", "show")
         self.assertEqual(rc, 0)
+
+    def test_ship_archive_and_retired_configmap_command(self):
+        self.assertEqual(self.add(code={"repo": str(self.repo), "subdir": "job"})[0], 0)
+        clone = Path(self.task()["code"]["clone"])
+        source = clone / "job"
+        (source / "weights.pt").write_bytes(b"excluded")
+        (source / "large.py").write_bytes(os.urandom(1024 * 1024))
+        rc, out = self.tool("t1", "ship", "t1-bundle", "--from", "job")
+        self.assertEqual(rc, 0, out)
+        uri = out.splitlines()[0]
+        self.assertRegex(uri, r"^s3://braingeneersdev/alice/test/t1/code/t1-bundle/[0-9a-f]{16}\.tgz$")
+        self.assertIn("s3 cp " + uri, out)
+        self.assertIn("tar -xzf", out)
+        stored = self.fake / "store" / hashlib.md5(uri.encode()).hexdigest()
+        self.assertGreater(stored.stat().st_size, 900 * 1024)
+        with tarfile.open(stored) as bundle:
+            names = set(bundle.getnames())
+            self.assertTrue({".", "./run.py", "./large.py"} <= names)
+            self.assertFalse(any("weights.pt" in name for name in names))
+        work = self.tmp / "work"
+        snippet = "\n".join(out.splitlines()[2:])
+        snippet = snippet.replace("/work", str(work)).replace("YOUR_JOB_COMMAND", "python3 run.py")
+        # The fixture starts with a typo. Verify the shell ran the extracted script.
+        result = subprocess.run(["sh", "-c", snippet], env=self.env, capture_output=True, text=True, timeout=30)
+        self.assertIn("KeyError: 'sise'", result.stderr)
+        self.assertEqual((work / "code" / "run.py").read_bytes(), (source / "run.py").read_bytes())
+        self.assertIn("shipped code t1-bundle from job", json.dumps(self.task()))
+        with (source / "large.py").open("wb") as f:
+            f.truncate(31 * 1024 * 1024)
+        rc, out = self.tool("t1", "ship", "t1-oversized")
+        self.assertNotEqual(rc, 0)
+        self.assertIn("exceeds 30 MiB", out)
+        self.assertIn("inside the clone", self.tool("t1", "ship", "t1-bundle", "--from", "..")[1])
+        rc, out = self.tool("", "configmap", "t1-bundle")
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(out, "Code bundles in ConfigMaps are banned on NRP. Use nrp-task ship.")
+        self.assertEqual(len((self.fake / "uploads.log").read_text().splitlines()), 1)
+        self.assertNotIn("create configmap", (self.fake / "kubectl.log").read_text() if (self.fake / "kubectl.log").exists() else "")
+
+    def test_configmap_guard_checks_archive_keys_and_combined_size(self):
+        manifest = Path(self.manifest("t1-a"))
+        original = manifest.read_text()
+        stage = dict(id="a", job="t1-a", manifest=str(manifest), done_s3=["s3://braingeneersdev/t/done"])
+        cm = dict(kind="ConfigMap", apiVersion="v1", metadata={"name": "bad-bundle"})
+        cases = [{"binaryData": {"code" + suffix: "YQ=="}} for suffix in (".tgz", ".tar", ".tar.gz", ".zip")]
+        cases.append({"data": {"text": "x" * 9000}, "binaryData": {"blob": "YQ==" * 2000}})
+        for fields in cases:
+            with self.subTest(fields=list(fields)):
+                manifest.write_text(original + "\n---\n" + json.dumps(dict(cm, **fields)))
+                rc, _, err = self.add(stages=[stage])
+                self.assertNotEqual(rc, 0)
+                self.assertIn("ConfigMap bad-bundle", err)
+                self.assertIn("nrp-task ship", err)
+        manifest.write_text(original)
+        self.assertEqual(self.add(stages=[stage])[0], 0)
+        registered = Path(self.task()["stages"][0]["manifest"])
+        registered.write_text(original + "\n---\n" + json.dumps(dict(cm, **cases[-1])))
+        rc, out = self.tool("t1", "submit", "t1-a", "--reason", "test guard")
+        self.assertNotEqual(rc, 0)
+        self.assertIn("ConfigMap bad-bundle", out)
+        self.assertIn("nrp-task ship", out)
+        self.assertFalse((self.fake / "applied.log").exists())
+
+    def test_existing_code_configmap_volume_still_submits(self):
+        import yaml
+        manifest = Path(self.manifest("t1-a"))
+        doc = yaml.safe_load(manifest.read_text())
+        pod = doc["spec"]["template"]["spec"]
+        pod["volumes"] = [{"name": "code", "configMap": {"name": "old-code-bundle", "items": [{"key": "code.tgz", "path": "code.tgz"}]}}]
+        pod["containers"][0]["volumeMounts"] = [{"name": "code", "mountPath": "/code"}]
+        manifest.write_text(json.dumps(doc))
+        stage = dict(id="a", job="t1-a", manifest=str(manifest), done_s3=["s3://braingeneersdev/t/done"])
+        self.assertEqual(self.add(stages=[stage])[0], 0)
+        self.run_pass()
+        self.assertIn("old-code-bundle", (self.fake / "applied.log").read_text())
+
+    def test_namespace_configmap_scan_paginates_and_reports_ten_largest_hourly(self):
+        cluster = self.fake / "cluster.json"
+        configmaps = [{"metadata": {"name": ("bundle-%02d-" % i) + "x" * 54},
+                       "data": {"text": "x" * (80000 + i * 1000)}} for i in range(51)]
+        cluster.write_text(json.dumps({"jobs": {}, "configmaps": configmaps}))
+        self.run_pass()
+        self.run_pass()
+        calls = [line for line in (self.fake / "kubectl.log").read_text().splitlines() if "/configmaps?" in line]
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all(line.startswith("get --raw ") and "limit=50" in line for line in calls))
+        self.assertIn("continue=50%2B", calls[-1])
+        total = sum(len(json.dumps(cm, separators=(",", ":")).encode()) for cm in configmaps)
+        rc, out, err = self.wd("digest")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("51 ConfigMaps totaling %d serialized JSON bytes" % total, out)
+        for cm in configmaps[-10:]:
+            self.assertIn(cm["metadata"]["name"], out)
+        self.assertNotIn(configmaps[-11]["metadata"]["name"], out)
 
     def test_retry_cap_enforced_in_submit(self):
         self.add(max_retries=1)

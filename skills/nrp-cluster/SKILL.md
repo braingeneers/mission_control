@@ -48,11 +48,30 @@ needs cluster diagnostics. Nextflow owns submission and retries of its workers.
 
 ## Policy Reminders (high priority)
 
-- No `sleep infinity` in batch jobs.
-- Resource limits should track requests within policy boundaries.
+- **ConfigMaps and Secrets are not storage.** They live in the cluster's shared etcd, and a full etcd stops the whole
+  cluster. A ConfigMap holds configuration of a few KB (settings, a short entrypoint script); a Secret holds credentials.
+  Never put code bundles, archives (`.tgz`, `.zip`), source trees, data, notebooks, results, logs or checkpoints in either,
+  and never base64-encode or split a file to fit. Code goes into the container image, or is shipped as a tarball to S3 and
+  fetched when the Job starts (`nrp-task ship`, from the `nrp-monitor` skill; there is no `nrp-task configmap`). One
+  ConfigMap per Job, run or fix (`code-fix1`, `code-fix2`) is the failure to avoid: update one object in place, and delete any
+  ConfigMap you create when its Job finishes. Check the namespace total (see "ConfigMaps, Secrets and etcd" in
+  `references/nrp_setup.md`). Why this is here: etcd filled up and took the cluster down on 2026-11-14, and on 2026-11-24 NRP
+  blocked pod creation in `braingeneers` because agents had stored 590 ConfigMaps (140 MB, nearly all `code.tgz` tarballs, one per
+  job or fix, never deleted) there.
+- No `sleep infinity` in batch jobs (or any command that never ends, such as `tail -f /dev/null`).
+- Every container sets CPU, memory and ephemeral-storage requests and limits; resource limits should track requests within policy boundaries.
 - GPU utilization should stay above 40% on GPU jobs.
-- Max concurrent jobs should not exceed 400.
+- Max concurrent jobs should not exceed 400. Do not flood the cluster with short pods: pack many small tasks into each pod of one Indexed Job with a `parallelism` cap, never loop `kubectl create job`, and keep pods running at once under the namespace's pod quota (many allow 200).
 - `backoffLimit` and `restartPolicy` policy choices should reflect single-attempt jobs.
+- Never `kubectl delete --force --grace-period=0`. A pod stuck `Terminating` goes to NRP support (https://nrp.ai/contact/).
+- Move more than a couple of MB with S3 or `rclone`, not `kubectl cp` or `kubectl exec ... tar`: both go through the API server, whose link every user shares.
+- Tolerations only by key and only for taints NRP approved for you (never `nautilus.io/system` or `nautilus.io/issue`); `priorityClassName` unset or `opportunistic`/`opportunistic2`; never set `CUDA_VISIBLE_DEVICES`. Admission rejects the rest.
+- Before every apply, run `kubectl apply --dry-run=server -f <manifest>` and fix denials and `Warning:` lines. Never rephrase, split or change the verb of a rejected command to get past a check.
+- Delete what you create for your own use (test pods, helper pods, scratch PVCs) when the work ends; compare `kubectl get pods,jobs,pvc,cm -n braingeneers` with what the task needs.
+
+## NRP's own agent tooling
+
+NRP publishes agent skills that teach an agent the cluster's rules, plus a preflight check that reads a manifest or `kubectl` command and reports what policy forbids without creating anything. Source: https://nrp.ai/documentation/userdocs/ai/coding-agents/ (page dated 2026-11-24); repository https://github.com/nrp-nautilus/sdsc-marketplace (plugin `nrp-nautilus`: skills `nrp`, `nrp-run`, `nrp-llm`, `kubernetes`; `skills/nrp/scripts/nrp_preflight.py`; in Claude Code it also runs as a hook before each `kubectl` command sent to the context named `nautilus`; set `NRP_PREFLIGHT_CONTEXTS` for another name). Not installed here, and NRP's `main` branch may still be 0.2.0 without the preflight (0.3.0 was on branch `nrp-nautilus-0.3.0` on 2026-11-24). Ask before installing; when it is installed, run the preflight on each manifest before `--dry-run=server`. NRP's machine-readable rules for any agent: https://nrp.ai/llms.txt. Read-only usage questions (top namespaces, per-namespace trends): NRP Accounting MCP server, `https://nrp-accounting-mcp.nrp-nautilus.io/` (details: https://nrp.ai/documentation/userdocs/ai/accounting-mcp/).
 
 ## Resource sizing and utilization
 
@@ -89,7 +108,7 @@ and hand pods that are not yours to their real owner (`t3 thread send`); "no cha
 
 Read only the files needed for your task:
 
-- `references/nrp_setup.md` for platform setup, prerequisites, and troubleshooting.
+- `references/nrp_setup.md` for platform setup, prerequisites, and troubleshooting; its "ConfigMaps, Secrets and etcd" section before any step that moves code or files into a Job.
 - `references/readme.md` for the template architecture and quick start.
 - `references/agent-context.md` for agent-specific command patterns.
 - `references/hosted-llms.md` for jobs that call NRP-hosted open-weight models.

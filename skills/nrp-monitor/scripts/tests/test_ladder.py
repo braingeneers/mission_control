@@ -20,7 +20,7 @@ PATCH_BRANCH = '''elif a[0] == "patch":
     cl["jobs"][n]["deadline"] = body["spec"]["activeDeadlineSeconds"]; save()
     open(d + "/patched.log", "a").write("%s %s\\n" % (n, body["spec"]["activeDeadlineSeconds"])); print("job.batch/%s patched" % n)
 '''
-KUBECTL = test_tasks.FAKE_KUBECTL.replace('elif a[:2] == ["create", "configmap"]:', PATCH_BRANCH + 'elif a[:2] == ["create", "configmap"]:')
+KUBECTL = test_tasks.FAKE_KUBECTL.replace('elif a[:2] == ["get", "--raw"] and "/configmaps?" in a[2]:', PATCH_BRANCH + 'elif a[:2] == ["get", "--raw"] and "/configmaps?" in a[2]:')
 assert PATCH_BRANCH in KUBECTL
 
 

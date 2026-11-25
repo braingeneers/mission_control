@@ -42,7 +42,9 @@ warning and "NO runner left" everywhere. Everything is also in `nrp-monitor dige
    scheduler is not running; tell the user, do not register work that nothing will advance. If it is not installed,
    read [install](references/install.md) and ask before installing: it creates a background job.
 2. **Follow `nrp-cluster` first** (manifest rules, sizing, GPU approval, deadlines). The monitor refuses a manifest
-   that breaks the Job rules but does not replace judging the resources.
+   that breaks the Job rules but does not replace judging the resources. Code reaches the Job through the image or an S3
+   tarball made by `nrp-task ship` (see [tasks](references/tasks.md), "Shipping code"), never through a ConfigMap: ConfigMaps live in NRP's shared
+   etcd and code ConfigMaps got pod creation blocked in `braingeneers` on 2026-11-24.
 3. **Write `TASK.json`** from [tasks](references/tasks.md): the user's approval in their own words with the date, one
    stage per Job, and for each stage the exact S3 object that exists only when the stage succeeded (`done_s3`).
    Put what a fresh agent needs in `notes` (4 KB).

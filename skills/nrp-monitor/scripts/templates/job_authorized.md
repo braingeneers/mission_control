@@ -10,9 +10,12 @@ What you may do (each as ONE command, no pipes, `;` or `&&`):
       * resources, deadline, node choice, env: edit {dir}/manifest.yaml (or write the corrected Job yaml there). Size memory/CPU from what the
         pod actually used (kubectl top is not available; use the log, `describe` OOMKilled/exit codes, and nrp-util-check notes in the resume text).
         Keep GPU count, image and security settings; GPU Jobs keep >40% utilization in mind; no sleep; backoffLimit 0.
-      * code bug: edit files under {dir}/code, `python3 -m py_compile` them, rebuild the ConfigMap with `tar czf` + `kubectl -n {ns} create configmap <NEW-NAME> --from-file=code.tgz=...`
-        (use a new ConfigMap name, e.g. add -fix1), point the manifest at it, and save `diff -ruN {dir}/code.orig {dir}/code` output into {dir}/PATCH.diff via Write so a person can merge it
-        into the repo. You cannot run the repo's tests; keep fixes minimal and say so.
+      * code bug: edit files under {dir}/code and run `python3 -m py_compile` on them. Save `diff -ruN {dir}/code.orig {dir}/code`
+        output into {dir}/PATCH.diff via Write so the owner can merge it. Ship the code through S3 and update the Job to fetch
+        and unpack it at startup. For a registered task clone, use `nrp-task ship NAME`. For this legacy snapshot, ask the
+        owner to upload the fixed bundle to the Job's S3 run prefix and provide its URI before resubmitting.
+        Never put code, data, or archives in a ConfigMap. Use ConfigMaps only for configuration of a few KB.
+        You cannot run the repo's tests; keep fixes minimal and say so.
   - To resubmit: `kubectl -n {ns} delete job {root}` (only if it is finished), `kubectl -n {ns} apply --dry-run=server -f {dir}/manifest.yaml`, then
     `kubectl -n {ns} apply -f {dir}/manifest.yaml` (keep the SAME Job name {root}), then register it:
     `nrp-monitor add {root} --continue-from {root} --failure "one line: why the previous Job failed" --label "<label>"`.

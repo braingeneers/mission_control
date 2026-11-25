@@ -39,7 +39,9 @@ def write_json(p, d):
 def digest(kind, msg, task="-"):
     """Silent record for the digest (`nrp-monitor digest`, daily file, SessionStart line)."""
     from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
-    msg = " ".join(str(msg).split())[:500]
+    msg = " ".join(str(msg).split())
+    if kind != "configmaps":
+        msg = msg[:500]
     _m_state.STATE.mkdir(parents=True, exist_ok=True)
     with open(_m_state.DIGEST, "a") as f:
         f.write(json.dumps({"t": _m_state.iso(), "kind": kind, "task": task, "msg": msg}) + "\n")
@@ -233,7 +235,11 @@ def render_digest(hours):
             if report and stage["state"] == "running" and not stage.get("pod_started"):
                 since = (stage.get("queue_wait") or {}).get("since", stage.get("submitted", _m_state.now()))
                 lines.append("- %s stage %s Pending %s: %s" % (n, stage["id"], _m_state.ago(since), report["reason"]))
-    rows = [r for r in rows if r["kind"] != "pending"]
+    configmaps = [r for r in rows if r["kind"] == "configmaps"]
+    if configmaps:
+        lines.append("\n## ConfigMap storage")
+        lines.append("- " + configmaps[-1]["msg"])
+    rows = [r for r in rows if r["kind"] not in ("pending", "configmaps")]
     cnt = collections.Counter(r["kind"] for r in rows)
     lines.append("\n## Events: " + (", ".join("%s %d" % kv for kv in sorted(cnt.items())) or "none"))
     for r in rows[-60:]:

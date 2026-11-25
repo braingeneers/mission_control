@@ -160,7 +160,7 @@ def run_pass(a):
         _m_state.log("process_red_alert error: %s: %s" % (type(e).__name__, str(e)[:150]))
     rest = (_m_task_pass_.process_tasks, _m_task_cleanup.prune_clones, _m_plan_wakes.process_continuations, _m_wake.process_task_webhooks) if a.tasks_only else (_m_legacy.check_pods, _m_task_pass_.process_tasks, _m_task_cleanup.prune_clones, _m_plan_wakes.process_continuations, _m_wake.process_task_webhooks, _m_legacy.check_jobs,
                                                                          _m_util.check_orphans)
-    for fn in rest:
+    for fn in (_m_cluster.check_namespace_configmaps, *rest):
         try:
             fn(a, st)
         except Exception as e:
@@ -177,6 +177,15 @@ def run_pass(a):
 
 
 def cmd_add(a):
+    from .task import registry as _m_task_registry
+    if getattr(a, "manifest", None):
+        path = Path(a.manifest).expanduser()
+        try:
+            problems = _m_task_registry.manifest_configmap_problems(path)
+        except Exception as e:
+            sys.exit("add refused: " + _m_task_registry.manifest_error(path, e))
+        if problems:
+            sys.exit("add refused: " + "; ".join(problems))
     resume = None
     if a.resume:
         p = Path(a.resume).expanduser().resolve()
@@ -241,7 +250,7 @@ def cmd_add(a):
 
 def snapshot_code(src, adir):
     """Copy a code folder (no data/weights/git) to approved/<task>/code and code.orig, so a launchd agent (which cannot read
-    Desktop) can fix and rebuild a ConfigMap; the diff is kept in PATCH.diff for a person to merge. Refuses > 30 MB."""
+    Desktop) can fix code for S3 shipping; the diff is kept in PATCH.diff for a person to merge. Refuses > 30 MB."""
     total = 0
     files = []
     for f in src.rglob("*"):

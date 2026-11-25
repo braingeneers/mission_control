@@ -164,6 +164,9 @@ def utilization_restart(n, sid=None, cpu=None, mem=None, container_resources=Non
     s = _m_state.tstage(t, sid) if sid else (candidates[0] if len(candidates) == 1 else None)
     if not s or s["state"] not in ("running", "pending"):
         return False, "select a running or pending stage"
+    problems = _m_task_registry.manifest_configmap_problems(s["manifest"])
+    if problems:
+        return False, "manifest refused: " + "; ".join(problems)
     doc = _m_task_registry.manifest_doc(s["manifest"])
     import math
     for value, parse in ((cpu, _m_sizing.cpu_quantity), (mem, _m_sizing.mem_bytes)):

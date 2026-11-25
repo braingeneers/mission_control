@@ -1,10 +1,14 @@
 """NRP monitor nrp_task (mechanical extraction; R3a)."""
 import argparse
+import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
+import tarfile
+import tempfile
 from pathlib import Path
 
 from . import agents as _m_agents
@@ -41,13 +45,70 @@ def reship_dirs(code):
     return pkg.resolve(), [x.resolve() for x in extras]
 
 
+def upload_code_archive(path, uri):
+    from . import config as _m_config
+    result = subprocess.run(_m_task_registry.aws_cmd() + ["s3", "cp", str(path), uri],
+                            capture_output=True, text=True, timeout=300, env=_m_config.aws_env())
+    if result.returncode:
+        sys.exit("upload of the code tarball failed: %s" % result.stderr.strip()[:200])
+
+
+def ship_code(task, args):
+    n = task["name"]
+    name = args.name
+    if not re.fullmatch(r"%s-[a-z0-9-]{1,40}" % re.escape(n), name):
+        sys.exit("ship NAME must be %s-<suffix> (lowercase)" % n)
+    code = task.get("code")
+    if not code:
+        sys.exit("this task has no code clone")
+    sub = args.from_dir or code.get("subdir") or "."
+    clone = Path(code["clone"]).resolve()
+    src = (clone / sub).resolve()
+    if not src.is_dir() or not src.is_relative_to(clone):
+        sys.exit("--from must be a folder inside the clone")
+    # Use the task's first declared output directory and the pv3 code/<hash>.tgz layout.
+    prefix = task["stages"][0]["done_s3"][0].rsplit("/", 1)[0]
+    excludes = [x for p in _m_state.CODE_SKIP for x in ("--exclude", p)]
+    excludes += [x for e in _m_state.CODE_SKIP_EXT for x in ("--exclude", "*" + e)]
+    limit = _m_state.CODE_SNAPSHOT_MAX
+    with tempfile.TemporaryDirectory(prefix="nrp-ship-") as tmp:
+        archive = Path(tmp) / "code.tgz"
+        result = subprocess.run(["tar", "czf", str(archive), *excludes, "-C", str(src), "."],
+                                capture_output=True, text=True, timeout=300)
+        if result.returncode:
+            sys.exit("could not pack the task's code: %s" % result.stderr.strip()[:200])
+        if archive.stat().st_size > limit:
+            sys.exit("code archive exceeds %d MiB" % (limit // 2**20))
+        with tarfile.open(archive, "r|gz") as bundle:
+            size = 0
+            for member in bundle:
+                size += member.size
+                if size > limit:
+                    sys.exit("unpacked code exceeds %d MiB" % (limit // 2**20))
+        sha = hashlib.sha256(archive.read_bytes()).hexdigest()[:16]
+        uri = "%s/code/%s/%s.tgz" % (prefix, name, sha)
+        upload_code_archive(archive, uri)
+    _m_state.task_txn(n, lambda t: _m_state.tev(t, "shipped code %s from %s -> %s" % (name, sub, uri)))
+    endpoint = shlex.quote(_m_state.S3_JOB_ENDPOINT)
+    print(uri)
+    print("Job startup prefix (shell, AWS CLI, tar, writable /work, and mounted S3 read credentials):")
+    print("mkdir -p /work/code &&")
+    print("aws --endpoint-url %s s3 cp %s /work/code.tgz &&" % (endpoint, shlex.quote(uri)))
+    print("tar -xzf /work/code.tgz -C /work/code &&")
+    print("rm /work/code.tgz &&")
+    print("cd /work/code && exec YOUR_JOB_COMMAND")
+    return 0
+
+
 def cmd_tool(a):
     from . import stage_jobs as _m_stage_jobs
     from . import s3 as _m_s3  # Local import avoids orchestration cycles.
     from . import config as _m_config  # Local import avoids orchestration cycles.
     from . import task_commands as _m_task_commands  # Local import breaks orchestration cycle; patches stay on the defining module.
-    if any(x in ("--help", "-h") for x in a.rest):
-        print("Usage: NRP_TASK=<name> nrp-task show|logs JOB|describe JOB|util JOB|s3 ls URI|reship JOB|submit JOB --reason TEXT\n"
+    if a.rest[:1] == ["configmap"]:
+        sys.exit("Code bundles in ConfigMaps are banned on NRP. Use nrp-task ship.")
+    if a.rest[:1] != ["ship"] and any(x in ("--help", "-h") for x in a.rest):
+        print("Usage: NRP_TASK=<name> nrp-task show|logs JOB|describe JOB|util JOB|s3 ls URI|ship NAME [--from SUBDIR]|reship JOB|submit JOB --reason TEXT\n"
               "Coordinator chats must select a task with NRP_TASK; use nrp-monitor task list to find it.")
         return 0
     n = os.environ.get("NRP_TASK", "")
@@ -57,7 +118,7 @@ def cmd_tool(a):
             n for n in _m_state.task_names() if (_m_state.task_load(n) or {}).get("status") in _m_state.TASK_LIVE))
     argv, ns = a.rest, t["namespace"]
     jobs = {s["job"]: s for s in t["stages"]}
-    usage = ("nrp-task show | logs JOB [--tail N] | describe JOB | util JOB | s3 ls URI | s3 cat URI | configmap NAME [--from SUBDIR] | "
+    usage = ("nrp-task show | logs JOB [--tail N] | describe JOB | util JOB | s3 ls URI | s3 cat URI | ship NAME [--from SUBDIR] | "
              "reship JOB | commit MESSAGE | submit JOB --reason TEXT | delete JOB | plan | next-add FILE | "
              "report RESUBMITTED|STOPPED|DONE|CONTINUED|WAITING|NOT-DONE TEXT")
     if not argv:
@@ -170,25 +231,11 @@ def cmd_tool(a):
         sys.stdout.write(r.stdout)
         sys.stderr.write(r.stderr[-1000:])
         return r.returncode
-    if c == "configmap":
-        if not t.get("code"):
-            sys.exit("this task has no code clone")
-        if not rest or not re.match(r"^%s-[a-z0-9-]{1,40}$" % re.escape(n), rest[0]):
-            sys.exit("configmap NAME must be %s-<suffix> (lowercase)" % n)
-        sub = rest[rest.index("--from") + 1] if "--from" in rest else (t["code"].get("subdir") or ".")
-        src = (Path(t["code"]["clone"]) / sub).resolve()
-        if not src.is_dir() or not src.is_relative_to(Path(t["code"]["clone"]).resolve()):
-            sys.exit("--from must be a folder inside the clone")
-        tgz = _m_state.WORK / "task" / ("%s.tgz" % rest[0])
-        tgz.parent.mkdir(parents=True, exist_ok=True)
-        ex = [x for p in _m_state.CODE_SKIP for x in ("--exclude", p)] + [x for e in _m_state.CODE_SKIP_EXT for x in ("--exclude", "*" + e)]
-        r = subprocess.run(["tar", "czf", str(tgz), *ex, "-C", str(src), "."], capture_output=True, text=True)
-        if r.returncode or tgz.stat().st_size > 900 * 1024:
-            sys.exit("tar failed or archive over 900 KB (ConfigMap limit 1 MB): %s" % r.stderr.strip()[:200])
-        rc = kc("create", "configmap", rest[0], "--from-file=code.tgz=%s" % tgz)
-        if rc == 0:
-            _m_state.task_txn(n, lambda t: _m_state.tev(t, "configmap %s built from %s" % (rest[0], sub)))
-        return rc
+    if c == "ship":
+        parser = argparse.ArgumentParser(prog="nrp-task ship")
+        parser.add_argument("name")
+        parser.add_argument("--from", dest="from_dir", metavar="SUBDIR")
+        return ship_code(t, parser.parse_args(rest))
     if c == "reship":
         # pv3 Jobs run code shipped through S3 (spec.json -> code.uri), not code baked into the manifest: a fix in the clone
         # reaches the Job only when the clone's predictor_v3/ is packed like `--ship-code`, uploaded, and spec.json points at it.
@@ -230,10 +277,7 @@ def cmd_tool(a):
             print("the task's code (%s) is identical to what %s already runs (%s); nothing to reship"
                   % (", ".join(x.name for x in [pkg] + extras), j, info["sha256"][:16]))
             return 0
-        for src, dst in ((str(tgz), new_uri),):
-            u = subprocess.run(_m_task_registry.aws_cmd() + ["s3", "cp", src, dst], capture_output=True, text=True, timeout=300, env=_m_config.aws_env())
-            if u.returncode:
-                sys.exit("upload of the code tarball failed: %s" % u.stderr.strip()[:200])
+        upload_code_archive(tgz, new_uri)
         spec["code"] = {"uri": new_uri, "sha256": info["sha256"]}
         u = subprocess.run(_m_task_registry.aws_cmd() + ["s3", "cp", "-", spec_uri], input=json.dumps(spec, sort_keys=True, indent=2),
                            capture_output=True, text=True, timeout=180, env=_m_config.aws_env())

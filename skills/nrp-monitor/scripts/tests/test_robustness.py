@@ -221,7 +221,7 @@ class Runners(Base):
     def test_triage_task_commands_reject_mutations_in_code(self):
         self.task()
         with patch.dict(os.environ, NRP_TASK='t1', NRP_MONITOR_AGENT_ROLE='triage'):
-            for command in ('submit', 'delete', 'report', 'commit', 'configmap', 'next-add'):
+            for command in ('submit', 'delete', 'report', 'commit', 'ship', 'next-add'):
                 with self.assertRaisesRegex(SystemExit, 'judge only'):
                     self.w.cmd_tool(SimpleNamespace(rest=[command]))
 

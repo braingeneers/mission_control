@@ -41,7 +41,7 @@ $env:Path = "$env:Path;$HOME\.kube\bin"; kubectl describe pod <pod-name> -n brai
 
 ## Cleanup (when done)
 
-8. To delete a completed or failed job:
+8. To delete a completed or failed job (and any ConfigMap, helper pod or scratch PVC you made for it; never force-delete):
 ```powershell
 $env:Path = "$env:Path;$HOME\.kube\bin"; kubectl delete job <job-name> -n braingeneers 2>&1
 ```

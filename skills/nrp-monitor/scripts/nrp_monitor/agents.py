@@ -502,12 +502,12 @@ def kube_read_allow(k):
 
 def auth_allowed(k, job, ns, adir):
     """Task-level approval (owner decision 2026-11-05): the task was approved when it was registered with --authorize, so the follow-up
-    agent may debug and resubmit it without asking: apply Job files, create a ConfigMap, delete THIS task's finished Jobs, edit the
+    agent may debug and resubmit it without asking: apply Job files, delete THIS task's finished Jobs, edit the
     task's own files under approved/<task>/, and register the replacement (the script enforces the attempt cap and the
     same-failure rule there). It cannot touch secrets, other namespaces or other people's Jobs."""
     a = str(_m_state.APPROVED).rstrip("/")                    # all task dirs: a next-stage task needs its own manifest dir
-    pats = [k + " apply:*", k + " create configmap:*", k + " delete job %s:*" % job,
-            "kubectl apply:*", "kubectl create configmap:*", "kubectl delete job %s:*" % job,
+    pats = [k + " apply:*", k + " delete job %s:*" % job,
+            "kubectl apply:*", "kubectl delete job %s:*" % job,
             "nrp-monitor add:*", "nrp-monitor list", "nrp-watchdog add:*", "nrp-watchdog list", "tar czf:*", "tar tzf:*", "diff:*", "ls:*", "cat %s/:*" % a, "python3 -m py_compile:*"]
     out = ["Bash(%s)" % p for p in pats]
     out += ["Read(/%s/**)" % a, "Edit(/%s/**)" % a]     # leading // = absolute path; Edit rules cover Write too

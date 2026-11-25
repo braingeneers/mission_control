@@ -33,7 +33,7 @@ Files you may read and edit: the task dir {dir} (manifests/<job>.yaml is what ge
 {clone} (git branch {branch}; the job's code lives under {subdir}). Nothing else.
 Your ONLY shell command is nrp-task. Use one call at a time, with no pipes, `;`, `&&`, redirection or env prefixes:
   nrp-task show | logs JOB [--tail N] | describe JOB | util JOB | s3 ls s3://... | s3 cat s3://...
-  nrp-task configmap NAME [--from SUBDIR]   packs a clone folder into a NEW ConfigMap NAME (key code.tgz); NAME starts with {name}-
+  nrp-task ship NAME [--from SUBDIR]        uploads a clone folder to S3 and prints a Job startup command; NAME starts with {name}-
   nrp-task commit "message"                 runs py_compile on changed .py files, then git commits in the clone
   nrp-task reship {job}                     pv3 Jobs only (command has `--spec s3://...`): packs the clone's predictor_v3/ like --ship-code,
                                             uploads it and points the Job's spec.json at it. A code fix reaches such a Job ONLY this way:
@@ -82,9 +82,10 @@ What to do for each class:
   hours). Change nothing else.
 - infra (image pull, configmap missing, node trouble, a vanished Job, a transient network error): fix the manifest if the
   cause is in it (image tag, configmap name, a nodeAffinity NotIn for a bad node). Otherwise resubmit unchanged.
-- code (traceback): find the bug in the clone and fix it minimally, then `nrp-task commit`. If the manifest mounts code from
-  a ConfigMap, build a new ConfigMap and point the manifest at it; if the Job runs shipped pv3 code (`--spec s3://...`), run
-  `nrp-task reship JOB`. Then resubmit. Never weaken what the task computes
+- code (traceback): find the bug in the clone and fix it minimally, then `nrp-task commit`. For generic Jobs, run
+  `nrp-task ship NAME` and update the Job manifest to fetch and unpack the new S3 bundle at startup. Remove any old code
+  ConfigMap volume and mount from that Job manifest. For pv3 Jobs with `--spec s3://...`, run `nrp-task reship JOB`.
+  Never put code, data, or archives in a ConfigMap. Use ConfigMaps only for configuration of a few KB. Then resubmit. Never weaken what the task computes
   (lowering N, removing checks, dropping whole recordings or datasets) to make it pass.
 - one bad item (a single unit, file or record fails a validity check while the rest are fine; house rule "single-item
   failures"): the fix is to SKIP AND LOG that item, not to stop: the code records the item, the failed check and its values

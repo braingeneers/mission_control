@@ -116,10 +116,10 @@ def monitor_parser():
     d.add_argument("--label", help="short text for notifications")
     d.add_argument("-n", default=_m_state.NS)
     d.add_argument("--authorize", action="store_true",
-                   help="TASK-LEVEL APPROVAL: the follow-up agent may debug and resubmit this task (apply, create configmap, delete its own finished Jobs, edit files in its task dir)")
+                   help="TASK-LEVEL APPROVAL: the follow-up agent may debug and resubmit this task (apply, delete its own finished Jobs, edit files in its task dir)")
     d.add_argument("--max-attempts", type=int, default=3, help="with --authorize: total Jobs the task may use, including this one (default 3)")
     d.add_argument("--manifest", help="with --authorize: the rendered Job yaml, copied to the task dir for the agent to adjust and re-apply")
-    d.add_argument("--code-dir", help="with --authorize: code folder snapshotted for the agent (<=30 MB, no data/.pt/results); it may fix and rebuild the ConfigMap")
+    d.add_argument("--code-dir", help="with --authorize: code folder snapshotted for the agent (<=30 MB, no data/.pt/results); for code fixes shipped through S3")
     d.add_argument("--continue-from", metavar="OLD", help="(follow-up agents) register a replacement Job for authorized task job OLD; enforces the cap and the same-failure rule")
     d.add_argument("--failure", help="with --continue-from: one line, why the previous Job failed")
     _m_wake.add_origin_args(d)

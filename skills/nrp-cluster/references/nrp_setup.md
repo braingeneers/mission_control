@@ -14,7 +14,7 @@
 4. [S3 Storage & Credentials](#s3-storage-ceph-backed)
 5. [Weights & Biases](#weights--biases-wb)
 6. [Kubernetes Configuration](#kubernetes-configuration)
-7. [NRP Cluster Policies](#nrp-cluster-policies)
+7. [NRP Cluster Policies](#nrp-cluster-policies) (includes [ConfigMaps, Secrets and etcd](#configmaps-secrets-and-etcd))
 8. [GPU Configuration](#gpu-configuration)
 9. [S3 Endpoints](#s3-endpoints)
 10. [Monitoring & Dashboards](#monitoring--dashboards)
@@ -152,7 +152,9 @@ echo $env:AWS_ACCESS_KEY_ID
 - **Package:** `wandb` (added to `requirements.txt`)
 - **API Key:** Stored in `.env` and Windows user env vars (never hardcoded in code)
 - **Project:** Set per-repo (e.g. `SpikeProphecy`) — configure via `WANDB_PROJECT` env var
-- **Pipeline integration:** `WANDB_API_KEY` is passed through `run_job.sh` → `jobdefinition.yaml` → pod env
+- **Pipeline integration:** the pod reads `WANDB_API_KEY` from a Kubernetes Secret with `secretKeyRef` (existing:
+  `wandb-credentials/api-key`). Do not let `envsubst` write the key's value into `jobdefinition.yaml`: Job specs are
+  readable by other cluster users (NRP `llms.txt`).
 
 To use W&B in your training scripts:
 ```python
@@ -199,11 +201,14 @@ All subsequent `kubectl` commands will target `braingeneers` without needing `-n
 | **GPU utilization >40%** | Check [GPU dashboard](https://grafana.nrp-nautilus.io/d/dRG9q0Ymz/k8s-compute-resources-namespace-gpus) | Violation flagged at [nrp.ai/userinfo](https://nrp.ai/userinfo) |
 | **No protected data** | No HIPAA, PII, FERPA, or FISMA data on NRP | Policy violation |
 | **Don't waste resources** | Consistently underutilized namespaces risk being banned | Namespace disabled |
+| **ConfigMaps and Secrets are not storage** | No code, archives, data or results in them; see [ConfigMaps, Secrets and etcd](#configmaps-secrets-and-etcd) | Pod creation blocked for the namespace (2026-11-24) |
+| **No force delete** | `kubectl delete --force --grace-period=0` is forbidden; a pod stuck `Terminating` goes to NRP support | Policy violation |
 
 ### Resource Allocation Rules
 - **Requests** = minimum guaranteed resources (used for scheduling)
 - **Limits** = maximum allowed (pod killed if exceeded for memory, throttled for CPU)
 - Aim for requests ≈ average usage, limits ≈ peak usage
+- Set `ephemeral-storage` requests and limits too, not only CPU and memory
 - For >100 concurrent pods/jobs: **limits must equal requests**
 - Use [monitoring](https://nrp.ai/documentation/userdocs/running/monitoring/) to fine-tune
 
@@ -214,11 +219,14 @@ All subsequent `kubectl` commands will target `braingeneers` without needing `-n
 - Delete broken jobs immediately (they keep creating pods)
 - Set `backoffLimit: 0` to prevent infinite retries on failure
 - Set `restartPolicy: Never` for single-attempt runs
+- A Job's command must end by itself: no `sleep infinity`, `tail -f /dev/null`, or starting the computation by hand in an idle pod
+- Pack many small tasks into each pod of one Indexed Job with a `parallelism` cap. Never loop `kubectl create job`, and avoid CronJobs that fire every few minutes (each run is a short pod; use one Deployment whose process sleeps between rounds). Many namespaces allow at most 200 pods at once: `kubectl get resourcequota`
 
 ### Interactive Pods
 - Destroyed after **6 hours** unless using a workload controller
 - Limited to **2 GPUs, 32 GB RAM, 16 CPU cores**
 - `sleep` is okay in interactive pods (but not in Jobs)
+- Long-running idle pods: a `Deployment` with minimal requests, no GPU; deleted after 2 weeks unless NRP grants the namespace an exception. Never run an idle pod as a Job
 
 ### GPU Policies
 - Only request GPUs you can actually use (utilization must be >40%)
@@ -230,6 +238,37 @@ All subsequent `kubectl` commands will target `braingeneers` without needing `-n
 - Purge unused data regularly — NRP is not archival storage
 - Volumes unused for 6 months can be purged without notice
 - Workloads (Deployments) are automatically deleted after 2 weeks
+- No `conda` or `pip` installs on CephFS (shared) volumes: use block volumes or build them into the image
+- Moving more than a couple of MB: S3 or `rclone` from inside a pod, not `kubectl cp` or `kubectl exec ... tar` (they go through the API server)
+- Tolerations and priority classes: tolerate only a named taint NRP approved for you, never `nautilus.io/system` or `nautilus.io/issue`, and never `operator: Exists` without a key; `priorityClassName` unset or `opportunistic`/`opportunistic2` (A100/H100/H200/GH200 quota is bypassed by `opportunistic`, with preemption at any time); never set `CUDA_VISIBLE_DEVICES`
+- Before applying: `kubectl apply --dry-run=server -f <manifest>`, and show the user the manifest. Everything an agent creates is the owner's action under NRP's rules
+
+### ConfigMaps, Secrets and etcd
+
+> **Source:** [nrp.ai/documentation/userdocs/start/policies/](https://nrp.ai/documentation/userdocs/start/policies/#kubernetes-objects-are-not-storage) (read 2026-11-24)
+
+ConfigMaps and Secrets (and every other Kubernetes object: its spec, labels, annotations, a Pod's `command`, `args` and `env`) are
+stored in etcd, one database shared by every namespace and every cluster component. When it grows, `kubectl`, scheduling and
+admission slow down or time out for everyone, and a full etcd stops the cluster. Objects are capped at about 1 MiB; that is a limit, not an allowance.
+
+**Why this section exists.** etcd filled up and caused an outage on 2026-11-14. On 2026-11-24 NRP blocked pod creation in
+`braingeneers` because agents had stored 590 ConfigMaps totalling 140 MB there, almost all code tarballs (key `code.tgz`, up to 900 KB each),
+one per job or per fix and never deleted.
+
+Rules:
+
+- A ConfigMap is for configuration measured in kilobytes: a settings file, environment values, a short entrypoint or helper script. A Secret is for credentials only.
+- Never put code bundles, source trees, archives (`.tar`, `.tgz`, `.zip`), build contexts, notebooks, datasets, inputs, outputs, results, logs, caches, checkpoints or model weights in a ConfigMap, a Secret, a label, an annotation, or a Pod's `command`/`args`/`env`.
+- Never base64-encode a file, or split it across several objects, to fit under the size limit. `kubectl apply` also keeps a second full copy of an object in its `last-applied-configuration` annotation; if apply says `metadata.annotations: Too long`, the object is too big: move the content out. Do not switch to `kubectl create` or `--server-side`.
+- **Code goes into the container image** (preferred when it is reused or large), **or is shipped as a tarball to S3 and fetched when the Job starts.** For a registered `nrp-monitor` task use `NRP_TASK=<task> nrp-task ship NAME [--from SUBDIR]`: it packs the task's code clone, uploads it to S3 and prints the startup lines (download, untar, run). `nrp-task ship` replaces `nrp-task configmap`. NRP's page names git (clone in an init container), an image, or a PVC for code, and S3 for build artifacts; we treat a code tarball in S3 as a build artifact. If NRP says otherwise, use the image.
+- Data, inputs, results and build artifacts go on a PVC (CephFS for shared access) or in S3, never in etcd.
+- One object per Job, run or fix (`code-0001`, `code-fix1`, ...) is exactly how the 590 piled up. Update a single object in place. If a Job needs a ConfigMap of its own, give it an `ownerReference` to the Job (Kubernetes then deletes it with the Job) or delete it when the Job finishes. When a task or run ends, list and delete the ConfigMaps you made.
+- Measure the namespace total (read-only):
+  ```bash
+  kubectl -n braingeneers get cm -o json --chunk-size=50 | jq '[.items[] | tojson | length] | {count: length, MB: ((add // 0) / 1e6)}'
+  ```
+  Many ConfigMaps, or tens of MB in total, is the problem above. Delete only ConfigMaps you created and no running Job mounts; tell Hunter about the rest.
+- Credentials still go in a Secret and are read with `secretKeyRef`, not copied into a manifest, an image or the chat; everyone in a namespace can read its Secrets, and Job specs are visible to other users (NRP's scheduling page says so for Armada jobs).
 
 ---
 
@@ -366,7 +405,10 @@ Edit `run_job.sh` to set:
 - `JOB_PREFIX` — prefix for Kubernetes job naming (currently `jrm`)
 - Resource limits (memory, CPU, storage) as needed
 
-> Credentials (`AWS_*`, `WANDB_API_KEY`) are read automatically from your environment variables — no need to edit them in the script.
+> Credentials (`AWS_*`, `WANDB_API_KEY`) in your local environment are for local tools (`aws`, `wandb`) only. In the Job
+> they come from Kubernetes Secrets with `secretKeyRef` (existing: `s3-credentials/access_key`, `s3-credentials/secret_key`,
+> `wandb-credentials/api-key`) or a mounted Secret volume, never as literal `value:` entries substituted into the manifest.
+> Check a manifest before applying: no env var named like `*SECRET*`, `*API_KEY*`, `*TOKEN*` or `*PASSWORD*` may carry a `value:`.
 
 ### Step 4: Submit Kubernetes Job
 ```bash
@@ -489,6 +531,9 @@ Remove-Item "$HOME\.kube\cache" -Recurse -Force
 kubectl get pods  # Will trigger fresh OIDC login
 ```
 
+### `metadata.annotations: Too long: may not be more than 262144 bytes`
+`kubectl apply` is carrying a ConfigMap that holds files. Do not switch to `kubectl create` or `--server-side`, and do not split the file. Move the content to the image or S3 (see [ConfigMaps, Secrets and etcd](#configmaps-secrets-and-etcd)).
+
 ### Image pull errors in Kubernetes
 If pods show `ImagePullBackOff`:
 1. Ensure image was pushed: `docker push hitpunch/nrp_template:latest`
@@ -500,6 +545,8 @@ If pods show `ImagePullBackOff`:
 ## External References
 
 - **[NRP Documentation](https://nrp.ai/documentation/)** — Official NRP docs covering cluster access, namespaces, storage, GPU scheduling, and more.
+- **[NRP Cluster Policies](https://nrp.ai/documentation/userdocs/start/policies/)** — the rules in full, including "Kubernetes objects are not storage"
+- **[NRP coding agents and skills](https://nrp.ai/documentation/userdocs/ai/coding-agents/)** and **[llms.txt](https://nrp.ai/llms.txt)** — NRP's guidance for AI agents and its preflight check (see `SKILL.md`, "NRP's own agent tooling")
 - **[NRP Kubeconfig](https://nrp.ai/config)** — Download your kubeconfig file for cluster access
 - **[kubelogin (OIDC plugin)](https://github.com/int128/kubelogin)** — GitHub repo for the kubectl OIDC authentication plugin
 - **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** — Docker for Windows with WSL 2 backend

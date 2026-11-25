@@ -101,6 +101,9 @@ def validate_agent_manifests(n, originals=None):
     errors = []
     for path in sorted(paths):
         try:
+            problems = manifest_configmap_problems(path)
+            if problems:
+                raise ValueError("; ".join(problems))
             manifest_structure(manifest_doc(path))
         except Exception as error:
             detail = manifest_error(path, error)
@@ -120,17 +123,55 @@ def validate_agent_manifests(n, originals=None):
     return errors
 
 
+CONFIGMAP_DATA_MAX = 16 * 1024
+CONFIGMAP_ARCHIVE_SUFFIXES = (".tgz", ".tar", ".tar.gz", ".zip")
+
+
+def manifest_documents(path):
+    text = Path(path).read_text()
+    try:
+        import yaml
+    except ImportError:
+        return [json.loads(text)]
+    return [doc for doc in yaml.safe_load_all(text) if doc]
+
+
+def configmap_problems(doc):
+    if not isinstance(doc, dict):
+        return []
+    if str(doc.get("kind", "")).endswith("List"):
+        return [problem for item in doc.get("items") or []
+                for problem in configmap_problems(item)]
+    if doc.get("kind") != "ConfigMap":
+        return []
+    name = (doc.get("metadata") or {}).get("name", "<unnamed>")
+    fields = {key: doc.get(key) or {} for key in ("data", "binaryData")}
+    for key, values in fields.items():
+        if not isinstance(values, dict):
+            return ["ConfigMap %s: %s must be a mapping" % (name, key)]
+    for values in fields.values():
+        for key in values:
+            if str(key).lower().endswith(CONFIGMAP_ARCHIVE_SUFFIXES):
+                return ["ConfigMap %s contains archive key %s. Use nrp-task ship." % (name, key)]
+    if len(json.dumps(fields, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")) > CONFIGMAP_DATA_MAX:
+        return ["ConfigMap %s exceeds %d KiB of serialized data and binaryData. Use nrp-task ship."
+                % (name, CONFIGMAP_DATA_MAX // 1024)]
+    return []
+
+
+def manifest_configmap_problems(path):
+    return [problem for doc in manifest_documents(path) for problem in configmap_problems(doc)]
+
+
 def manifest_check(path, ns, job):
     """Parse one Job manifest (YAML/JSON) and check the NRP house rules. Returns a list of problems."""
     try:
-        text = Path(path).read_text()
-        try:
-            import yaml
-            docs = [d for d in yaml.safe_load_all(text) if d]
-        except ImportError:
-            docs = [json.loads(text)]
+        docs = manifest_documents(path)
+        problems = [problem for doc in docs for problem in configmap_problems(doc)]
     except Exception as e:
         return ["cannot read manifest %s: %s" % (path, str(e)[:120])]
+    if problems:
+        return problems
     if len(docs) != 1 or not isinstance(docs[0], dict):
         return ["%s: exactly one Job per manifest file" % path]
     try:
@@ -496,6 +537,11 @@ def validate_task(raw, warn, plan_gpu=None):
                 bad.append("%s: manifest (path to the Job yaml) required and must exist" % w)
             else:
                 bad += ["%s: %s" % (w, p) for p in manifest_check(os.path.expanduser(m), ns, job)]
+        elif isinstance(m, str) and os.path.isfile(os.path.expanduser(m)):
+            try:
+                bad += ["%s: %s" % (w, p) for p in manifest_configmap_problems(os.path.expanduser(m))]
+            except Exception as e:
+                bad.append("%s: %s" % (w, manifest_error(m, e)))
         purpose = str(s.get("purpose") or s.get("type") or s.get("kind") or sid).lower()
         smoke = s.get("smoke") is True or s.get("profile") is True or purpose in ("smoke", "profile")
         if smoke and isinstance(m, str) and os.path.isfile(os.path.expanduser(m)):

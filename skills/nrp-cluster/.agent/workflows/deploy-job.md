@@ -62,6 +62,8 @@ $env:Path = "$env:Path;$HOME\.kube\bin"; kubectl get pods -n braingeneers 2>&1
 ## NRP Policy Reminders
 - Resource limits must be within 20% of requests
 - No `sleep infinity` in batch jobs (bannable offense)
+- No code, archives or data in ConfigMaps or Secrets (shared etcd); code goes in the image or an S3 tarball, never one ConfigMap per job. Delete any ConfigMap you create when the job ends
+- Run `kubectl apply --dry-run=server -f <manifest>` before the real apply; never `kubectl delete --force --grace-period=0`
 - GPU utilization must be >40%
 - A100s require a reservation at nrp.ai/reservations
 - Max 400 concurrent jobs

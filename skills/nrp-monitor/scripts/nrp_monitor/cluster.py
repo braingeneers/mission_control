@@ -1,5 +1,6 @@
 """NRP monitor cluster (mechanical extraction; R3a)."""
 import contextlib
+import heapq
 import json
 import re
 import subprocess
@@ -116,9 +117,59 @@ def fetch_jobs(ns):
     return out
 
 
+CONFIGMAP_NAMESPACE_WARN = 5 * 1024 * 1024
+CONFIGMAP_CHECK_INTERVAL = 3600
+
+
+def check_namespace_configmaps(a, st):
+    """Read one API page at a time and retain only the ten largest ConfigMaps."""
+    from . import notify as _m_notify
+    ns = _m_state.NS
+    now = _m_state.now()
+    checked = st.setdefault("configmaps_checked", {})
+    if a.dry_run or (ns in checked and now - checked[ns] < CONFIGMAP_CHECK_INTERVAL):
+        return
+    checked[ns] = now
+    # Persist the attempt before I/O so a failed or interrupted pass still respects the interval.
+    with _m_state.state_lock():
+        disk = _m_state.load()
+        disk.setdefault("configmaps_checked", {})[ns] = now
+        _m_state.save(disk)
+    endpoint = "/api/v1/namespaces/%s/configmaps" % urllib.parse.quote(ns, safe="")
+    params = {"limit": 50}
+    count, total, largest = 0, 0, []
+    while True:
+        result = kubectl("get", "--raw", endpoint + "?" + urllib.parse.urlencode(params), timeout=30)
+        if result.returncode:
+            raise RuntimeError(result.stderr.strip()[:150] or "kubectl get configmaps failed")
+        page = json.loads(result.stdout)
+        for obj in page["items"]:
+            size = len(json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+            count += 1
+            total += size
+            heapq.heappush(largest, (size, obj["metadata"]["name"]))
+            if len(largest) > 10:
+                heapq.heappop(largest)
+        token = page.get("metadata", {}).get("continue")
+        if not token:
+            break
+        params["continue"] = token
+    if total > CONFIGMAP_NAMESPACE_WARN:
+        names = ", ".join(name for _, name in sorted(largest, reverse=True))
+        _m_notify.digest("configmaps", "Namespace %s has %d ConfigMaps totaling %d serialized JSON bytes. Largest: %s"
+                         % (ns, count, total, names))
+
+
 def apply_manifest(ns, path):
     """'ok' | 'blocked' | error text. Server dry-run first."""
     from . import red_alert as _m_red_alert  # Local import breaks orchestration cycle; patches stay on the defining module.
+    from .task import registry as _m_task_registry
+    try:
+        problems = _m_task_registry.manifest_configmap_problems(path)
+    except Exception as e:
+        return _m_task_registry.manifest_error(path, e)
+    if problems:
+        return "; ".join(problems)
     for extra in (["--dry-run=server"], []):
         r = kubectl("-n", ns, "apply", *extra, "-f", path, timeout=180)
         if r.returncode:
