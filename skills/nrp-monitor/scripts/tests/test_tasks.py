@@ -687,10 +687,10 @@ class T(unittest.TestCase):
         self.assertEqual(next(work.glob("nrp-code.*/job/run.py")).read_bytes(), (source / "run.py").read_bytes())
         self.assertIn("shipped code alice-t1-bundle", json.dumps(self.task()))
         with (source / "large.py").open("wb") as f:
-            f.truncate(31 * 1024 * 1024)
+            f.truncate(129 * 1024 * 1024)
         rc, out = self.tool("alice-t1", "ship", "alice-t1-oversized", "--allow-unpushed")
         self.assertNotEqual(rc, 0)
-        self.assertIn("exceeds 30 MiB", out)
+        self.assertIn("exceeds 128 MiB", out)
         self.assertIn("inside the clone", self.tool("alice-t1", "ship", "alice-t1-bundle", "--from", "..")[1])
         rc, out = self.tool("", "configmap", "alice-t1-bundle")
         self.assertNotEqual(rc, 0)

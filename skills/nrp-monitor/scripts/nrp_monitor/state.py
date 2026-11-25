@@ -137,7 +137,8 @@ AUTH_TURNS, AUTH_BUDGET, AUTH_TIMEOUT = "45", "4.00", 2400   # authorized (debug
 
 APPROVED = STATE / "approved"                                # per task: manifest.yaml, code/, code.orig/, PATCH.diff
 
-CODE_SNAPSHOT_MAX = 30 * 1024 * 1024
+CODE_SNAPSHOT_MAX = 128 * 1024 * 1024   # unpacked tracked source (large curated CSVs are normal)
+CODE_ARCHIVE_MAX = 30 * 1024 * 1024     # compressed bundle uploaded to S3
 
 CODE_SKIP = (".git", "__pycache__", ".pytest_cache", "results", "node_modules")
 

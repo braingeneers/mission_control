@@ -140,8 +140,8 @@ def pack(clone, commit, dirs, archive):
                     bundle.addfile(member, blobs)
                     if blobs.read(1) != b"\n":
                         raise state.ChainError("incomplete Git blob for %s" % name)
-    if archive.stat().st_size > limit:
-        raise state.ChainError("code archive exceeds %d MiB" % (limit // 2**20))
+    if archive.stat().st_size > state.CODE_ARCHIVE_MAX:
+        raise state.ChainError("code archive exceeds %d MiB" % (state.CODE_ARCHIVE_MAX // 2**20))
     with gzip.open(archive, "rb") as uncompressed:
         tar_hash = stream_sha256(uncompressed)
     with archive.open("rb") as compressed:

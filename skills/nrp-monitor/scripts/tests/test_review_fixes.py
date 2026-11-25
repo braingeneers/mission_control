@@ -92,7 +92,7 @@ def test_staging_explicit_files_and_ref(repo, monkeypatch):
             shipping.commit_code(task, "test", clone, [Path(".")])
         assert shipping.checked_git(clone, "head unavailable", "rev-parse", "HEAD") == head
     with monkeypatch.context() as patch:
-        patch.setattr(state, "CODE_SNAPSHOT_MAX", 32)
+        patch.setattr(state, "CODE_ARCHIVE_MAX", 32)
         with pytest.raises(state.ChainError, match="code archive exceeds"):
             shipping.commit_code(task, "test", clone, [Path(".")])
         assert shipping.checked_git(clone, "head unavailable", "rev-parse", "HEAD") == head
