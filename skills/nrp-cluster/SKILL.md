@@ -48,16 +48,11 @@ needs cluster diagnostics. Nextflow owns submission and retries of its workers.
 
 ## Policy Reminders (high priority)
 
-- **ConfigMaps and Secrets are not storage.** They live in the cluster's shared etcd, and a full etcd stops the whole
-  cluster. A ConfigMap holds configuration of a few KB (settings, a short entrypoint script); a Secret holds credentials.
-  Never put code bundles, archives (`.tgz`, `.zip`), source trees, data, notebooks, results, logs or checkpoints in either,
-  and never base64-encode or split a file to fit. Code goes into the container image, or is shipped as a tarball to S3 and
-  fetched when the Job starts (`nrp-task ship`, from the `nrp-monitor` skill; there is no `nrp-task configmap`). One
-  ConfigMap per Job, run or fix (`code-fix1`, `code-fix2`) is the failure to avoid: update one object in place, and delete any
-  ConfigMap you create when its Job finishes. Check the namespace total (see "ConfigMaps, Secrets and etcd" in
-  `references/nrp_setup.md`). Why this is here: etcd filled up and took the cluster down on 2026-11-14, and on 2026-11-24 NRP
-  blocked pod creation in `braingeneers` because agents had stored 590 ConfigMaps (140 MB, nearly all `code.tgz` tarballs, one per
-  job or fix, never deleted) there.
+- **Keep ConfigMaps to a few KB of runtime settings.** ConfigMaps and Secrets use shared etcd. Put runnable code in the
+  image, or fetch a versioned code bundle from S3 at startup. Put models, datasets, archives, and outputs in S3 or on a PVC
+  (CephFS when Jobs need shared access). Use Secrets for credentials. Base64, compression, and splitting files do not make
+  Kubernetes objects suitable for shipping files. Give legitimate per-Job configuration a cleanup path and verify its
+  removal after completion or cancellation. See [ConfigMaps, Secrets and etcd](references/nrp_setup.md#configmaps-secrets-and-etcd).
 - No `sleep infinity` in batch jobs (or any command that never ends, such as `tail -f /dev/null`).
 - Every container sets CPU, memory and ephemeral-storage requests and limits; resource limits should track requests within policy boundaries.
 - GPU utilization should stay above 40% on GPU jobs.
@@ -71,7 +66,15 @@ needs cluster diagnostics. Nextflow owns submission and retries of its workers.
 
 ## NRP's own agent tooling
 
-NRP publishes agent skills that teach an agent the cluster's rules, plus a preflight check that reads a manifest or `kubectl` command and reports what policy forbids without creating anything. Source: https://nrp.ai/documentation/userdocs/ai/coding-agents/ (page dated 2026-11-24); repository https://github.com/nrp-nautilus/sdsc-marketplace (plugin `nrp-nautilus`: skills `nrp`, `nrp-run`, `nrp-llm`, `kubernetes`; `skills/nrp/scripts/nrp_preflight.py`; in Claude Code it also runs as a hook before each `kubectl` command sent to the context named `nautilus`; set `NRP_PREFLIGHT_CONTEXTS` for another name). Not installed here, and NRP's `main` branch may still be 0.2.0 without the preflight (0.3.0 was on branch `nrp-nautilus-0.3.0` on 2026-11-24). Ask before installing; when it is installed, run the preflight on each manifest before `--dry-run=server`. NRP's machine-readable rules for any agent: https://nrp.ai/llms.txt. Read-only usage questions (top namespaces, per-namespace trends): NRP Accounting MCP server, `https://nrp-accounting-mcp.nrp-nautilus.io/` (details: https://nrp.ai/documentation/userdocs/ai/accounting-mcp/).
+Use the [official NRP coding-agent guide](https://nrp.ai/documentation/userdocs/ai/coding-agents/)
+to find the current `nrp-nautilus` plugin and its `nrp_preflight.py`. Run the preflight on the
+rendered manifest before the server-side dry run. Codex does not run the plugin's Claude Code
+hook. If the preflight is unavailable, use the setup instructions in the NRP guide. The preflight
+warns above 113 KiB and blocks above 256 KiB for ConfigMaps and Secrets. These thresholds are
+safeguards. Move bulk content out even when the check accepts its size.
+
+For NRP's machine-readable rules see [llms.txt](https://nrp.ai/llms.txt).
+For namespace usage trends see [NRP Accounting MCP](https://nrp.ai/documentation/userdocs/ai/accounting-mcp/).
 
 ## Resource sizing and utilization
 

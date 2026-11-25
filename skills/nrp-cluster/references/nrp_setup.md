@@ -251,10 +251,6 @@ ConfigMaps and Secrets (and every other Kubernetes object: its spec, labels, ann
 stored in etcd, one database shared by every namespace and every cluster component. When it grows, `kubectl`, scheduling and
 admission slow down or time out for everyone, and a full etcd stops the cluster. Objects are capped at about 1 MiB; that is a limit, not an allowance.
 
-**Why this section exists.** etcd filled up and caused an outage on 2026-11-14. On 2026-11-24 NRP blocked pod creation in
-`braingeneers` because agents had stored 590 ConfigMaps totalling 140 MB there, almost all code tarballs (key `code.tgz`, up to 900 KB each),
-one per job or per fix and never deleted.
-
 Rules:
 
 - A ConfigMap is for configuration measured in kilobytes: a settings file, environment values, a short entrypoint or helper script. A Secret is for credentials only.
@@ -262,12 +258,12 @@ Rules:
 - Never base64-encode a file, or split it across several objects, to fit under the size limit. `kubectl apply` also keeps a second full copy of an object in its `last-applied-configuration` annotation; if apply says `metadata.annotations: Too long`, the object is too big: move the content out. Do not switch to `kubectl create` or `--server-side`.
 - **Code goes into the container image** (preferred when it is reused or large), **or is shipped as a tarball to S3 and fetched when the Job starts.** For a registered `nrp-monitor` task use `NRP_TASK=<task> nrp-task ship NAME [--from SUBDIR]`: it packs the task's code clone, uploads it to S3 and prints the startup lines (download, untar, run). `nrp-task ship` replaces `nrp-task configmap`. NRP's page names git (clone in an init container), an image, or a PVC for code, and S3 for build artifacts; we treat a code tarball in S3 as a build artifact. If NRP says otherwise, use the image.
 - Data, inputs, results and build artifacts go on a PVC (CephFS for shared access) or in S3, never in etcd.
-- One object per Job, run or fix (`code-0001`, `code-fix1`, ...) is exactly how the 590 piled up. Update a single object in place. If a Job needs a ConfigMap of its own, give it an `ownerReference` to the Job (Kubernetes then deletes it with the Job) or delete it when the Job finishes. When a task or run ends, list and delete the ConfigMaps you made.
+- Reuse shared configuration when its settings and lifecycle are shared. Keep run-specific settings isolated when concurrent Jobs need different values. For legitimate per-Job configuration, use a Job owner reference with Job TTL or an explicit cleanup path covering completion, cancellation, and launch failure. Verify cleanup after the workloads stop.
 - Measure the namespace total (read-only):
   ```bash
   kubectl -n braingeneers get cm -o json --chunk-size=50 | jq '[.items[] | tojson | length] | {count: length, MB: ((add // 0) / 1e6)}'
   ```
-  Many ConfigMaps, or tens of MB in total, is the problem above. Delete only ConfigMaps you created and no running Job mounts; tell Hunter about the rest.
+  Check current consumers and recoverability before deleting ConfigMaps you own or are authorized to clean up. An empty list of pod references alone does not establish that a map is unused.
 - Credentials still go in a Secret and are read with `secretKeyRef`, not copied into a manifest, an image or the chat; everyone in a namespace can read its Secrets, and Job specs are visible to other users (NRP's scheduling page says so for Armada jobs).
 
 ---

@@ -69,7 +69,7 @@ Download (S3) → Compute (run_pipeline_local.sh) → Upload (S3) → Log (W&B)
 - **No `sleep` in batch jobs** (use Jobs, not bare Pods)
 - Resource **limits within 20%** of requests
 - GPU utilization must be **>40%**
-- **No code, archives, data or results in ConfigMaps or Secrets** (shared etcd; 590 code tarballs got pod creation blocked on 2026-11-24). Code goes in the image or an S3 tarball (`nrp-task ship`); delete any ConfigMap you create when its Job ends. See `NRP_SETUP.md`, "ConfigMaps, Secrets and etcd"
+- **Keep ConfigMaps to a few KB of runtime settings.** Ship code in the image or through S3, and put models, datasets, and other files in S3 or on a PVC. Verify removal of legitimate per-Job configuration after shutdown. See `NRP_SETUP.md`, "ConfigMaps, Secrets and etcd".
 - Never `kubectl delete --force --grace-period=0`; set `ephemeral-storage` requests and limits too; pack short tasks into one Indexed Job instead of many pods
 - No HIPAA/PII/FERPA data
 - A100s require reservation at nrp.ai/reservations
