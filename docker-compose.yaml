@@ -1116,11 +1116,13 @@ services:
   # and digest come from service/image.lock. Paper processing runs in this container.
   # Uploads use relay mode because the braingeneers bucket CORS only allows the uploader origins.
   lit-map:
-    image: hschweiger15/lit-map-service:20261120-3e9da1a5@sha256:58a1b93b6ea227cff0495cd8be4e88c704de4b6735ca10d9b8e8832baf836bf6
+    image: hschweiger15/lit-map-service:20261125-6e438d57@sha256:3235488dceb8c0118c46c2c49b540336d80be861ec61a9e35384b15d6be4d4e1
     container_name: lit-map
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
+    # Measured peak 780 MiB with 3 annotations + 1 prepare (lit-map 2026-11-25); 2g leaves Linux headroom.
+    mem_limit: 2g
     expose:
       - "8000"
     environment:
@@ -1134,7 +1136,11 @@ services:
       LITMAP_PREFIX: "literature/"
       LITMAP_SITE_PREFIX: "braindance/_lit-map/"
       LITMAP_WORK: "/local/lit-map"
-      LITMAP_PAPER_WORKERS: "2"
+      # Up to 3 papers annotate at once (NRP fair use: 16 concurrent per user on deepseek/qwen3, 2 on glm-5,
+      # enforced in-service); the 4th slot keeps preparing the next paper.
+      LITMAP_PAPER_WORKERS: "4"
+      LITMAP_ANNOTATION_WORKERS: "3"
+      LITMAP_REASONING_EFFORT: "low"
       AWS_SHARED_CREDENTIALS_FILE: "/secrets/prp-s3-credentials/credentials"
       NRP_LLM_API_KEY_FILE: "/secrets/nrp-llm-api-key/nrp_llm_api_key"
       LITMAP_UPLOAD_MODE: "presigned"
