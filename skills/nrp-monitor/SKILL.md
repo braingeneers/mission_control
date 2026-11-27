@@ -91,10 +91,12 @@ submitter.
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).
-- GPU pods are also judged on long averages, because NRP enforces a ~3 h average and 10-min samples miss Jobs that alternate GPU and CPU
-  phases (owner decision 2026-11-15): a 1 h GPU mean under NRP's 40 % floor wakes the owning chat with an urgent order to stop the Job now and redesign it (at most hourly; the owner gets a short DM only when no chat can be woken); a 90-min mean under it (30 min after the warning, time to save logs) makes
-  the monitor save the logs and delete the Job itself, and a task's stage fails as util/gpu so the fixer restructures before any resubmit.
-  GPU flags never wait for "time left".
+- **GPU floor: no exceptions (Hunter 2026-11-26: "there is really no excuse to be using the gpu that horribly").** Any GPU flag on a
+  pod past ramp-up (10 min) stops the Job: the judge cannot CLOSE it, the fixer deletes the Job and reports STOPPED with the GPU duty
+  cycle and a redesign; "progressing", "almost done" or "the 1 h mean is not in yet" never keep it running, and no waiver applies.
+  Long averages are backstops for jobs that alternate GPU and CPU phases (NRP enforces a ~3 h average): a 1 h GPU mean under 40%
+  wakes the owning chat with an order to stop now; a 90-min mean under it makes the monitor save logs and delete the Job itself,
+  and the stage fails as util/gpu so the fixer restructures before any resubmit. GPU flags never wait for "time left".
 - When NRP refuses a submit for utilization ("resources utilization is too low"), the task goes `blocked`; the first time, the script checks every
   Running pod in the namespace (not only ours) with `nrp-util-check`, records the pods outside the bands with their owners and usage on the task,
   and wakes the coordinator chat once (fix our own, ask the owner before touching others'). It does not retry in a loop: it re-checks every ~10 minutes

@@ -9,7 +9,7 @@ What you may do (each as ONE command, no pipes, `;` or `&&`):
   - FAILED or lost Job: fix the cause and resubmit.
       * resources, deadline, node choice, env: edit {dir}/manifest.yaml (or write the corrected Job yaml there). Size memory/CPU from what the
         pod actually used (kubectl top is not available; use the log, `describe` OOMKilled/exit codes, and nrp-util-check notes in the resume text).
-        Keep GPU count, image and security settings; GPU Jobs keep >40% utilization in mind; no sleep; backoffLimit 0.
+        Keep GPU count, image and security settings; a GPU Job must keep GPU use above 40% the whole time (if it cannot, STOP and say why; never resubmit it unchanged); no sleep; backoffLimit 0.
       * code bug: edit files under {dir}/code and run `python3 -m py_compile` on them. Save `diff -ruN {dir}/code.orig {dir}/code`
         output into {dir}/PATCH.diff via Write so the owner can merge it. Ship the code through S3 and update the Job to fetch
         and unpack it at startup. For a registered task clone, use `nrp-task ship NAME`. For this legacy snapshot, ask the

@@ -77,7 +77,9 @@ What to do for each class:
   stage, another design), the code cannot use more cores, the stage was already resized and the gain was small, or
   `gpu_ok_until` has passed. The coordinator chat then decides whether to take it on itself or escalate to the owner.
   If you only prepared a manifest for later runs, report DONE with the change and why the running Job is left alone.
-  Historical util failures may use the checked UTIL_OK waiver below; new observations do not need a waiver to keep running.
+  Historical util failures may use the checked UTIL_OK waiver below; new CPU/memory lab-floor observations do not need a waiver to
+  keep running. This NEVER applies to a GPU flag (rule gpu): `nrp-task delete` the Job now and report STOPPED with the GPU duty cycle
+  and the redesign (see the GPU rule below). A GPU flag is never DONE/no change, never UTIL_OK, and never waits for the 1 h mean.
 - queue (the deadline passed while the pod was Pending): raise activeDeadlineSeconds by the queue wait (GPU queues can take
   hours). Change nothing else.
 - infra (image pull, configmap missing, node trouble, a vanished Job, a transient network error): fix the manifest if the

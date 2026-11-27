@@ -104,6 +104,13 @@ memory as `ceil(max(true peaks, recorded OOM limits) * 1.5)` GiB. Sampled metric
 can miss transient loading spikes. See [Smoke/profile sizing](#smokeprofile-sizing).
 
 NRP uses GPU above 40%, CPU 20–200%, and memory 20–150% of the request.
+
+**GPU Jobs are designed for the floor before they are submitted, not fixed after.** Target at least 60% GPU so normal variation
+never drops under 40%. A GPU pod only runs GPU work: S3 staging, decoding, preprocessing and writing go to a prior CPU stage or to
+parallel prefetch workers that keep the GPU fed; batch many items per GPU call or run several items concurrently per pod. Estimate
+the duty cycle (GPU seconds / wall seconds per item) from a profile, and make the smoke stage log both and its GPU %; do not fan out
+a GPU Job whose smoke ran under 40%. A Job that drops under the floor is stopped and redesigned, never left to finish.
+
 See `nrp` → `references/policies.md` → Utilization thresholds for RSS, the
 small-pod exemption, and the allowance of four pods outside the bands.
 The [shared monitor policy](references/utilization-policy.json) supplies the

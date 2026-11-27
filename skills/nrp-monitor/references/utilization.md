@@ -48,6 +48,12 @@ read from its tag).
 
 ## Running task observations
 
+**GPU flags (`rule=gpu`) have no grace and no waiver.** Past a 10-minute ramp-up, a GPU under 40% means the Job is stopped and the
+stage redesigned before any resubmit: the triage judge must ESCALATE, the fixer deletes the Job and reports STOPPED with the GPU duty
+cycle (GPU seconds vs wall seconds per item) and the fix (CPU staging stage or parallel prefetch, batching, several items per pod, or
+no GPU). Progress, nearness to done, time left and resumability are not reasons to keep it. The 1 h / 90 min long means only catch
+jobs that alternate phases; they are not a grace period.
+
 An NRP CPU or memory band flag (`rule=nrp`, LOW or HIGH) waits through pod ramp-up:
 25% of measured stage runtime, capped at 15 minutes, or 10 minutes without measured history.
 Age comes from the flag line (pod start time); an unknown age is treated as past ramp-up. During ramp-up there is no stop, restart, wake or grace timer;
