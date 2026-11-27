@@ -34,6 +34,17 @@ def gpu_floor():
         return 0.40
 
 
+def gpu_ramp_up_minutes():
+    """GPU ramp-up defaults to 10 minutes and can be raised to 20."""
+    from . import state as _m_state
+    value = os.environ.get("NRP_MONITOR_GPU_RAMP_UP_MINUTES") or _m_state.OWNER.get("gpu_ramp_up_minutes", 10)
+    try:
+        value = float(value)
+        return min(value, 20) if value >= 10 else 10
+    except (TypeError, ValueError):
+        return 10
+
+
 def max_jobs():
     """Cap on our unfinished Jobs at once: `max_concurrent_jobs` of the effective policy (shared default 400; a local override
     may only lower it). NRP_MONITOR_MAX_JOBS can lower it further for one run."""

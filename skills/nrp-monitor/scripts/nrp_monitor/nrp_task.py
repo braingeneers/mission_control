@@ -224,7 +224,8 @@ def cmd_tool(a):
         if util_retry:
             evidence = util.get("evidence") or {}
             if util.get("rule") == "gpu":                                 # a GPU under NRP's floor is a policy violation, not a sizing question:
-                pass                                                      # stopping it never waits for "time left" or resumability
+                if not _m_state.GPU_PCT_RE.search(util["detail"]) or "no DCGM series" in util["detail"]:
+                    sys.exit("utilization review: a GPU observation without a measured DCGM flag cannot authorize deletion")
             elif not _m_timeouts.stage_resumable(jobs[j]) or (util.get("rule") != "nrp" and  # NRP floor: restart whenever it resumes
                                                   (evidence.get("remaining_seconds") or 0) - max(0, _m_state.now() - util.get("ts", _m_state.now())) <= 7200):
                 sys.exit("utilization review: leave running Job to finish; resubmit requires resumable stage and >2h measured time left")

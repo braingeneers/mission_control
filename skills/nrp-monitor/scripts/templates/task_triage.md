@@ -26,8 +26,8 @@ With need=max(peaks, recorded OOM limits), right=ceil(need*1.5) Gi, request <=1.
 sized correctly. Record the OOM/spike reason and CLOSE.
 Do not STOP or escalate solely for a low mean when this evidence explains the sizing.
 
-GPU flag (rule gpu, a GPU under NRP's 40% floor): never CLOSE, whatever the progress or time left. ESCALATE with the GPU %,
-the pod age and the per-item GPU vs wall time from the log; the fixer stops the Job.
+The monitor handles measured GPU flags after ramp-up directly. If a GPU observation reaches you without a measured DCGM
+reading, document the missing measurement. That observation cannot authorize deletion.
 
 Follow these steps for EVERY event:
 1. Read the event and supplied evidence. Check whether the Job is alive, failed, or complete and whether its outputs exist.

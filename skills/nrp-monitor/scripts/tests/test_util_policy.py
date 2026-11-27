@@ -141,9 +141,11 @@ class Policy(unittest.TestCase):
         # 2 GiB is above the policy's 2e9-byte exemption, so the same idle pod is an NRP-band violation
         big = m.pod_lines(a, "p", 3600, {"req": {"cpu": 1, "memory": 2 * 2 ** 30}, "cpu": 0.1, "mem": 1.9 * 2 ** 30, "gpus": []}, 10)
         self.assertTrue(big.endswith('[NRP violation] rule=nrp'), big)
-        gpu = m.pod_lines(a, "p", 3600, {"req": {"cpu": 4, "memory": 8e9, "nvidia_com_gpu": 1}, "cpu": 4, "mem": 8e9,
+        gpu = m.pod_lines(a, "p", 599, {"req": {"cpu": 4, "memory": 8e9, "nvidia_com_gpu": 1}, "cpu": 4, "mem": 8e9,
                                          "gpus": [("0", "A100", 5.0)]}, 10)
         self.assertTrue(gpu.endswith('rule=gpu'), gpu)
+        self.assertIn('age 9m', gpu)
+        self.assertIn('cpu 4.00/4.00 (100%)', gpu)
         both = m.pod_lines(a, "p", 3600, {"req": {"cpu": 4, "memory": 8e9, "nvidia_com_gpu": 1}, "cpu": 0.1, "mem": 8e9,
                                           "gpus": [("0", "A100", 5.0)]}, 10)
         self.assertTrue(both.endswith('rule=gpu'), 'a GPU flag always wins: ' + both)

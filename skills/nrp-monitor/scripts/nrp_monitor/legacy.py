@@ -73,7 +73,12 @@ def check_pods(a, st):
     for kind, pod, line in flagged:
         strike = 2 if st["strikes"].get(pod) else 1
         gap = 10**9 if kind == "FAILED" else (_m_state.STRIKE_GAP_S if strike == 2 else _m_state.POD_DEDUPE_S)
-        if _m_state.now() - st["pods"].get(pod, 0) < gap and not (_m_util.flag_rule(line) == "nrp" and _m_state.task_of_job(mine.get(pod))):
+        rule = _m_util.flag_rule(line)
+        owner = mine.get(pod)
+        namespace = _m_state.NS if rule == "gpu" else None
+        tk = _m_state.task_of_job(owner, namespace=namespace) if owner and kind != "FAILED" else None
+        safety_flag = rule == "nrp" or (rule == "gpu" and _m_state.GPU_PCT_RE.search(line) and "no DCGM series" not in line)
+        if _m_state.now() - st["pods"].get(pod, 0) < gap and not (safety_flag and tk):
             continue
         if kind == "FAILED":
             if not a.dry_run:
@@ -81,9 +86,7 @@ def check_pods(a, st):
             _m_notify.notify("pod %s FAILED (not deleted; read its logs, delete the Job when done)" % pod, st, None, a.dry_run,
                    ref=_m_wake.owner_of_job(st, mine.get(pod)) or "-")
             continue
-        owner = mine.get(pod)
-        tk = _m_state.task_of_job(owner) if owner else None
-        if tk:                                                            # a task's pod: the task's fix agent handles it
+        if tk:                                                            # route the registered pod through task safety and review rules
             if not a.dry_run:
                 st["pods"][pod] = _m_state.now()
                 _m_util.task_pod_flag(st, tk[0], tk[1], pod, kind, line)

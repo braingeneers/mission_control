@@ -586,11 +586,11 @@ def tstage(t, sid):
     return next(s for s in t["stages"] if s["id"] == sid)
 
 
-def task_of_job(job):
+def task_of_job(job, namespace=None):
     """(task name, stage id) of a live task whose stage runs Job `job`."""
     for n in task_names():
         t = task_load(n)
-        if t and t["status"] in TASK_LIVE + TASK_HELD:
+        if t and t["status"] in TASK_LIVE + TASK_HELD and (namespace is None or t["namespace"] == namespace):
             for s in t["stages"]:
                 if s["job"] == job and s["state"] in ("running", "failed"):
                     return n, s["id"]
@@ -684,14 +684,11 @@ request <= 1.2*right is sized correctly; above it is oversized. If max/median >3
 through their whole life, split inputs into size groups. Missing peaks or incomparable pods require explicit review.
 Fixer: edit manifests structurally (load YAML, change, dump), never by text substitution; every edit is validated. Write right into the manifest for retries/later runs. Leave running work to finish unless measured time remaining >2h
 AND the stage is resumable; only then resubmit at right. Never shrink below OOM evidence. UTIL flags alone never hold a task.
-GPU (rule gpu) is a hard rule with no exceptions: a GPU under NRP's 40% floor gets pods deleted and the account violations (three
-strikes suspend it), and an idle GPU is never acceptable. Any GPU flag on a pod past ramp-up (10 min after start) means STOP NOW.
-The judge never CLOSEs a GPU flag: ESCALATE. The fixer never reports DONE/no change and never UTIL_OK for it: `nrp-task delete` the Job
-now, then report STOPPED with the GPU duty cycle (GPU seconds per item vs wall seconds per item, from the log) and the redesign. Not
-reasons to keep it running: "progressing", "almost done", "outputs are appearing", "the 1 h mean is not in yet", "time left", "resumable
-or not". The usual fixes: move loading/staging/CPU work into a CPU stage or parallel prefetch workers so the GPU only runs the model,
-batch many items per GPU call, run several items concurrently per pod, or drop the GPU request for work that is not GPU-bound.
-The 1 h warning and the monitor's own 90-min auto-delete are backstops for jobs that alternate phases, not grace periods."""
+GPU (rule gpu): at or after pod ramp-up (10 minutes by default, at most 20), the monitor stops a measured GPU flag and wakes
+the coordinator directly. Missing DCGM measurements require investigation and cannot authorize deletion. For a stopped stage,
+diagnose the GPU duty cycle (GPU seconds per item vs wall seconds per item) and redesign: CPU staging or prefetch, batching,
+several items per pod, or a CPU-only request. Submission refuses the same manifest and shipped code. The 1 h warning and
+90 min auto-delete are backstops for jobs that alternate phases."""
 
 # ---- plans: on_done continuation (feature flag, default OFF; design docs/agents/plan-run/WATCHDOG_ON_DONE.md) ----
 # A task may carry  "on_done": {"plan": "path/to/PLAN.md#plan-id", "from_step": "2"}.  `task add` copies that plan section

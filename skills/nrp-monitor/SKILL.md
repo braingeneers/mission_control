@@ -91,12 +91,12 @@ submitter.
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).
-- **GPU floor: no exceptions (Hunter 2026-11-26: "there is really no excuse to be using the gpu that horribly").** Any GPU flag on a
-  pod past ramp-up (10 min) stops the Job: the judge cannot CLOSE it, the fixer deletes the Job and reports STOPPED with the GPU duty
-  cycle and a redesign; "progressing", "almost done" or "the 1 h mean is not in yet" never keep it running, and no waiver applies.
-  Long averages are backstops for jobs that alternate GPU and CPU phases (NRP enforces a ~3 h average): a 1 h GPU mean under 40%
-  wakes the owning chat with an order to stop now; a 90-min mean under it makes the monitor save logs and delete the Job itself,
-  and the stage fails as util/gpu so the fixer restructures before any resubmit. GPU flags never wait for "time left".
+- **GPU floor.** A measured GPU flag at or after pod ramp-up (10 minutes by default, configurable up to 20) makes the
+  monitor save logs and descriptions, delete the owned Job even in watch mode, fail the stage as util/gpu, and wake the
+  coordinator once to redesign it. During ramp-up the monitor records one event per pod. Flags without a measured DCGM
+  reading stay in utilization review and cannot authorize deletion. The stop bypasses the judge, fixer and waiver, and
+  submission refuses the same manifest and shipped code. The 1 h warning and 90 min auto-delete remain backstops for Jobs
+  that alternate CPU and GPU phases.
 - When NRP refuses a submit for utilization ("resources utilization is too low"), the task goes `blocked`; the first time, the script checks every
   Running pod in the namespace (not only ours) with `nrp-util-check`, records the pods outside the bands with their owners and usage on the task,
   and wakes the coordinator chat once (fix our own, ask the owner before touching others'). It does not retry in a loop: it re-checks every ~10 minutes
@@ -158,7 +158,7 @@ The optional Antigravity `agy` runner is triage-only; select it through setup, e
 
 ## Utilization review and wake routes
 
-Utilization flags leave healthy stages running. The triage judge returns CLOSE or ESCALATE; the fixer makes every change. Memory LOW uses ramp-up, whole-life per-pod peaks and recorded OOM limits, with 50% headroom. NRP-band flags (`rule=nrp`) wait through ramp-up (25% of measured runtime, at most 15 min; 10 min without history), count only our account toward the safety stop, and never auto-restart a stage the coordinator resized or resumed. See [utilization](references/utilization.md) for the exact rule and worked example.
+The triage judge returns CLOSE or ESCALATE for utilization observations. The monitor applies measured GPU stops and NRP band rules directly. Memory LOW uses ramp-up, whole-life per-pod peaks and recorded OOM limits, with 50% headroom. NRP-band flags (`rule=nrp`) wait through ramp-up (25% of measured runtime, at most 15 min; 10 min without history), count only our account toward the safety stop, and never auto-restart a stage the coordinator resized or resumed. See [utilization](references/utilization.md) for the exact rule and worked example.
 
 T3 origins can use `origin.link: "t3-thread://v2/ENV/THREAD"` (angle brackets around the link are accepted).
 A configured `<state>/webhooks/<task>` remains the preferred T3 route. Otherwise the monitor sends the wake text

@@ -313,7 +313,12 @@ def pod_lines(a, n, age, m, w):
     tag = "NRP violation" if nb else (f"{lab}; NRP-exempt size" if small_pod(rc, rm) else lab)
     # which rule flagged the pod, for scripts: gpu (any GPU flag), nrp (a CPU/memory band NRP counts), lab (the lab floor only)
     rule = "gpu" if any(b.startswith("gpu") for b in bad) else ("nrp" if nb else "lab")
-    return f"LOW {n} age {age/60:.0f}m, {w}m mean: " + ", ".join(bad) + f" [{tag}] rule={rule}"
+    age_minutes = round(age / 60)
+    if rule == "gpu":
+        age_minutes = int(age // 60)  # A safety stop cannot use an age rounded up across the ramp-up threshold.
+        if rc and not any(item.startswith("cpu ") for item in bad):
+            bad.insert(0, f"cpu {m['cpu']:.2f}/{rc:.2f} ({100*m['cpu']/rc:.0f}%)")
+    return f"LOW {n} age {age_minutes}m, {w}m mean: " + ", ".join(bad) + f" [{tag}] rule={rule}"
 
 
 def check(a):

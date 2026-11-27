@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import stat
+from pathlib import Path
 import types
 from unittest.mock import patch
 
@@ -50,7 +51,7 @@ def env(monitor, tmp_path, monkeypatch):  # noqa: F811
         metadata = {"uid": "work-17-uid", "annotations": {"nrp.ai/username": "alice"}}
         return types.SimpleNamespace(returncode=0, stdout=json.dumps({"metadata": metadata}), stderr="")
 
-    patches = [patch.object(m, "USER_ANN", "alice"), patch.object(m, "push", side_effect=lambda msg, key, *a, **k: pushes.append((key, msg))),
+    patches = [patch.object(m, "NS", t["namespace"]), patch.object(m, "USER_ANN", "alice"), patch.object(m, "push", side_effect=lambda msg, key, *a, **k: pushes.append((key, msg))),
                patch.object(m, "my_pods", return_value={POD: "work-17"}),
                patch.object(m, "kubectl", side_effect=kubectl),
                patch.object(m, "save_task_logs", return_value=None),
@@ -70,12 +71,9 @@ def util(e, w60=None, w90=None):
 
 def run_pass(e):
     a = argparse.Namespace(dry_run=False, fake_util=None)
-    st = e.st if hasattr(e, "st") else {"jobs": {}}
+    st = e.st if hasattr(e, "st") else {"jobs": {}, "pods": {}, "strikes": {}, "errors": 0}
     e.st = st
-    try:
-        e.m.check_pods(a, st)
-    except Exception as ex:  # the rest of check_pods (10-min strikes) is not under test; the GPU pass runs first
-        e.check_pods_error = ex
+    e.m.check_pods(a, st)
     e.m.process_task_webhooks(a, st)
 
 
@@ -128,3 +126,129 @@ def test_healthy_gpu_no_action(env):
     util(env)
     run_pass(env)
     assert not env.wakes and not env.pushes and not env.kube
+
+def short_flag(e, age, reading=None):
+    line = LINE % (POD, age, 10, 3)
+    if reading is not None:
+        line = line.replace("gpu 3% (gpu 1, NVIDIA A10)", reading)
+    (e.dir / "window_none.txt").write_text(line + "\n")
+
+
+@pytest.mark.parametrize("mode", ["auto", "watch"])
+def test_short_gpu_safety_stop_without_agents(env, mode):
+    m = env.m
+    m.task_txn(env.name, lambda t: t.update(mode=mode))
+    short_flag(env, 10)
+    with patch.object(m, "run_task_agent", side_effect=AssertionError("GPU stop bypasses agents")), \
+         patch.object(m, "save_task_logs", return_value=("saved.log", "")) as save:
+        run_pass(env)
+        m.advance_task(env.name, {}, argparse.Namespace(dry_run=False))
+        run_pass(env)
+        save.assert_called_once()
+    assert sum(call[2:4] == ("delete", "--raw") for call in env.kube) == 1
+    t = m.task_load(env.name)
+    assert t["status"] == "WITH_COORDINATOR"
+    assert t["stages"][0]["state"] == "failed"
+    f = t["failure"]
+    assert (f["cls"], f["sig"], f["rule"], f["logs"]) == ("util", "util:gpu", "gpu", "saved.log")
+    assert len(env.wakes) == 1
+    for fragment in ("10m", "GPU 3%", "NVIDIA A10", "CPU 30%", "CPU staging stage", "batching", "drop the GPU"):
+        assert fragment in f["detail"]
+        assert fragment in env.wakes[0][1]
+
+
+def test_gpu_ramp_up_logs_once_then_enforces_without_pod_dedupe(env, monkeypatch):
+    monkeypatch.setenv("NRP_MONITOR_GPU_RAMP_UP_MINUTES", "30")
+    short_flag(env, 19)
+    run_pass(env)
+    run_pass(env)
+    t = env.m.task_load(env.name)
+    assert sum("GPU ramp-up wait" in entry for entry in t["events"]) == 1
+    assert t["stages"][0]["state"] == "running"
+    assert not t.get("util_event")
+    assert not t.get("failure")
+    assert not env.kube and not env.wakes
+    short_flag(env, 20)
+    run_pass(env)
+    assert len(env.wakes) == 1
+    assert env.m.task_load(env.name)["stages"][0]["state"] == "failed"
+
+
+@pytest.mark.parametrize("reading", ["gpu ?(no DCGM series; unavailable)",
+                                      "gpu 3% nvidia-smi max of 3 (no DCGM series; A10): re-check before deleting"])
+def test_short_gpu_missing_dcgm_stays_in_review(env, monkeypatch, reading):
+    short_flag(env, 20, reading)
+    run_pass(env)
+    m = env.m
+    t = m.task_load(env.name)
+    assert t["util_event"]["rule"] == "gpu"
+    assert t["stages"][0]["state"] == "running"
+    assert not t.get("failure")
+    assert not env.kube and not env.wakes
+    monkeypatch.setenv("NRP_TASK", env.name)
+    with patch.object(m, "job_state", return_value="running"), \
+         pytest.raises(SystemExit, match="without a measured DCGM flag"):
+        m.cmd_tool(argparse.Namespace(rest=["delete", "work-17"]))
+    assert not env.kube
+
+
+def test_gpu_safety_stop_requires_changed_manifest_to_resubmit(env, monkeypatch, capsys):
+    m = env.m
+    short_flag(env, 11)
+    run_pass(env)
+    monkeypatch.setenv("NRP_TASK", env.name)
+    args = argparse.Namespace(rest=["submit", "work-17", "--reason", "GPU staging bottleneck"])
+    with patch.object(m, "manifest_check", return_value=[]), patch.object(m, "gpu_expired", return_value=None), \
+         patch.object(m, "red_alert", return_value=False), patch.object(m, "job_state", return_value="missing"), \
+         patch.object(m, "bad_nodes", return_value=[]), patch.object(m, "apply_manifest", return_value="ok") as apply:
+        path = Path(m.task_load(env.name)["stages"][0]["manifest"])
+        doc = json.loads(path.read_text())
+        path.write_text(json.dumps(doc, indent=4, sort_keys=True))
+        assert m.cmd_tool(args) == 1
+        assert "GPU stage failed under NRP's 40% floor; resubmit needs a redesign" in capsys.readouterr().out
+        apply.assert_not_called()
+        doc["spec"]["template"]["spec"]["containers"][0]["args"].extend(["--prefetch-workers", "4"])
+        path.write_text(json.dumps(doc))
+        assert m.cmd_tool(args) == 0
+        apply.assert_called_once()
+    assert m.task_load(env.name)["stages"][0]["state"] == "running"
+
+
+def test_gpu_stop_retries_failed_delete_without_repeating_wake(env):
+    m = env.m
+    short_flag(env, 11)
+    with patch.object(m, "delete_owned_job", return_value=types.SimpleNamespace(returncode=1, stderr="Forbidden")):
+        run_pass(env)
+        run_pass(env)
+    assert m.task_load(env.name)["stages"][0]["state"] == "running"
+    assert len(env.wakes) == 1
+    assert "DELETE FAILED" in env.wakes[0][1]
+
+    run_pass(env)
+    assert m.task_load(env.name)["failure"]["rule"] == "gpu"
+    assert len(env.wakes) == 1
+
+
+def test_short_gpu_flag_does_not_stop_same_named_job_in_another_namespace(env):
+    m = env.m
+    m.task_txn(env.name, lambda t: t.update(namespace="other"))
+    short_flag(env, 11)
+    run_pass(env)
+    assert m.task_load(env.name)["stages"][0]["state"] == "running"
+    assert not env.kube and not env.wakes
+
+
+def test_gpu_reading_at_or_above_nrp_floor_is_not_a_safety_stop(monitor):  # noqa: F811
+    """Only NRP's own 40% floor authorizes a stop; a stricter local lab floor goes to review instead."""
+    util = monitor._modules["util"]
+    line = LINE % (POD, 30, 10, 45)
+    assert util.gpu_flag_action("no-such-task", "work", POD, line) is False
+
+
+def test_unreadable_stop_fingerprint_does_not_block_resubmit_forever(monitor):  # noqa: F811
+    sj = monitor._modules["stage_jobs"]
+    doc = {"kind": "Job", "spec": {"x": 1}}
+    assert sj.gpu_retry_unchanged({"gpu_stopped_fingerprint": sj.job_fingerprint(doc)}, doc) is True
+    assert sj.gpu_retry_unchanged({"gpu_stopped_fingerprint": sj.job_fingerprint(doc)}, {"kind": "Job", "spec": {"x": 2}}) is False
+    assert sj.gpu_retry_unchanged({"gpu_stopped_fingerprint": None}, doc) is False
+    assert sj.gpu_retry_unchanged({}, doc) is False

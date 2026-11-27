@@ -48,11 +48,14 @@ read from its tag).
 
 ## Running task observations
 
-**GPU flags (`rule=gpu`) have no grace and no waiver.** Past a 10-minute ramp-up, a GPU under 40% means the Job is stopped and the
-stage redesigned before any resubmit: the triage judge must ESCALATE, the fixer deletes the Job and reports STOPPED with the GPU duty
-cycle (GPU seconds vs wall seconds per item) and the fix (CPU staging stage or parallel prefetch, batching, several items per pod, or
-no GPU). Progress, nearness to done, time left and resumability are not reasons to keep it. The 1 h / 90 min long means only catch
-jobs that alternate phases; they are not a grace period.
+**Measured GPU flags (`rule=gpu`) trigger an automatic safety stop.** For a registered running stage, the monitor records one
+ramp-up event per flagged pod younger than 10 minutes. Set `gpu_ramp_up_minutes` in `config.json` or
+`NRP_MONITOR_GPU_RAMP_UP_MINUTES` to raise the ramp-up to at most 20 minutes. At or after that age, the monitor saves logs and
+descriptions, deletes the owned Job (including for watch-only tasks), records a util/gpu failure, and wakes the coordinator once
+with GPU %, pod age, GPU model and CPU % when reported. Redesign with CPU staging or prefetch, batching, several items per pod,
+or a CPU-only request. A retry with the same manifest and shipped code is refused. Progress, time left and resumability have no
+effect on the stop, and the stop bypasses the judge, fixer and waiver. Flags without a measured DCGM reading remain observations
+and cannot authorize deletion. The 1 h warning and 90 min stop remain backstops for jobs that alternate phases.
 
 An NRP CPU or memory band flag (`rule=nrp`, LOW or HIGH) waits through pod ramp-up:
 25% of measured stage runtime, capped at 15 minutes, or 10 minutes without measured history.

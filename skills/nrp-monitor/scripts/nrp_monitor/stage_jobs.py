@@ -3,6 +3,8 @@
 Sizing evidence belongs to sizing.py; task state transitions stay in task/model.py.
 All destructive action guards retain fresh single-Job reads.
 """
+import hashlib
+import json
 import re
 import subprocess
 import tempfile
@@ -37,6 +39,22 @@ def save_task_logs(t, s, reason):
         _m_notify.write_json(p.parent / s["id"] / "outputs.json", outputs)
         _m_state.task_txn(t["name"], lambda cur: _m_state.tstage(cur, s["id"]).update(outputs=outputs))
     return str(p), logtxt
+
+
+GPU_REDESIGN_REQUIRED = "GPU stage failed under NRP's 40% floor; resubmit needs a redesign"
+
+
+def job_fingerprint(doc):
+    """Digest of the parsed manifest, including the shipped code digest in its environment."""
+    return hashlib.sha256(json.dumps(doc, sort_keys=True).encode()).hexdigest()
+
+
+def gpu_retry_unchanged(stage, doc):
+    if "gpu_stopped_fingerprint" not in stage:
+        return False
+    stopped = stage["gpu_stopped_fingerprint"]
+    # None: the manifest could not be read at the stop, so there is nothing to compare; do not block a redesigned stage forever.
+    return stopped is not None and stopped == job_fingerprint(doc)
 
 
 def do_submit(n, sid, reason, by):
@@ -75,6 +93,10 @@ def do_submit(n, sid, reason, by):
     probs = _m_task_registry.manifest_check(s["manifest"], ns, s["job"])
     if probs:
         return False, "manifest refused: " + "; ".join(probs)
+    doc = _m_task_registry.manifest_doc(s["manifest"])
+    if gpu_retry_unchanged(s, doc):
+        return False, GPU_REDESIGN_REQUIRED
+    fingerprint = job_fingerprint(doc)
     gx = _m_task_registry.gpu_expired(s)
     if gx:
         return False, gx + ". Report STOPPED; do not resubmit."
@@ -97,7 +119,6 @@ def do_submit(n, sid, reason, by):
     st_ = _m_cluster.job_state(s["job"], ns)
     if st_ in ("running", "pending", "error"):
         return False, "Job %s is still %s" % (s["job"], st_)
-    doc = _m_task_registry.manifest_doc(s["manifest"])
     try:
         bundle = code_shipping.ensure_bundle(t, s, doc)
     except (_m_state.ChainError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
@@ -146,7 +167,9 @@ def do_submit(n, sid, reason, by):
                                   "resource_template": resource_template(doc) if f2["cls"] == "resources" else None})
             s2["attempt"] = s2.get("attempt", 1) + 1
             t["failure"] = None
-        s2.update(state="running", submitted=_m_state.now())
+        s2.update(state="running", submitted=_m_state.now(), submitted_job_fingerprint=fingerprint)
+        for key in ("gpu_stopped_fingerprint", "gpu_stop_notified", "gpu_ramp_up_logged"):
+            s2.pop(key, None)
         history = s2.setdefault("submitted_code_history", [])
         for info in (s2.get("submitted_code"), s2.get("done_code"), bundle):
             if info and info not in history:
