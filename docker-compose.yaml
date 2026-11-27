@@ -1116,7 +1116,7 @@ services:
   # and digest come from service/image.lock. Paper processing runs in this container.
   # Uploads use relay mode because the braingeneers bucket CORS only allows the uploader origins.
   lit-map:
-    image: hschweiger15/lit-map-service:20261126-2998eae6@sha256:761013cdd71404e750a3dad82b38f781560b102f72417825a94ad861822cf3ec
+    image: hschweiger15/lit-map-service:20261126-a43acf58@sha256:6b82eec73a219dbb08e5d223726d2f990ddfd7e0578fbf92004ba56e1b9beb2f
     container_name: lit-map
     restart: unless-stopped
     init: true
