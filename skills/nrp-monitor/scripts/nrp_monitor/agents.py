@@ -18,7 +18,8 @@ from . import notify as _m_notify, state as _m_state
 # ---- headless agents -----------------------------------------------------------------------------------------
 def clean_env():
     keep = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "SHELL", "KUBECONFIG", "XDG_CONFIG_HOME",
-            "NRP_MONITOR_STATE", "NRP_MONITOR_TESTING", "NRP_MONITOR_NO_WAKE", "NRP_MONITOR_T3_BIN",
+            "NRP_MONITOR_STATE", "NRP_MONITOR_KUBE_CONTEXT", "NRP_MONITOR_NRP_USERNAME", "NRP_MONITOR_USER_ANNOTATION",
+            "NRP_PREFLIGHT_PATH", "NRP_MONITOR_TESTING", "NRP_MONITOR_NO_WAKE", "NRP_MONITOR_T3_BIN",
             "NRP_MONITOR_CLAUDE_BIN", "NRP_MONITOR_CODEX_BIN", "NRP_TASK_CACHE", "NRP_MONITOR_NO_PUSH", "NRP_MONITOR_S3_ENDPOINT", "NRP_TASK_PYTHON")
     return {k: v for k, v in os.environ.items() if k in keep}
 
@@ -506,8 +507,7 @@ def auth_allowed(k, job, ns, adir):
     task's own files under approved/<task>/, and register the replacement (the script enforces the attempt cap and the
     same-failure rule there). It cannot touch secrets, other namespaces or other people's Jobs."""
     a = str(_m_state.APPROVED).rstrip("/")                    # all task dirs: a next-stage task needs its own manifest dir
-    pats = [k + " apply:*", k + " delete job %s:*" % job,
-            "kubectl apply:*", "kubectl delete job %s:*" % job,
+    pats = [k + " create:*", "nrp-monitor delete-owned-job %s --namespace %s" % (job, ns),
             "nrp-monitor add:*", "nrp-monitor list", "nrp-watchdog add:*", "nrp-watchdog list", "tar czf:*", "tar tzf:*", "diff:*", "ls:*", "cat %s/:*" % a, "python3 -m py_compile:*"]
     out = ["Bash(%s)" % p for p in pats]
     out += ["Read(/%s/**)" % a, "Edit(/%s/**)" % a]     # leading // = absolute path; Edit rules cover Write too
@@ -520,7 +520,7 @@ def pod_allowed(pod, owner_job):
          "Bash(%s exec %s -- nvidia-smi:*)" % (k, pod), "Bash(%s delete pod %s)" % (k, pod),
          "Bash(nrp-util-check:*)"]
     if owner_job:
-        a += ["Bash(%s get job %s:*)" % (k, owner_job), "Bash(%s delete job %s)" % (k, owner_job)]
+        a += ["Bash(%s get job %s:*)" % (k, owner_job), "Bash(nrp-monitor delete-owned-job %s --namespace %s)" % (owner_job, _m_state.NS)]
     return a
 
 

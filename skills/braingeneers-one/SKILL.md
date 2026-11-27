@@ -124,6 +124,7 @@ contracts, after deciding whether documentation alone answers the question.
 | Map or refresh a code repository's `.code-summaries/` navigation index before reading its source | `summarize-codebase` |
 | Trace a manuscript figure, caption, number, or paragraph to its builder, data, and render; keep paper figures in sync with code | `paper-map` |
 | Style, check, or assemble publication figures (legends, whitespace, role-based text sizes, the Styler) | `figure-style` |
+| Search, retrieve, or add scientific literature, models, methods, datasets, and citation links in the Lit-Map knowledge base | `lit-map` |
 
 For Workflows portal runs, including Recipes that run on NRP, start with
 `workflow-authoring` and use its bundled run waiter for monitoring. Nextflow
@@ -150,7 +151,8 @@ or publication target. Do not route unrelated requests into this suite.
    current application's skill locations. Prefer the specialist already selected
    by the application; preserve project overrides. Read its complete `SKILL.md`
    and follow relevant references. Do not substitute the summary above for it.
-2. If missing, use the helper below to install it beside this router. This is
+2. If missing, use the helper below to install it beside this router. The standard Claude Code and Codex setup
+   shares one installation through Codex user skill links. This is
    expected setup for the requested lab task; do not ask the user to install
    each specialist. All approved upstreams are in
    [the catalog](references/catalog.json). Do not install arbitrary discovered skills.
@@ -173,17 +175,28 @@ requirements, nonstandard installations, and troubleshooting. Use absolute paths
 and the available Python interpreter; `<ONE>` below means this skill directory.
 
 ```bash
-python3 "<ONE>/scripts/suite.py" status
+python3 "<ONE>/scripts/suite.py" status --table
 python3 "<ONE>/scripts/suite.py" install data-explorer-cli-access
 python3 "<ONE>/scripts/suite.py" update
 ```
 
 On first use, and at most once per day thereafter, run `status --daily` while
 idle, before starting specialist operations. It checks installed suite members,
-including this router, and caches a successful check. Briefly offer any updates;
-**apply updates only when the user requests them**. A request to check is not a
-request to update. `status` without `--daily` always checks immediately. If the
-check fails, explain briefly in plain language, for example: "I couldn't check
+including this router, and caches a successful check. The helper enables
+daily updates on install or update unless the user opted out. When the schedule
+is on, let it handle routine updates without asking. It runs `update --auto`
+for unmodified managed copies and leaves existing links, unmanaged directories
+and modified copies alone. When daily updates are off, offer available updates
+and apply them when requested. A check alone authorizes only the check.
+
+When status shows a stuck modified copy, tell the user that local edits prevent
+updates and that `reset NAME` backs up the edits before reinstalling. When it
+shows a dangling link, tell the user that the linked folder is missing and to
+restore that folder or fix the link. Maintainers can link to a live Git checkout
+and update that checkout themselves.
+
+`status` without `--daily` always checks immediately. If the check fails,
+explain briefly in plain language. For example, "I couldn't check
 whether newer Braingeneers instructions are available. I can still help using
 the instructions already installed." State any effect on the user's task
 accurately; an unavailable update check does not verify or invalidate the

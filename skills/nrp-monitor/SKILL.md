@@ -43,18 +43,20 @@ warning and "NO runner left" everywhere. Everything is also in `nrp-monitor dige
    read [install](references/install.md) and ask before installing: it creates a background job.
 2. **Follow `nrp-cluster` first** (manifest rules, sizing, GPU approval, deadlines). The monitor refuses a manifest
    that breaks the Job rules but does not replace judging the resources. Code reaches the Job through the image or an S3
-   tarball made by `nrp-task ship` (see [tasks](references/tasks.md), "Shipping code"), never through a ConfigMap: ConfigMaps live in NRP's shared
+   Git-backed tarball made by `nrp-task ship`. The Job uses `NRP_CODE_URI` and `NRP_CODE_SHA256` to fetch and verify
+   the disposable cache object (see [Shipping code](references/tasks.md#shipping-code)). ConfigMaps live in NRP's shared
    etcd and code ConfigMaps got pod creation blocked in `braingeneers` on 2026-11-24.
 3. **Write `TASK.json`** from [tasks](references/tasks.md): the user's approval in their own words with the date, one
    stage per Job, and for each stage the exact S3 object that exists only when the stage succeeded (`done_s3`).
    Put what a fresh agent needs in `notes` (4 KB).
 4. **Declare what happens when it finishes.** By default the monitor wakes this chat when the task is done. One of:
    - `on_done` (a plan step): wakes this chat to check the step's "done when" and continue. It never passes the approved
-     range or a named stop, so use it even when a stop for Hunter comes next.
+     range or a named stop, so use it even when a stop for the owner comes next.
    - `followup`: a one-shot read-only report.
    - `digest_only`: **turns off the completion wake**, so the result goes only to the daily digest. Use it only when nobody
-     needs to look at the result. If checks, a report to Hunter, or a named stop come next, it is not digest-only.
-   Do not hand back unattended work that still has requested analysis, review or delivery remaining.
+     needs to look at the result. If checks, a report to the owner, or a named stop come next, it is not digest-only.
+   Before handing back, verify the saved continuation and that its executor is available, including quota and authentication.
+   An origin link identifies the chat. Verify the configured completion route can resume it for pending review or delivery.
 5. **Record the origin** (required: `task add` refuses a task without it): the chat or ticket the work came from (`origin.title`,
    `origin.link`, or `--origin-title/--origin-link`) and where it runs, so the monitor wakes that same chat and never a new thread:
    `--origin-harness claude|codex` (the session id is read from `CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID`, or pass `--origin-session`),
@@ -66,7 +68,7 @@ warning and "NO runner left" everywhere. Everything is also in `nrp-monitor dige
    produces, what to check when it finishes and when it fails, decisions already made, what NOT to do, where the code
    and outputs are (worked example in [handoff](references/handoff.md)). **Also write who handles failures:** the monitor's
    subagents (Tier 1 triage, Tier 2 fixer) handle failures and fixes; the main chat is woken only as a last resort, after them; the owner only
-   after the chat decides he is needed (`nrp-monitor task needs-owner`). `task add` prints this reminder and warns about a handoff that does not say it. Attach it with
+   after the chat decides the owner is needed (`nrp-monitor task needs-owner`). `task add` prints this reminder and warns about a handoff that does not say it. Attach it with
    `nrp-monitor task handoff NAME FILE` (or name it in the task's `handoff` field before `task add`), then confirm
    `nrp-monitor task show NAME` prints `handoff: accepted`. A task without one only gets a warning, and its fix and
    continue agents start with nothing but the task fields.
@@ -81,15 +83,20 @@ submitter.
   (never a prefix listing), saves logs, deletes only its own finished Jobs after the markers are verified.
 - Applies fixed Tier 0 rules before any agent: OOM resubmit using cgroup true peak when available, otherwise sampled peak, with a 2x OOM-limit backstop for unreliable low samples, exclusion of a node with a known fault, an unchanged resubmit of a lost pod (no exit code and no traceback from our container: the environment failed, not our code), and the
   scheduler's reason for a long Pending; see [operations](references/operations.md).
+  An OOM raise can move a pod above the small-pod exemption, after which band checks judge (and may stop) its
+  low-CPU start-up; when that repeats, have the coordinator fix the memory spike and return to the exempt size.
+  Several I/O-heavy pods in start-up at once can trip the account-wide violating-pod stop; stagger their submits.
 - Budgets every failure class per stage within the task-wide cap; the same code/unknown/outputs signature on 3 stages (or 10% of a fan-out) is treated as one systemic bug and goes up the ladder. After a successful resource change,
   raises compatible siblings' manifest resources when explicitly grouped; see [tasks](references/tasks.md).
 - Checks utilization with `nrp-util-check`. The shared numbers (GPU floor, job cap) are the `nrp-cluster` skill's own, in its
   `references/utilization-policy.json`; a person may add stricter local rules in an optional override; see
   [utilization](references/utilization.md).
-- GPU pods are also judged on long averages, because NRP enforces a ~3 h average and 10-min samples miss Jobs that alternate GPU and CPU
-  phases (owner decision 2026-11-15): a 1 h GPU mean under NRP's 40 % floor wakes the owning chat with an urgent order to stop the Job now and redesign it (at most hourly; the owner gets a short DM only when no chat can be woken); a 90-min mean under it (30 min after the warning, time to save logs) makes
-  the monitor save the logs and delete the Job itself, and a task's stage fails as util/gpu so the fixer restructures before any resubmit.
-  GPU flags never wait for "time left".
+- **GPU floor.** A measured GPU flag at or after pod ramp-up (10 minutes by default, configurable up to 20) makes the
+  monitor save logs and descriptions, delete the owned Job even in watch mode, fail the stage as util/gpu, and wake the
+  coordinator once to redesign it. During ramp-up the monitor records one event per pod. Flags without a measured DCGM
+  reading stay in utilization review and cannot authorize deletion. The stop bypasses the judge, fixer and waiver, and
+  submission refuses the same manifest and shipped code. The 1 h warning and 90 min auto-delete remain backstops for Jobs
+  that alternate CPU and GPU phases.
 - When NRP refuses a submit for utilization ("resources utilization is too low"), the task goes `blocked`; the first time, the script checks every
   Running pod in the namespace (not only ours) with `nrp-util-check`, records the pods outside the bands with their owners and usage on the task,
   and wakes the coordinator chat once (fix our own, ask the owner before touching others'). It does not retry in a loop: it re-checks every ~10 minutes
@@ -125,26 +132,16 @@ submitter.
 - [Utilization](references/utilization.md): the checker, shared numbers, optional local rules, strikes.
 - [Install](references/install.md): installing, the owner settings, the scheduler.
 - [Known issues](references/known-issues.md): what is broken or unproven.
-- [v3 plan](references/v3-plan.md): agreed design (rename to nrp-monitor, tiered escalation, one coordinator chat in any harness, per-tier backends); partly built.
 
 ## Smoke/profile sizing
 
-The script never chooses or launches a full fan-out on its own after profiling. Profile 2–3 items expected to be heaviest by input size, unit count or duration, using the real
-configuration. Each profile must report its cgroup true memory peak with
-[nrp-cluster memory_peak.py](../nrp-cluster/references/memory_peak.py). Size memory from the maximum
-true peak (and any recorded OOM limit): ceil(need * 1.5) Gi. RSS is only a fallback diagnostic;
-without a cgroup peak, investigate before fan-out. This 50% headroom rule also applies to later memory LOW review. Mark stages `purpose: "smoke"` or `purpose: "profile"`
-(boolean `smoke`/`profile` also accepted). Registration refuses Job `spec.parallelism` or `spec.completions`
-above `smoke_max_jobs` in nrp-cluster's shared utilization-policy.json (default 3). Select inputs before registration;
-the script cannot infer the largest input. After a successful profile, the Tier 2 fixer or coordinator chat decides
-the full size within the plan's approved limits and explicitly registers it. Do not register speculative full fan-outs
-behind profile stages.
+Follow [smoke/profile sizing](references/tasks.md#smokeprofile-sizing) when registering profile stages.
 
 When the user has already specified per-tier backends/models, the agent applies them directly with
 `nrp-monitor setup --non-interactive --triage ... --fixer ...`; do not ask the user to run setup.
-Example configuration: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.1-sol then Claude Sonnet for the fixer:
+Example configuration: Gemini Flash with lowest thinking then Haiku for triage; Codex gpt-6.2-sol then Claude Sonnet for the fixer:
 ```sh
-nrp-monitor setup --non-interactive --triage agy:gemini-3.8-flash-low,claude:haiku --fixer codex:gpt-6.1-sol,claude:sonnet
+nrp-monitor setup --non-interactive --triage agy:gemini-3.8-flash-low,claude:haiku --fixer codex:gpt-6.2-sol,claude:sonnet
 ```
 
 ## Coordinator commands
@@ -152,6 +149,7 @@ nrp-monitor setup --non-interactive --triage agy:gemini-3.8-flash-low,claude:hai
 A coordinator chat selects its task explicitly: `NRP_TASK=<name> nrp-task reship JOB`,
 `NRP_TASK=<name> nrp-task show`. Find names with `nrp-monitor task list`.
 `nrp-task --help` and `nrp-task reship --help` work without `NRP_TASK`.
+After completion, `nrp-monitor task code-cleanup NAME --dry-run` shows tags for submitted commits and remote branch cleanup.
 To persist a stage-specific exclusion: `nrp-monitor task stage NAME STAGE --exclude-node NODE`
 (repeatable). To change a stage's success marker: `nrp-monitor task stage NAME STAGE --done-s3 s3://bucket/key`.
 Automatic node exclusions are shared and expire 24 hours after the last fault.
@@ -160,7 +158,7 @@ The optional Antigravity `agy` runner is triage-only; select it through setup, e
 
 ## Utilization review and wake routes
 
-Utilization flags leave healthy stages running. The triage judge returns CLOSE or ESCALATE; the fixer makes every change. Memory LOW uses ramp-up, whole-life per-pod peaks and recorded OOM limits, with 50% headroom. NRP-band flags (`rule=nrp`) wait through ramp-up (25% of measured runtime, at most 15 min; 10 min without history), count only our account toward the safety stop, and never auto-restart a stage the coordinator resized or resumed. See [utilization](references/utilization.md) for the exact rule and worked example.
+The triage judge returns CLOSE or ESCALATE for utilization observations. The monitor applies measured GPU stops and NRP band rules directly. Memory LOW uses ramp-up, whole-life per-pod peaks and recorded OOM limits, with 50% headroom. NRP-band flags (`rule=nrp`) wait through ramp-up (25% of measured runtime, at most 15 min; 10 min without history), count only our account toward the safety stop, and never auto-restart a stage the coordinator resized or resumed. See [utilization](references/utilization.md) for the exact rule and worked example.
 
 T3 origins can use `origin.link: "t3-thread://v2/ENV/THREAD"` (angle brackets around the link are accepted).
 A configured `<state>/webhooks/<task>` remains the preferred T3 route. Otherwise the monitor sends the wake text

@@ -9,6 +9,8 @@ HERE = Path(__file__).resolve().parents[1]
 def install(home, **extra):
     fake_bin = Path(home, "fake-bin")
     fake_bin.mkdir(exist_ok=True)
+    (fake_bin / "uname").write_text("#!/bin/sh\necho Darwin\n")
+    (fake_bin / "uname").chmod(0o755)
     launchctl = fake_bin / "launchctl"
     launchctl.write_text('#!/bin/sh\n[ "$1" = print ] && exit 1\nexit 0\n')
     launchctl.chmod(0o755)
@@ -26,7 +28,51 @@ class Install(unittest.TestCase):
             for f in ("nrp-monitor", "nrp-watchdog", "nrp-util-check", "nrp-task", "nrp-s3-read"):
                 self.assertTrue(os.access(Path(home, ".local/bin", f), os.X_OK), f)
             self.assertTrue(Path(home, "Library/LaunchAgents/test.nrp-monitor.plist").exists())
+            version = (HERE.parent / "VERSION").read_text().strip()
+            self.assertIn('VERSION = "%s"' % version, Path(home, ".local/bin/nrp-monitor").read_text())
             self.assertIn("config.json is missing", r.stdout)
+
+    def test_linux_installs_timer_or_prints_cron_entry(self):
+        cases = [(True, None), (True, "--schedule"), (True, "--launchd"), (False, "--schedule")]
+        for available, flag in cases:
+            with self.subTest(available=available, flag=flag), tempfile.TemporaryDirectory() as home:
+                root = Path(home)
+                fake_bin = root / "fake-bin"
+                fake_bin.mkdir()
+                systemctl = 'printf "%s\\n" "$*" >> "$HOME/systemctl.log"'
+                if not available:
+                    systemctl += '\nexit 1'
+                for name, script in (("uname", "echo Linux"), ("systemctl", systemctl),
+                                     ("launchctl", "touch ~/.launchctl-called; exit 1")):
+                    executable = fake_bin / name
+                    executable.write_text("#!/bin/sh\n" + script + "\n")
+                    executable.chmod(0o755)
+                config = root / "config dir"
+                env = dict(os.environ, NRP_MONITOR_SETUP="skip", XDG_CONFIG_HOME=str(config),
+                           PATH=str(fake_bin) + os.pathsep + os.environ["PATH"])
+                env.update(wake_env(home))
+                command = ["sh", str(HERE / "install.sh")]
+                if flag:
+                    command.append(flag)
+                result = subprocess.run(command, env=env, capture_output=True, text=True, check=True)
+                calls = (root / "systemctl.log").read_text().splitlines()
+                self.assertFalse((root / ".launchctl-called").exists())
+                self.assertFalse((root / "Library").exists())
+                units = config / "systemd/user"
+                if available:
+                    expected = ["--user show-environment", "--user daemon-reload"]
+                    if flag:
+                        expected.append("--user enable --now nrp-monitor.timer")
+                    self.assertEqual(calls, expected)
+                    self.assertIn("OnUnitActiveSec=5min", (units / "nrp-monitor.timer").read_text())
+                    service = (units / "nrp-monitor.service").read_text()
+                    self.assertIn('ExecStart="%h/.local/bin/nrp-monitor" run', service)
+                    self.assertIn("WorkingDirectory=%h/.local/state/nrp-monitor", service)
+                else:
+                    self.assertEqual(calls, ["--user show-environment"])
+                    self.assertFalse(units.exists())
+                    self.assertIn("*/5 * * * * ", result.stdout)
+                    self.assertIn(home + "/.local/bin/nrp-monitor run", result.stdout)
 
     def test_nrp_monitor_is_a_copy_wrapper_that_runs_nrp_monitor(self):
         with tempfile.TemporaryDirectory() as home:
@@ -92,6 +138,9 @@ class Migration(unittest.TestCase):
         self.plist.write_text('old plist')
         self.bin = self.home / 'fake-bin'
         self.bin.mkdir()
+        uname = self.bin / 'uname'
+        uname.write_text('#!/bin/sh\necho Darwin\n')
+        uname.chmod(0o755)
         fake = self.bin / 'launchctl'
         fake.write_text('''#!/usr/bin/env python3
 import os, sys

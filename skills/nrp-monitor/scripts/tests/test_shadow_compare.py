@@ -2,7 +2,7 @@
 import importlib.util
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location('shadow_compare', Path(__file__).resolve().parents[2] / 'rewrite/shadow/compare.py')
+spec = importlib.util.spec_from_file_location('shadow_compare', Path(__file__).resolve().parents[4] / 'docs/history/nrp-monitor-rewrite/shadow/compare.py')
 c = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(c)
 TASKS = {'t': {'stages': [{'id': 'a', 'job': 'job-a', 'state': 'running'}, {'id': 'b', 'job': 'job-b', 'state': 'pending'}]}}

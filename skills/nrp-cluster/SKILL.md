@@ -1,190 +1,164 @@
 ---
 name: nrp-cluster
-description: Build, deploy, and monitor Kubernetes batch jobs submitted directly to NRP Nautilus. Covers cluster setup, S3/W&B, hosted LLM and Brave Search credentials, and job-level troubleshooting. For hosted Workflows runs and Recipes, use workflow-authoring.
+description: Braingeneers setup, stricter lab rules, and troubleshooting for Kubernetes Jobs submitted directly to NRP Nautilus. Covers S3, pinned images, W&B, and lab LLM and Brave Search credentials. Use workflow-authoring for hosted Workflows runs.
 ---
 
-# NRP Cluster Management
-
-Use this skill for compute pipelines submitted directly as Kubernetes jobs on
-NRP Nautilus. For an existing Workflows run or Recipe, use `workflow-authoring`
-and its bundled run waiter. Bring in this skill when the run investigation
-needs cluster diagnostics. Nextflow owns submission and retries of its workers.
-
-## Start Here
-
-1. Read these required references before making recommendations:
-   - `references/agent-context.md`
-   - `references/readme.md`
-   - `references/nrp_setup.md`
-   - For a job that calls an NRP-hosted LLM, also read `references/hosted-llms.md` and verify the current official NRP documentation linked there.
-   - For a job that calls Brave Search, also read `references/brave-search.md` and verify the current official API and pricing documentation linked there.
-2. Confirm the credentials required by the workload are available without printing them:
-   - `kubelogin` plugin and a valid kubeconfig for NRP cluster access (PowerShell/WSL path differs by environment).
-   - `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` only when the job uses S3.
-   - `WANDB_API_KEY` only when the run uses W&B.
-   - The existing `nrp-llm-api-key/nrp_llm_api_key` Kubernetes Secret key only when the job calls the NRP-hosted LLM API.
-   - The existing `brave-search-api/brave-search-api` Kubernetes Secret key only when the job calls the Brave Search API.
-3. Confirm user intent:
-   - Build/push image
-   - Update job config
-   - Deploy job
-   - Monitor job state
-   - Troubleshoot and cleanup
-4. Choose a workflow before editing commands:
-   - `/.agent/workflows/build-push.md` for image publishing.
-   - `/.agent/workflows/deploy-job.md` for job creation and initial validation.
-   - `/.agent/workflows/monitor-job.md` for pod/job monitoring and cleanup.
-5. Treat all credentials as ephemeral environment values. Never request or print raw secret contents.
-
-## What this skill covers
-
-- Container image build and push with Linux/amd64 target for NRP.
-- K8s Job submission using `envsubst` and a templated `jobdefinition.yaml`.
-- Runtime-aware job policy checks (resource limits, GPU policy, sleep bans).
-- Pod/job status checks, log retrieval, and failed-job cleanup.
-- Template-level customization guidance (pipeline scripts, S3 prefixes, command entrypoint).
-- OpenAI-compatible NRP-hosted LLM calls, model discovery, Kubernetes Secret injection, cache isolation, and retry/resume design.
-- Brave Search calls, task-scoped Kubernetes Secret injection, and shared-quota request budgeting.
-
-## Policy Reminders (high priority)
-
-- **Keep ConfigMaps to a few KB of runtime settings.** ConfigMaps and Secrets use shared etcd. Put runnable code in the
-  image, or fetch a versioned code bundle from S3 at startup. Put models, datasets, archives, and outputs in S3 or on a PVC
-  (CephFS when Jobs need shared access). Use Secrets for credentials. Base64, compression, and splitting files do not make
-  Kubernetes objects suitable for shipping files. Give legitimate per-Job configuration a cleanup path and verify its
-  removal after completion or cancellation. See [ConfigMaps, Secrets and etcd](references/nrp_setup.md#configmaps-secrets-and-etcd).
-- No `sleep infinity` in batch jobs (or any command that never ends, such as `tail -f /dev/null`).
-- Every container sets CPU, memory and ephemeral-storage requests and limits; resource limits should track requests within policy boundaries.
-- GPU utilization should stay above 40% on GPU jobs.
-- Max concurrent jobs should not exceed 400. Do not flood the cluster with short pods: pack many small tasks into each pod of one Indexed Job with a `parallelism` cap, never loop `kubectl create job`, and keep pods running at once under the namespace's pod quota (many allow 200).
-- `backoffLimit` and `restartPolicy` policy choices should reflect single-attempt jobs.
-- Never `kubectl delete --force --grace-period=0`. A pod stuck `Terminating` goes to NRP support (https://nrp.ai/contact/).
-- Move more than a couple of MB with S3 or `rclone`, not `kubectl cp` or `kubectl exec ... tar`: both go through the API server, whose link every user shares.
-- Tolerations only by key and only for taints NRP approved for you (never `nautilus.io/system` or `nautilus.io/issue`); `priorityClassName` unset or `opportunistic`/`opportunistic2`; never set `CUDA_VISIBLE_DEVICES`. Admission rejects the rest.
-- Before every apply, run `kubectl apply --dry-run=server -f <manifest>` and fix denials and `Warning:` lines. Never rephrase, split or change the verb of a rejected command to get past a check.
-- Delete what you create for your own use (test pods, helper pods, scratch PVCs) when the work ends; compare `kubectl get pods,jobs,pvc,cm -n braingeneers` with what the task needs.
+Load NRP's `nrp-nautilus` plugin skills first (`nrp`, `nrp-run`, `kubernetes`); this skill adds Braingeneers setup and stricter lab rules.
 
 ## NRP's own agent tooling
 
-Use the [official NRP coding-agent guide](https://nrp.ai/documentation/userdocs/ai/coding-agents/)
-to find the current `nrp-nautilus` plugin and its `nrp_preflight.py`. Run the preflight on the
-rendered manifest before the server-side dry run. Codex does not run the plugin's Claude Code
-hook. If the preflight is unavailable, use the setup instructions in the NRP guide. The preflight
-warns above 113 KiB and blocks above 256 KiB for ConfigMaps and Secrets. These thresholds are
-safeguards. Move bulk content out even when the check accepts its size.
+Ask before installing. As of 2026-11-25, the default marketplace branch has
+0.2.0. The reviewed 0.3.0 commit is `98bc617` on `nrp-nautilus-0.3.0`.
+[Claude Code v2.1.324+ accepts a full commit SHA as the marketplace ref](https://code.claude.com/docs/en/plugins/marketplace-reference#fields-by-type).
 
-For NRP's machine-readable rules see [llms.txt](https://nrp.ai/llms.txt).
-For namespace usage trends see [NRP Accounting MCP](https://nrp.ai/documentation/userdocs/ai/accounting-mcp/).
+```bash
+claude plugin marketplace add 'nrp-nautilus/sdsc-marketplace#98bc6170d1b38b0d7f318b0d4a9cbe589a9d00a9'
+claude plugin install nrp-nautilus@sdsc-marketplace
+```
+
+For older Claude Code versions, register a local checkout at the same commit:
+
+```bash
+marketplace_dir="$HOME/.local/share/nrp-nautilus/sdsc-marketplace"
+mkdir -p "$(dirname "$marketplace_dir")" &&
+  git clone --branch nrp-nautilus-0.3.0 https://github.com/nrp-nautilus/sdsc-marketplace.git "$marketplace_dir" &&
+  git -C "$marketplace_dir" checkout --detach 98bc6170d1b38b0d7f318b0d4a9cbe589a9d00a9 &&
+  claude plugin marketplace add "$marketplace_dir" &&
+  claude plugin install nrp-nautilus@sdsc-marketplace
+```
+
+If `sdsc-marketplace` is already registered from another source, review its
+installed plugins before replacing the registration. Removing a marketplace
+also uninstalls its plugins.
+
+The Mission Control maintainer owns the pin. Once 0.3.0 is merged into
+upstream `main` and verified there, remove the pinned or local registration
+and reinstall from `main`:
+
+```bash
+claude plugin marketplace remove sdsc-marketplace &&
+  claude plugin marketplace add 'nrp-nautilus/sdsc-marketplace#main' &&
+  claude plugin install nrp-nautilus@sdsc-marketplace
+```
+
+The [NRP coding-agent guide](https://nrp.ai/documentation/userdocs/ai/coding-agents/)
+gives these Codex commands for the default marketplace:
+
+```bash
+codex plugin marketplace add nrp-nautilus/sdsc-marketplace
+codex plugin add nrp-nautilus@sdsc-marketplace
+```
+
+Codex and other agents without the plugin, including hosts on 0.2.0 without the
+needed skills, read the [2026-11-25 fallback digest](references/nrp_rules_digest.md).
+NRP's plugin and [llms.txt](https://nrp.ai/llms.txt) govern cluster rules. Apply
+the stricter rule where sources differ and flag discrepancies to the Mission Control maintainer.
+
+Use `nrp` → Hard rules, Access, Usage policies, GPUs, and Storage for cluster
+policy and setup. Use `nrp-run` → Check, show, submit for preflight and approval,
+and its watch and cleanup sections for routine operations. Use `kubernetes`
+for generic manifests and `nrp-llm` for managed inference.
+
+## Braingeneers setup
+
+Use context `nautilus` and namespace `braingeneers` explicitly. Start Job names
+with the submitting person’s NRP username, using `<user>-<purpose>` (for example,
+`alex-sortbench`). Select an authorized S3 prefix for the workstream.
+
+- [Lab setup](references/nrp_setup.md) gives S3 endpoints, W&B setup, and ConfigMap cleanup.
+- [Template layout](references/readme.md) and [agent commands](references/agent-context.md) cover `run_job.sh` and `jobdefinition.yaml`.
+- [Build and push](.agent/workflows/build-push.md) publishes a Linux/amd64 image pinned by tag and digest.
+- [Deploy](.agent/workflows/deploy-job.md) covers manifest review and namespace-specific checks.
+- [Monitor](.agent/workflows/monitor-job.md) covers status, logs, and lab troubleshooting.
+- [Hosted LLMs](references/hosted-llms.md) and [Brave Search](references/brave-search.md) cover the lab's Secret contracts and request budgeting.
+
+For hosted Workflows and Recipes, use `workflow-authoring` and its run waiter.
+Nextflow owns the submission and retries of its workers. Subagents that touch
+NRP load both layers, use Jobs for batch work, and audit their Jobs at handoff.
+
+## Stricter lab rules
+
+- **One attempt per Job.** Use `backoffLimit: 0` and `restartPolicy: Never`. Omit per-index retries when adapting sweep templates. The upstream retries can hide the original failure and duplicate the monitor's bounded recovery.
+- **Set ephemeral-storage requests and limits on every container**, including init containers. This accounts for scratch before eviction and follows `llms.txt` even below the plugin's 50 GiB guidance.
+- **Use S3 for Job code bundles and bulk data.** Keep runnable code in a pinned image, use a pinned Git revision in an init container, or fetch a versioned, checksum-verified S3 tarball at startup. The S3 tarball is a lab build artifact: provenance lives in git (the monitor pushes and tags the exact commit), and the bundle is only transport. NRP's docs prefer git or an image; the bundle is a lab exception that breaks no NRP rule and avoids per-pod clones and repo tokens. Keep code and data out of ConfigMaps and Secrets because they fill shared etcd. Authenticated lab users are trusted. Store bundles, including those from private repos, in `braingeneerscache`, the S3 bucket Workflows also uses.
+- **Transfer bulk data via S3 from inside the cluster.** Above a couple of MB use S3 or `rclone`. The plugin's `kubectl cp` guidance applies only to PVCs. The lab moves data through S3 and does not normally use PVCs.
+- **Inject credentials only through `secretKeyRef` to existing lab Secrets.** Job manifests are visible to other users. Keep secret values out of `envsubst` and logs. The plugin's user-created LLM Secret is replaced here by the operator-owned lab Secret.
+- **Give per-Job settings a cleanup path.** Use a Job owner reference or explicit cleanup for a few KB of settings, then verify removal after completion, cancellation, or launch failure. Shared etcd filled on 2026-11-14. On 2026-11-24, 590 per-Job or per-fix ConfigMaps blocked pod creation. See [ConfigMaps, Secrets and etcd](references/nrp_setup.md#configmaps-secrets-and-etcd).
+- **Use explicit Job TTL and persist required logs.** The cluster defaults to a one-day TTL, which can remove logs before the monitor or coordinator reviews them. Clean up your failed Jobs, test pods, helper pods, scratch PVCs, and per-Job settings when done. Leave other owners’ resources to them.
+
+Run `nrp_preflight.py` explicitly on the rendered manifest in Codex and for
+Python submitters. The Claude Bash hook returns quickly and silently for
+unrelated commands. It misses variable paths such as `kubectl apply -f "$var"`,
+piped manifests, wrapped commands such as `env`, `timeout`, and `bash -c`, and
+submissions through `nrp-task`, `nrp-monitor`, or the launchd monitor.
+`nrp-monitor task add` runs its own preflight on registered manifests when
+the script is available. For a local plugin checkout, export its script path
+as `NRP_PREFLIGHT_PATH` for the monitor. Leave `NRP_PREFLIGHT_ALLOW` unset.
+If the script is unavailable, report the gap and always use server-side dry-run. Follow [Deploy](.agent/workflows/deploy-job.md)
+for script setup and the check order.
 
 ## Resource sizing and utilization
 
-Before fan-out, measure cgroup true memory peaks on the expected heaviest inputs; see
-Smoke/profile sizing below. Size memory as ceil(max(true peaks, recorded OOM limits) * 1.5) Gi.
-Sampled metrics alone can miss transient loading spikes.
+Before fan-out, smoke test the code and profile full-size heavy inputs. Size
+memory as `ceil(max(true peaks, recorded OOM limits) * 1.5)` GiB. Sampled metrics
+can miss transient loading spikes. See [Smoke/profile sizing](#smokeprofile-sizing).
 
-The rules above, as numbers a monitor can check, are also in [references/utilization-policy.json](references/utilization-policy.json);
-the two must agree:
+NRP uses GPU above 40%, CPU 20–200%, and memory 20–150% of the request.
 
-- GPU utilization stays above 40% of the request on GPU jobs.
-- Resource limits stay within 20% of requests.
-- No more than 400 concurrent jobs.
+**GPU Jobs are designed for the floor before they are submitted, not fixed after.** Target at least 60% GPU so normal variation
+never drops under 40%. A GPU pod only runs GPU work: S3 staging, decoding, preprocessing and writing go to a prior CPU stage or to
+parallel prefetch workers that keep the GPU fed; batch many items per GPU call or run several items concurrently per pod. Estimate
+the duty cycle (GPU seconds / wall seconds per item) from a profile, and make the smoke stage log both and its GPU %; do not fan out
+a GPU Job whose smoke ran under 40%. A Job that drops under the floor is stopped and redesigned, never left to finish.
 
-A monitor (for example `nrp-util-check`, or the `nrp-monitor` skill built on it) reads that file and checks the GPU floor and the
-job cap; the 20% limit rule is documented only; the monitor does not check it. Utilization is a
-fraction of the pod's **request**, averaged over the last 10 minutes of NRP's own metrics.
-
-A person or lab may add stricter rules in an optional local override that is never part of this repo (see the monitor's
-`references/utilization.md`); a local file can add checks or lower these numbers, not loosen them.
+See `nrp` → `references/policies.md` → Utilization thresholds for RSS, the
+small-pod exemption, and the allowance of four pods outside the bands.
+The [shared monitor policy](references/utilization-policy.json) supplies the
+NRP bands and the other numeric settings used by `nrp-util-check`. Verify
+effective settings and any local overrides with `nrp-util-check --policy`
+and consult the [monitor utilization reference](../nrp-monitor/references/utilization.md).
+The monitor uses ten-minute averages when reporting utilization. For namespace
+trends, see the [NRP Accounting MCP](https://nrp.ai/documentation/userdocs/ai/accounting-mcp/).
 
 **If NRP refuses a submit** (admission webhook `job.nrp-nautilus.io`: "Your pods resources utilization is too
 low", or a submit, patch or build Job that is denied or BLOCKED), stop and check utilization across the whole
 namespace before retrying. Include pods you did not launch (Workflows/Flowforge `workflows-*` drivers, `nf-*`
 task pods, other workstreams). Run `kubectl get pods` for every Running pod, then pass all their prefixes to
 `nrp-util-check`; the account check only counts pods annotated with your username. Report each pod outside the
-bands with its owner and usage. Fix or delete your own pods. Ask the owner before deleting anyone else's pods.
+bands with its owner and usage. Fix or delete your own pods. Never modify or delete another user’s pods.
 Never work around the webhook or retry in a loop. nrp-monitor treats this as an account RED ALERT: it holds every
-task's submits until NRP's server-side dry-run accepts again, wakes the owners of the low pods, and alerts Hunter.
-If woken, act now: resize (request = ceil(Thanos working-set peak x 1.5), limit within 20%) or delete your low pods,
-and hand pods that are not yours to their real owner (`t3 thread send`); "no change" does not clear the alert.
+task's submits until NRP's server-side dry-run accepts again, wakes the owners of the low pods, and alerts the account owner.
+Running pods cannot be resized in place. Delete your low Jobs and resubmit at the measured size after admission clears. For deliberate memory resizing, include the whole-life working-set peak in measured need.
+Route other Jobs to their owners through the owning coordinator chat.
 
-## Reference Loading
+Patterns that have cost runs (2026-11):
+- Jobs that stage inputs from S3 or write large scratch caches can sit at 5-30% of a core for 30-60 min before compute
+  starts. Low utilization in that phase is expected; shorten it (parallel reads, smaller staged spans) or account for it
+  in monitoring rather than resizing the pod.
+- Page cache inflates working set and memory peaks. Before raising memory, compare with process RSS and check for an
+  actual OOM kill. When a real OOM comes from transient copies (full-length array slices, unflushed memory maps), fixing
+  the spike usually beats a larger request, which also lowers measured utilization.
+- Pin hardware by node labels (for example `feature.node.kubernetes.io/cpu-model.*`), not `kubernetes.io/hostname`.
+  A hostname pin leaves the Job Pending indefinitely if that node is cordoned, faulty or excluded.
+- Never relax an exact reproducibility or parity check to get a run through. A deterministic mismatch on several nodes
+  points at the code path (read path, dtype, layout), not the hardware; diagnose which step changes the values.
 
-Read only the files needed for your task:
+## Unattended Jobs
 
-- `references/nrp_setup.md` for platform setup, prerequisites, and troubleshooting; its "ConfigMaps, Secrets and etcd" section before any step that moves code or files into a Job.
-- `references/readme.md` for the template architecture and quick start.
-- `references/agent-context.md` for agent-specific command patterns.
-- `references/hosted-llms.md` for jobs that call NRP-hosted open-weight models.
-- `references/brave-search.md` for jobs and workflows that call Brave Search.
-- `/.agent/workflows/build-push.md` to build/publish.
-- `/.agent/workflows/deploy-job.md` to submit jobs.
-- `/.agent/workflows/monitor-job.md` to inspect and clean up jobs/pods.
+Use [nrp-monitor](../nrp-monitor/SKILL.md) for registration, the scheduler,
+coordinator chat, and an escalation path. Verify that completion can resume
+pending review and delivery before handing back. For registered Jobs shipping
+code from S3, follow [Shipping code](../nrp-monitor/references/tasks.md#shipping-code).
 
-## Workflow
-
-### 1) Build and push image
-
-If image freshness is unknown, run `turbo` workflow:
-
-- `/.agent/workflows/build-push.md`
-
-### 2) Configure job intent
-
-Before submission, ask for or confirm:
-
-- Job name (`NAME`)
-- Job prefix (`JOB_PREFIX`)
-- Resource requests and limits
-- GPU count/type if required
-- Optional run command override
-- NRP-hosted LLM model and request policy if the job calls the managed API; discover active model IDs instead of assuming a stale model name.
-- An explicit per-run Brave request budget if the job calls Brave Search; include retries and pagination in the shared monthly usage estimate.
-
-### 3) Deploy
-
-- Use `/.agent/workflows/deploy-job.md`.
-- Verify image and credentials are available before submission.
-- Confirm `kubectl` access and cluster context are valid.
-- For hosted LLM use, inject the existing API key with `secretKeyRef`; never retrieve its value into the submission command or request a GPU solely for remote inference.
-- For Brave Search use, inject the existing API key only into calling tasks with `secretKeyRef`; never retrieve its value from the secrets repository into a submission command.
-
-### 4) Monitor and debug
-
-- Use `/.agent/workflows/monitor-job.md`.
-- For approved direct jobs that will run unattended, register them with the
-  `nrp-monitor` skill when installed. Follow that skill's instructions for
-  verifying the scheduler, registering the coordinator chat, and recording
-  the escalation path in the handoff.
-- Capture job/pod status and recent logs after submission.
-- Delete finished/failed jobs when requested.
-
-## Escalation
-
-Escalate for issues that are clearly out-of-repo:
-
-- Kubeconfig or OIDC token acquisition failures.
-- NRP quota/policy enforcement questions.
-- Persistent cluster scheduling failures unrelated to job YAML.
-- Registry permission errors preventing image push.
+Escalate out-of-repo access, quotas, persistent scheduling, and registry
+permissions to the relevant operator or [NRP Support](https://nrp.ai/contact/).
 
 ## Smoke/profile sizing
 
-The script never chooses or launches a full fan-out on its own after profiling. Profile 2–3 items expected to be heaviest by input size, unit count or duration, using the real
-configuration. Each profile must report its cgroup true memory peak with
-[memory_peak.py](references/memory_peak.py). Size memory from the maximum
-true peak (and any recorded OOM limit): ceil(need * 1.5) Gi. RSS is only a fallback diagnostic;
-without a cgroup peak, investigate before fan-out. This 50% headroom rule also applies to later memory LOW review. Mark stages `purpose: "smoke"` or `purpose: "profile"`
-(boolean `smoke`/`profile` also accepted). Registration refuses Job `spec.parallelism` or `spec.completions`
-above `smoke_max_jobs` in nrp-cluster's shared utilization-policy.json (default 3). Select inputs before registration;
-the script cannot infer the largest input. After a successful profile, the Tier 2 fixer or coordinator chat decides
-the full size within the plan's approved limits and explicitly registers it. Do not register speculative full fan-outs
-behind profile stages.
-
-## Memory LOW review
-
-A utilization flag alone never fails or holds a healthy running task stage. For memory (20–150% of request), skip LOW review during ramp-up: 25% of measured stage runtime, or 30 minutes without history (this is the review rule; nrp-monitor's action on an NRP-band flag waits at most 15 minutes, 10 without history). Prefer reported cgroup true peaks; also retain whole-life per-pod Thanos peaks and recorded OOM limits: need is their maximum, right is ceil(need*1.5) Gi. A request <=1.2*right is sized correctly. Otherwise the fixer updates the manifest for retries/later runs; resubmit running work only when resumable and more than two measured hours remain. A max/median peak spread >3 with completed low pods below 20% throughout their lives calls for input size groups. The triage judge receives all numbers and returns CLOSE or ESCALATE; only the fixer changes anything. Missing peaks require review. Example: 12Gi request, peaks 4.5–7.7Gi, earlier OOM at 6Gi => need 7.7, right 12Gi, sized correctly; a 1.2Gi mean at 17 minutes is still ramp-up.
-
-- `nrp-monitor` asks the coordinator after six hours unschedulable for GPU stages (`queue_wait_ceiling` overrides it); the Job stays queued, resume doubles the ceiling, and CPU fallback requires an explicit coordinator choice.
+Profile 2–3 of the heaviest inputs at full size with the real configuration and process count.
+Measure past startup and cache warm-up. A reduced-process smoke run checks basic operation.
+Use [monitor registration guidance](../nrp-monitor/references/tasks.md#smokeprofile-sizing) for smoke and profile stages,
+and [utilization review](../nrp-monitor/references/utilization.md) for memory LOW and other flags.
 
 ### Reporting memory peaks
 
@@ -195,6 +169,9 @@ on success; upload that marker after the wrapper returns. Keep the `NRP_MEMORY_P
 in stdout. `--container` must match the manifest container name; omit it only for single-container Jobs.
 The helper reads cgroup v2 `memory.peak`, then v1 `memory.max_usage_in_bytes`, then child-process
 `ru_maxrss` (explicitly marked as a fallback, not a true container peak; it excludes page cache).
+For cache-heavy pods, including large `emptyDir` staging, measure the peak container working
+set (`container_memory_working_set_bytes`) through the real workload. Use it as a sizing input
+alongside the cgroup peak because process RSS misses charged page cache.
 Run it in a fresh job cgroup so the peak belongs to that run. An OOM can kill the wrapper before
 it reports: no line is not evidence of low usage. The monitor reads saved log lines; markers are
 for provenance, not an alternative success check. For multi-container Jobs report each container separately.

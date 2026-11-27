@@ -4,6 +4,7 @@ import base64
 import importlib.util
 import io
 import json
+import plistlib
 from pathlib import Path
 import shutil
 import subprocess
@@ -37,6 +38,8 @@ class MaintenanceTest(unittest.TestCase):
         self.fail_download = False
         self.during_download = lambda: None
         self.addCleanup(patch.stopall)
+        patch.dict(suite.os.environ, {"HOME": str(self.base)}).start()
+        patch.object(suite, "scheduler_command", return_value=False).start()
         patch.object(suite, "api", side_effect=self.api).start()
         patch.object(suite, "command", side_effect=self.command).start()
         self.manager = suite.Suite(self.root, self.base / "state", self.catalog)
@@ -129,7 +132,8 @@ class MaintenanceTest(unittest.TestCase):
         (self.root / "example/references/help.txt").write_text("local edit")
         result = self.manager.status(daily=True)
         self.assertFalse(result["cached"])
-        self.assertFalse(result["complete"])
+        self.assertTrue(result["complete"])
+        self.assertEqual(result["results"][1]["state"], "stuck")
 
     def test_network_failure_does_not_claim_success_and_explicit_check_retries(self):
         self.write_install(self.root, "example", 1)
@@ -257,7 +261,7 @@ class MaintenanceTest(unittest.TestCase):
     def cli(self, *args):
         with patch.object(suite, "Suite", return_value=self.manager), patch.object(
                 suite.sys, "argv", [str(SCRIPT), "--skills-dir", str(self.root),
-                                    "--state-dir", str(self.base / "state"), *args]), patch(
+                                    "--state-dir", str(self.manager.state_dir), *args]), patch(
                 "sys.stdout", new_callable=io.StringIO) as output:
             code = suite.main()
             return code, output.getvalue()
@@ -271,6 +275,186 @@ class MaintenanceTest(unittest.TestCase):
         self.assertEqual(self.downloads, ["example", "braingeneers-one"])
         self.assertFalse((self.root / "missing").exists())
         self.assertFalse((self.base / "state/running.lock").exists())
+
+    def test_auto_only_updates_behind_managed_copies(self):
+        self.manager.install("example")
+        self.manager.install("braingeneers-one")
+        edited = self.root / "braingeneers-one/references/help.txt"
+        edited.write_text("local work")
+        unmanaged = self.write_install(self.root, "missing", 1)
+        self.latest_version = 2
+        self.downloads.clear()
+        self.assertEqual(self.cli("update", "--auto"), (0, "Updated Braingeneers skills: example\n"))
+        self.assertEqual(self.downloads, ["example"])
+        self.assertEqual(edited.read_text(), "local work")
+        self.assertNotIn("missing", self.manager.state["managed"])
+        self.assertEqual((unmanaged / "references/help.txt").read_text(), "Help 1")
+        self.assertEqual(self.cli("update", "--auto"), (0, ""))
+
+    def test_auto_skips_links_even_with_a_managed_record_and_reports_real_errors(self):
+        for name in ("example", "braingeneers-one"):
+            self.manager.install(name)
+        link = self.root / "example"
+        target = self.base / "owner-checkout"
+        link.rename(target)
+        link.symlink_to(target, target_is_directory=True)
+        self.latest_version = 2
+        self.downloads.clear()
+        self.fail_api = True
+        with patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            self.assertEqual(self.cli("update", "--auto"), (1, ""))
+        self.assertEqual(stderr.getvalue(), "braingeneers-one: Network unavailable\n")
+        self.assertEqual(self.downloads, [])
+        self.assertEqual(link.readlink(), target)
+        self.assertEqual((target / "references/help.txt").read_text(), "Help 1")
+
+    def test_auto_updates_shared_copy_through_existing_codex_link(self):
+        root = self.base / ".claude/skills"
+        manager = suite.Suite(root, self.base / "shared-state", self.catalog)
+        installed = manager.install("example")
+        link = Path(installed["codex_link"])
+        self.assertEqual(link.readlink(), root / "example")
+        original_link = link.lstat()
+        self.latest_version = 2
+        self.root, self.manager = root, manager
+        self.assertEqual(self.cli("update", "--auto"), (0, "Updated Braingeneers skills: example\n"))
+        self.assertTrue(suite.os.path.samestat(original_link, link.lstat()))
+        self.assertEqual((link / "references/help.txt").read_text(), "Help 2")
+
+    def test_reset_backs_up_modified_copy_and_reports_local_changes(self):
+        self.manager.install("example")
+        folder = self.root / "example"
+        (folder / "references/help.txt").write_text("local edit")
+        (folder / "my-link").symlink_to(self.base / "personal-file")
+        (folder / "scripts/_vendor/yaml/loader.py").unlink()
+        self.latest_version = 2
+        code, output = self.cli("reset", "example")
+        self.assertEqual(code, 0, output)
+        row, = json.loads(output)
+        backup = Path(row["backup"])
+        self.assertEqual(backup.parent, self.manager.state_dir / "backups")
+        self.assertEqual((backup / "references/help.txt").read_text(), "local edit")
+        self.assertTrue((backup / "my-link").is_symlink())
+        self.assertEqual((folder / "references/help.txt").read_text(), "Help 2")
+        self.assertEqual(Path(row["diff_summary"]).read_text().splitlines(), [
+            "added 'my-link'", "modified 'references/help.txt'", "removed 'scripts/_vendor/yaml/loader.py'"])
+        self.assertEqual(self.manager.status()["results"][1]["state"], "current")
+
+    def test_status_table_and_preservation_across_operations(self):
+        self.manager.install("example")
+        (self.root / "example/references/help.txt").write_text("local edit")
+        local = self.root / "braingeneers-one"
+        local.mkdir()
+        (local / "SKILL.md").write_text("owner-managed")
+        target = self.base / "missing-checkout"
+        link = self.root / "missing"
+        link.symlink_to(target, target_is_directory=True)
+        good = self.root / "live-link"
+        good.symlink_to(local, target_is_directory=True)
+        (self.root / "synced").mkdir()
+        before = suite.fingerprint(local)
+        self.downloads.clear()
+        for name in ("missing", "braingeneers-one"):
+            self.assertEqual(self.cli("install", name)[0], 0)
+            self.assertEqual(self.cli("update", name)[0], 1)
+            self.assertEqual(self.cli("reset", name)[0], 1)
+        self.assertEqual(self.cli("update", "--auto"), (0, ""))
+        self.assertEqual(link.readlink(), target)
+        self.assertEqual(suite.fingerprint(local), before)
+        self.assertEqual(self.downloads, [])
+        with patch.dict(suite.os.environ, {"HOME": str(self.base)}):
+            codex = self.base / ".agents/skills"
+            codex.mkdir(parents=True)
+            (codex / "example").symlink_to(self.root / "example", target_is_directory=True)
+            code, output = self.cli("status", "--table")
+            self.assertEqual(code, 1, output)  # Local SKILL.md has no valid frontmatter.
+            for label in ("modified copy", "external link", "dangling link", "unmanaged dir",
+                          "DANGLING LINK", "reset example", "ok"):
+                self.assertIn(label, output)
+            self.assertNotIn("synced", output)
+            _, output = self.cli("status", "--json")
+            rows = {row["name"]: row for row in json.loads(output)["results"]}
+            self.assertEqual(rows["example"]["codex_link"], "ok")
+            self.assertEqual(rows["missing"]["state"], "stuck")
+            self.assertEqual(rows["missing"]["source"], str(target))
+
+    def test_macos_schedule_uses_temporary_home_and_mock_launchctl(self):
+        runner = self.root / "braingeneers-one/scripts/suite.py"
+        runner.parent.mkdir(parents=True)
+        runner.touch()
+        plist = self.base / "Library/LaunchAgents" / (suite.SCHEDULE_LABEL + ".plist")
+        with patch.dict(suite.os.environ, {"HOME": str(self.base)}), patch.object(
+                suite.sys, "platform", "darwin"), patch.object(suite, "scheduler_command") as scheduler:
+            scheduler.side_effect = lambda args, **kwargs: len(args[-1].split("/")) == 2
+            with patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                self.assertEqual(self.cli("install", "braingeneers-one")[0], 0)
+                self.assertEqual(stderr.getvalue(), "Daily updates enabled.\n")
+            data = plistlib.loads(plist.read_bytes())
+            self.assertEqual(data["ProgramArguments"], [
+                sys.executable, str(runner), "--skills-dir", str(self.root),
+                "--state-dir", str(self.base / "state"), "update", "--auto"])
+            self.assertEqual(data["StartCalendarInterval"], {"Hour": 9, "Minute": 0})
+            self.assertEqual(scheduler.call_args.args[0][:2], ["launchctl", "bootstrap"])
+            scheduler.side_effect = None
+            scheduler.return_value = True
+            self.assertEqual(self.cli("schedule", "status"), (0, "Daily updates enabled.\n"))
+            self.assertEqual(self.cli("schedule", "disable"), (0, "Daily updates disabled.\n"))
+            self.assertEqual(scheduler.call_args.args[0][:2], ["launchctl", "bootout"])
+            self.assertFalse(plist.exists())
+
+    def test_linux_schedule_timer_and_cron_fallback(self):
+        runner = self.root / "braingeneers-one/scripts/suite.py"
+        runner.parent.mkdir(parents=True)
+        runner.touch()
+        config = self.base / "config dir"
+        directory = config / "systemd/user"
+        with patch.dict(suite.os.environ, {"HOME": str(self.base), "XDG_CONFIG_HOME": str(config)}), patch.object(
+                suite.sys, "platform", "linux"), patch.object(suite, "scheduler_command") as scheduler:
+            self.assertEqual(self.cli("schedule", "enable"), (0, "Daily updates enabled.\n"))
+            service = directory / (suite.SCHEDULE_LABEL + ".service")
+            timer = directory / (suite.SCHEDULE_LABEL + ".timer")
+            self.assertIn(f'"{runner}"', service.read_text())
+            self.assertIn('"update" "--auto"', service.read_text())
+            self.assertIn("OnCalendar=*-*-* 09:00:00", timer.read_text())
+            self.assertEqual(self.cli("schedule", "status"), (0, "Daily updates enabled.\n"))
+            self.assertEqual(self.cli("schedule", "disable"), (0, "Daily updates disabled.\n"))
+            self.assertFalse(service.exists())
+            self.assertFalse(timer.exists())
+            scheduler.return_value = False
+            code, output = self.cli("schedule", "enable")
+            self.assertEqual(code, 0, output)
+            self.assertIn("0 9 * * * ", output)
+            self.assertIn("update --auto", output)
+            self.assertFalse(timer.exists())
+
+    def test_install_and_update_ensure_schedule_until_user_disables_it(self):
+        runner = self.write_install(self.root, "braingeneers-one", 1) / "scripts/suite.py"
+        runner.touch()
+        self.write_install(self.root, "example", 1)
+        for operation in ("install", "update"):
+            with self.subTest(operation=operation), patch.object(suite.sys, "platform", "linux"), patch.dict(
+                    suite.os.environ, {"XDG_CONFIG_HOME": str(self.base / operation)}), patch.object(
+                    suite, "scheduler_command") as scheduler, patch("sys.stderr", new_callable=io.StringIO):
+                scheduler.side_effect = lambda args, **kwargs: not any(
+                    status in args for status in ("is-enabled", "is-active"))
+                self.assertEqual(self.cli(operation, "example")[0], 0)
+                timer = self.base / operation / "systemd/user" / (suite.SCHEDULE_LABEL + ".timer")
+                self.assertTrue(timer.is_file())
+                self.assertIn("enable", scheduler.call_args.args[0])
+                scheduler.side_effect = None
+                scheduler.return_value = True
+                scheduler.reset_mock()
+                self.assertEqual(self.cli("update", "example")[0], 0)
+                self.assertEqual(scheduler.call_count, 3)
+                self.assertEqual(self.cli("schedule", "disable")[0], 0)
+                self.assertFalse(timer.exists())
+                scheduler.reset_mock()
+                self.assertEqual(self.cli("update", "example")[0], 0)
+                self.assertEqual(self.cli("install", "example")[0], 0)
+                self.assertEqual(self.cli("update", "--auto"), (0, ""))
+                scheduler.assert_not_called()
+                self.assertEqual(self.cli("schedule", "enable")[0], 0)
+                self.assertFalse((self.manager.state_dir / "auto-update-disabled").exists())
 
     def test_cli_rejects_non_catalog_member_before_download(self):
         with patch("sys.stderr", new_callable=io.StringIO):

@@ -14,10 +14,10 @@ import test_agent_runners as TA  # noqa: E402  (load_module: the script as a mod
 import test_handoff as TH  # noqa: E402
 import test_tasks as TT  # noqa: E402
 
-EVIDENCE = ("Job t1-a runs and progresses: snr_1.bin finished 13:37 and snr_1p5.bin 13:47, the log shows streaming to S3. The flag is "
+EVIDENCE = ("Job alice-t1-a runs and progresses: snr_1.bin finished 13:37 and snr_1p5.bin 13:47, the log shows streaming to S3. The flag is "
             "utilization only (I/O bound); deleting it would lose 4 h of write-once outputs.")
-LAB_LINE = "LOW t1-a-abc age 218m, 10m mean: cpu 0.08/1.00 (8%) [lab 40% rule; NRP-exempt size] rule=lab"
-NRP_LINE = "LOW t1-a-abc age 218m, 10m mean: cpu 0.08/1.00 (8%) [NRP violation] rule=nrp"
+LAB_LINE = "LOW alice-t1-a-abc age 218m, 10m mean: cpu 0.08/1.00 (8%) [lab 40% rule; NRP-exempt size] rule=lab"
+NRP_LINE = "LOW alice-t1-a-abc age 218m, 10m mean: cpu 0.08/1.00 (8%) [NRP violation] rule=nrp"
 
 
 class Base(unittest.TestCase):
@@ -26,20 +26,20 @@ class Base(unittest.TestCase):
         self.h.setUp()
         self.addCleanup(self.h.tearDown)
 
-    def started(self, name='t1', **kw):
+    def started(self, name='alice-t1', **kw):
         """Register the task and let a pass submit its Job (running in the fake cluster)."""
         rc, _, err = self.h.add(name=name, digest_only='nothing else is pending after this', **kw)
         self.assertEqual(rc, 0, err)
         self.h.run_pass()
         self.assertIn(name + '-a', self.h.cl())
 
-    def edit(self, fn, n='t1'):
+    def edit(self, fn, n='alice-t1'):
         p = self.h.state / 'tasks' / n / 'task.json'
         t = json.loads(p.read_text())
         fn(t)
         p.write_text(json.dumps(t))
 
-    def inject(self, n='t1', cls='util', rule='lab', **extra):
+    def inject(self, n='alice-t1', cls='util', rule='lab', **extra):
         """A util failure as the pod strike-2 path records it, on the stage whose Job runs."""
         def f(t):
             s = t['stages'][0]
@@ -52,7 +52,7 @@ class Base(unittest.TestCase):
         cmds = [['nrp-task', 'report', report, 'util only, job healthy']] if report else []
         self.h.plan({'cmds': cmds + list(extra_cmds), 'result': result if result is not None else 'UTIL_OK: ' + EVIDENCE})
 
-    def waivers(self, n='t1'):
+    def waivers(self, n='alice-t1'):
         return self.h.task(n).get('util_waivers') or []
 
     def digest(self):
@@ -72,23 +72,23 @@ class Accept(Base):
         self.assertEqual(t['stages'][0]['state'], 'running', 'the stage is back to running and watched')
         self.assertEqual(t['attempts'], [], 'no retry used')
         self.assertEqual(h.pushes(), [], 'no DM, no push')
-        self.assertIn('t1-a', h.cl(), 'the Job was not deleted or resubmitted')
+        self.assertIn('alice-t1-a', h.cl(), 'the Job was not deleted or resubmitted')
         self.assertEqual(len(self.waivers()), 1)
         w = self.waivers()[0]
-        self.assertEqual(w['job'], 't1-a')
-        self.assertEqual(w['pod'], 't1-a-abc')
+        self.assertEqual(w['job'], 'alice-t1-a')
+        self.assertEqual(w['pod'], 'alice-t1-a-abc')
         self.assertIn('snr_1.bin', w['reason'])
         self.assertLessEqual(len(w['reason']), 400)
         self.assertAlmostEqual(w['until'] - w['at'], 6 * 3600, delta=2)
         self.assertTrue(any('util waiver 1 of 3' in e for e in t['events']))
         d = self.digest()
-        self.assertRegex(d, r'util-waived\s+\[t1')
+        self.assertRegex(d, r'util-waived\s+\[alice-t1')
         self.assertIn('waiver 1 of 3', d)
         self.assertNotIn('needs you', d.lower().split('events:')[-1])
-        rc, out, _ = h.wd('task', 'show', 't1')
+        rc, out, _ = h.wd('task', 'show', 'alice-t1')
         self.assertEqual(rc, 0, out)
         self.assertIn('util waivers: 1 of 3 used', out)
-        self.assertIn('util waiver ACTIVE t1-a until', out)
+        self.assertIn('util waiver ACTIVE alice-t1-a until', out)
         self.assertIn('snr_1.bin', out)
 
     def test_answer_text_alone_counts_without_an_nrp_task_report(self):
@@ -128,7 +128,7 @@ class Accept(Base):
         self.inject()
         self.agent(result='UTIL_OK: ' + EVIDENCE + '\nHANDOFF_ENTRY:\nChecked outputs; leave the Job alone.')
         h.run_pass()
-        fl = TH.sections((h.state / 'tasks/t1/handoff.md').read_text())['Fix log']
+        fl = TH.sections((h.state / 'tasks/alice-t1/handoff.md').read_text())['Fix log']
         self.assertIn('Checked outputs; leave the Job alone.', fl)
         self.assertIn('Util flag waived until', fl)
         self.assertIn('| monitor | util waiver 1 of 3', fl)
@@ -146,7 +146,7 @@ class Suppression(Base):
 
     def flag(self, m, line):
         st = {'strikes': {}, 'jobs': {}, 'pods': {}}
-        m.task_pod_flag(st, 't1', 'a', 't1-a-abc', 'LOW', line)
+        m.task_pod_flag(st, 'alice-t1', 'a', 'alice-t1-a-abc', 'LOW', line)
         return st
 
     def notes(self):
@@ -175,8 +175,8 @@ class Suppression(Base):
         m = self.module()
         with patch.object(m, 'utilization_band_action') as action:
             self.flag(m, NRP_LINE)
-            action.assert_called_once_with('t1', 'a', 't1-a-abc', NRP_LINE)
-        self.flag(m, "LOW t1-a-abc age 218m, 10m mean: gpu 5% (gpu 0, A100) [NRP violation] rule=gpu")
+            action.assert_called_once_with('alice-t1', 'a', 'alice-t1-a-abc', NRP_LINE)
+        self.flag(m, "LOW alice-t1-a-abc age 218m, 10m mean: gpu 5% (gpu 0, A100) [NRP violation] rule=gpu")
         self.assertEqual(len(self.notes()), 1)
 
     def test_waiver_ends_with_its_time_or_with_the_job(self):
@@ -203,10 +203,10 @@ class Suppression(Base):
         h = self.h
         self.started()
         m = self.module()
-        st = {'strikes': {'t1-a-abc': {'n': 1, 't': time.time() - 3600, 'owner': 't1'}}, 'jobs': {}, 'pods': {}}
+        st = {'strikes': {'alice-t1-a-abc': {'n': 1, 't': time.time() - 3600, 'owner': 'alice-t1'}}, 'jobs': {}, 'pods': {}}
         with patch.object(m, 'utilization_band_action') as action:
-            m.task_pod_flag(st, 't1', 'a', 't1-a-abc', 'LOW', NRP_LINE)
-            action.assert_called_once_with('t1', 'a', 't1-a-abc', NRP_LINE)
+            m.task_pod_flag(st, 'alice-t1', 'a', 'alice-t1-a-abc', 'LOW', NRP_LINE)
+            action.assert_called_once_with('alice-t1', 'a', 'alice-t1-a-abc', NRP_LINE)
         self.assertIsNone(h.task()['failure'])
         self.assertEqual(h.task()['stages'][0]['state'], 'running')
         self.assertNotIn('util_event', h.task())  # direct NRP action replaces the review event
@@ -293,7 +293,7 @@ class Refused(Base):
 
     def test_refused_when_another_pod_was_flagged_outside_the_bands_recently(self):
         self.started()
-        self.edit(lambda t: t.update(util=['%s [nrp] LOW t1-a-xyz ... [NRP violation] rule=nrp -> resize' % time.strftime('%Y-%m-%dT%H:%M:%S')]))
+        self.edit(lambda t: t.update(util=['%s [nrp] LOW alice-t1-a-xyz ... [NRP violation] rule=nrp -> resize' % time.strftime('%Y-%m-%dT%H:%M:%S')]))
         self.inject()
         self.refused('another flag on this task')
 
@@ -310,7 +310,7 @@ class Refused(Base):
         h = self.h
         self.started()
         self.inject()
-        h.set_job('t1-a', state='pending')
+        h.set_job('alice-t1-a', state='pending')
         self.refused('is pending now')
 
     def test_refused_when_the_job_is_gone(self):
@@ -318,7 +318,7 @@ class Refused(Base):
         self.started()
         self.inject()
         c = json.loads((h.fake / 'cluster.json').read_text())
-        c['jobs'].pop('t1-a')
+        c['jobs'].pop('alice-t1-a')
         (h.fake / 'cluster.json').write_text(json.dumps(c))
         self.refused('is missing now')
 
@@ -326,7 +326,7 @@ class Refused(Base):
         h = self.h
         self.started()
         self.inject()
-        h.set_job('t1-a', state='FAILED', term={'reason': 'Error', 'exitCode': 1})
+        h.set_job('alice-t1-a', state='FAILED', term={'reason': 'Error', 'exitCode': 1})
         self.refused('is FAILED now')
 
     def test_refused_for_a_non_util_failure_class(self):
@@ -363,10 +363,10 @@ class Refused(Base):
         self.started()
         self.inject()
         # Replacement is permitted only once the old Job is terminal.
-        h.set_job('t1-a', state='FAILED')
+        h.set_job('alice-t1-a', state='FAILED')
         man = h.task()['stages'][0]['manifest']
         self.agent(report='RESUBMITTED', result='RESUBMITTED: resized',
-                   extra_cmds=[['sh', "sed -i '' 's/512Mi/1Gi/g' %s" % man], ['nrp-task', 'submit', 't1-a', '--reason', 'oversized -> 1Gi']])
+                   extra_cmds=[['sh', "sed -i.bak 's/512Mi/1Gi/g' %s" % man], ['nrp-task', 'submit', 'alice-t1-a', '--reason', 'oversized -> 1Gi']])
         h.run_pass()
         self.assertEqual(h.task()['attempts'][0]['cls'], 'util')
         self.assertEqual(self.waivers(), [])

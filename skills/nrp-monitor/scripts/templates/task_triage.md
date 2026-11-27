@@ -26,6 +26,9 @@ With need=max(peaks, recorded OOM limits), right=ceil(need*1.5) Gi, request <=1.
 sized correctly. Record the OOM/spike reason and CLOSE.
 Do not STOP or escalate solely for a low mean when this evidence explains the sizing.
 
+The monitor handles measured GPU flags after ramp-up directly. If a GPU observation reaches you without a measured DCGM
+reading, document the missing measurement. That observation cannot authorize deletion.
+
 Follow these steps for EVERY event:
 1. Read the event and supplied evidence. Check whether the Job is alive, failed, or complete and whether its outputs exist.
 2. For memory LOW, inspect each pod's whole-life peak and age, request and limit, OOM history, need, right size,

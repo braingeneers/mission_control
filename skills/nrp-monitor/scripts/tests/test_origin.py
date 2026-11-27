@@ -60,7 +60,7 @@ class Pure(unittest.TestCase):
         self.assertEqual(web, ["*Return to chat: <https://example.org/a?b=1&c=2|Doc>* (working with Sam)"])
 
     def test_missing_origin_wording(self):
-        self.assertEqual(WD.origin_slack(None, "task t9: goal"), ["*origin not recorded* (task t9: goal)"])
+        self.assertEqual(WD.origin_slack(None, "task alice-t9: goal"), ["*origin not recorded* (task alice-t9: goal)"])
         self.assertTrue(WD.origin_plain(None).startswith("origin not recorded"))
         self.assertEqual(WD.origin_tag(None), "[origin not recorded]")
 
@@ -91,7 +91,7 @@ class O(unittest.TestCase):
     wd, tool, manifest, add, add_unattributed, task, cl, set_job, plan, pushes, prompts, run_pass = (
         tt.T.wd, tt.T.tool, tt.T.manifest, tt.T.add, tt.T.add_unattributed, tt.T.task, tt.T.cl, tt.T.set_job, tt.T.plan, tt.T.pushes, tt.T.prompts, tt.T.run_pass)
 
-    def fail(self, job="t1-a"):
+    def fail(self, job="alice-t1-a"):
         self.set_job(job, state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
 
     def test_origin_is_persisted_shown_and_survives_retry_resume_and_agent_prompt(self):
@@ -101,8 +101,8 @@ class O(unittest.TestCase):
         self.assertEqual(self.task()["origin"]["link"], RT["link"])
         self.run_pass()
         self.fail()                                                       # auto mode: fix agent, silent retry
-        self.plan({"cmds": [["sh", "sed -i '' 's/512Mi/1Gi/g' %s" % self.task()["stages"][0]["manifest"]],
-                            ["nrp-task", "submit", "t1-a", "--reason", "OOM 512Mi -> 1Gi"],
+        self.plan({"cmds": [["sh", "sed -i.bak 's/512Mi/1Gi/g' %s" % self.task()["stages"][0]["manifest"]],
+                            ["nrp-task", "submit", "alice-t1-a", "--reason", "OOM 512Mi -> 1Gi"],
                             ["nrp-task", "report", "RESUBMITTED", "OOM -> 1Gi"]], "result": "RESUBMITTED"})
         self.run_pass()
         prompt = self.prompts()[0].read_text()
@@ -115,11 +115,11 @@ class O(unittest.TestCase):
             self.run_pass()
         self.assertEqual(self.task()["status"], "NEEDS_OWNER")
         self.assertEqual(len(self.pushes()), 1)
-        self.assertIn("[fixture-sort-chat] NRP task t1 needs you", self.pushes()[0])
-        rc, out, err = self.wd("task", "resume", "t1", "--note", "decided")
+        self.assertIn("[fixture-sort-chat] NRP task alice-t1 needs you", self.pushes()[0])
+        rc, out, err = self.wd("task", "resume", "alice-t1", "--note", "decided")
         self.assertEqual(rc, 0, err)
         self.assertEqual(self.task()["origin"], dict(self.task()["origin"], **RT))
-        rc, out, _ = self.wd("task", "show", "t1")
+        rc, out, _ = self.wd("task", "show", "alice-t1")
         self.assertIn('origin: chat "fixture-sort-chat" (Codex gpt-6-astra, with Sam) ' + RT["link"], out)
         rc, out, _ = self.wd("task", "list")
         self.assertIn("<fixture-sort-chat>", out)
@@ -131,12 +131,12 @@ class O(unittest.TestCase):
         self.run_pass()
         self.fail()
         self.run_pass()
-        self.assertIn("[origin not recorded] NRP task t1 needs you", self.pushes()[0])
-        rc, out, _ = self.wd("task", "show", "t1")
+        self.assertIn("[origin not recorded] NRP task alice-t1 needs you", self.pushes()[0])
+        rc, out, _ = self.wd("task", "show", "alice-t1")
         self.assertIn("origin: origin not recorded (no chat recorded; goal and code repo above identify it)", out)
         rc, out, _ = self.wd("digest")
-        self.assertIn("t1 (origin not recorded (goal: test task t1))", out)
-        rc, out, _ = self.wd("origin", "task", "t1")
+        self.assertIn("alice-t1 (origin not recorded (goal: test task alice-t1))", out)
+        rc, out, _ = self.wd("origin", "task", "alice-t1")
         self.assertIn("origin not recorded", out)
 
     def test_task_add_without_origin_is_refused_with_how_to_pass_it(self):
@@ -146,34 +146,34 @@ class O(unittest.TestCase):
         self.assertIn("has no origin", err)
         self.assertIn("--origin-title/--origin-link", err)               # says how to pass it
         self.assertIn('"origin": {"title"', err)
-        self.assertFalse((self.state / "tasks" / "t1").exists())
+        self.assertFalse((self.state / "tasks" / "alice-t1").exists())
         rc, out, err = self.add(origin=RT)
         self.assertEqual(rc, 0, err)
 
     def test_task_add_origin_flags_satisfy_the_requirement(self):
-        f = self.tmp / "t1.json"
+        f = self.tmp / "alice-t1.json"
         self.assertEqual(self.wd_add_no_origin()[0], 1)
         rc, out, err = self.wd("task", "add", str(f), "--origin-title", "flag chat", "--origin-link", RT["link"])
         self.assertEqual(rc, 0, err)
         self.assertEqual(self.task()["origin"]["title"], "flag chat")
 
     def wd_add_no_origin(self):
-        stages = [{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": ["s3://braingeneersdev/alice/test/t1/a.txt"]}]
-        f = self.tmp / "t1.json"
-        f.write_text(json.dumps({"name": "t1", "goal": "test task t1", "approved": "Sam 2026-11-05 in chat: go", "notes": "x", "stages": stages}))
+        stages = [{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": ["s3://braingeneersdev/alice/test/alice-t1/a.txt"]}]
+        f = self.tmp / "alice-t1.json"
+        f.write_text(json.dumps({"name": "alice-t1", "goal": "test task alice-t1", "approved": "Sam 2026-11-05 in chat: go", "notes": "x", "stages": stages}))
         return self.wd("task", "add", str(f))
 
     def test_flags_override_json_and_bad_link_is_refused(self):
         rc, out, err = self.add(origin={"title": "old", "link": RT["link"]})
         self.assertEqual(rc, 0, err)
-        f = self.tmp / "t2.json"
-        spec = json.loads((self.tmp / "t1.json").read_text())
-        spec["name"] = "t2"
-        spec["stages"] = [{"id": "a", "job": "t2-a", "manifest": self.manifest("t2-a"), "done_s3": ["s3://braingeneersdev/alice/test/t2/a.txt"]}]
+        f = self.tmp / "alice-t2.json"
+        spec = json.loads((self.tmp / "alice-t1.json").read_text())
+        spec["name"] = "alice-t2"
+        spec["stages"] = [{"id": "a", "job": "alice-t2-a", "manifest": self.manifest("alice-t2-a"), "done_s3": ["s3://braingeneersdev/alice/test/alice-t2/a.txt"]}]
         f.write_text(json.dumps(spec))
         rc, out, err = self.wd("task", "add", str(f), "--origin-title", "new title", "--origin-assistant", "Claude Opus")
         self.assertEqual(rc, 0, err)
-        o = self.task("t2")["origin"]
+        o = self.task("alice-t2")["origin"]
         self.assertEqual((o["title"], o["link"], o["assistant"]), ("new title", RT["link"], "Claude Opus"))
         spec["name"] = "t3"
         spec["stages"][0].update(id="a", job="t3-a", manifest=self.manifest("t3-a"))
@@ -189,11 +189,11 @@ class O(unittest.TestCase):
         self.run_pass()
         before = self.task()
         self.assertEqual(before["status"], "NEEDS_OWNER")
-        rc, out, err = self.wd("origin", "task", "t1", "--title", RT["title"], "--link", RT["link"])
+        rc, out, err = self.wd("origin", "task", "alice-t1", "--title", RT["title"], "--link", RT["link"])
         self.assertEqual(rc, 1)
         self.assertIn("--evidence is required", err)
         self.assertIsNone(self.task()["origin"])
-        rc, out, err = self.wd("origin", "task", "t1", "--title", RT["title"], "--link", RT["link"], "--assistant", RT["assistant"],
+        rc, out, err = self.wd("origin", "task", "alice-t1", "--title", RT["title"], "--link", RT["link"], "--assistant", RT["assistant"],
                                "--evidence", "T3 thread_read 2026-11-05: title, provider; task code repo is its checkout")
         self.assertEqual(rc, 0, err)
         after = self.task()
@@ -203,11 +203,11 @@ class O(unittest.TestCase):
         self.assertIn("thread_read", o["evidence"])
         strip = lambda t: {k: v for k, v in t.items() if k not in ("origin", "events")}
         self.assertEqual(strip(before), strip(after), "status, stages, approval, attempts, failure untouched")
-        self.assertEqual(self.cl()["t1-a"]["state"], "FAILED", "nothing submitted or deleted")
-        rc, out, err = self.wd("origin", "task", "t1", "--title", "other", "--evidence", "x")
+        self.assertEqual(self.cl()["alice-t1-a"]["state"], "FAILED", "nothing submitted or deleted")
+        rc, out, err = self.wd("origin", "task", "alice-t1", "--title", "other", "--evidence", "x")
         self.assertEqual(rc, 1)
         self.assertIn("already has origin", err)
-        rc, out, err = self.wd("origin", "task", "t1", "--title", "fixture-sort-chat (renamed)", "--evidence", "renamed", "--replace")
+        rc, out, err = self.wd("origin", "task", "alice-t1", "--title", "fixture-sort-chat (renamed)", "--evidence", "renamed", "--replace")
         self.assertEqual(rc, 0, err)
         o = self.task()["origin"]
         self.assertEqual((o["title"], o["link"], o["assistant"]), ("fixture-sort-chat (renamed)", RT["link"], RT["assistant"]))
@@ -219,7 +219,7 @@ class O(unittest.TestCase):
         self.add_unattributed(mode="watch")
         lock = open(self.state / "state.lock", "a+")
         fcntl.flock(lock, fcntl.LOCK_EX)
-        p = subprocess.Popen([str(self.bin / "nrp-monitor"), "origin", "task", "t1", "--title", "x", "--link", RT["link"], "--evidence", "e"],
+        p = subprocess.Popen([str(self.bin / "nrp-monitor"), "origin", "task", "alice-t1", "--title", "x", "--link", RT["link"], "--evidence", "e"],
                              env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         time.sleep(0.8)
         self.assertIsNone(p.poll(), "must block while the runner holds state.lock")
@@ -242,10 +242,10 @@ class O(unittest.TestCase):
         rc, out, err = self.add(mode="watch", origin=dict(RT, title="fixture-sort-chat <&>"))
         self.assertEqual(rc, 0, err)
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="shard check <FAILED> & <!channel>: 2 of 16")
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="shard check <FAILED> & <!channel>: 2 of 16")
         self.run_pass()
         self.assertEqual(self.task()["status"], "WITH_COORDINATOR")
-        rc, _, err = self.wd("task", "needs-owner", "t1", "--reason", self.task()["failure"]["detail"])
+        rc, _, err = self.wd("task", "needs-owner", "alice-t1", "--reason", self.task()["failure"]["detail"])
         self.assertEqual(rc, 0, err)
         srv.shutdown()
         self.assertEqual(len(Stub.got), 1, (self.state / "monitor.log").read_text()[-1500:])
@@ -255,21 +255,21 @@ class O(unittest.TestCase):
         lines = payload["text"].split("\n")
         self.assertEqual(lines[0], "*Return to chat: fixture-sort-chat &lt;&amp;&gt;* (Codex gpt-6-astra, working with Sam)")
         self.assertEqual(lines[1], "`%s`" % RT["link"])
-        self.assertTrue(lines[2].startswith("*NRP monitor* (automated script, working with Sam; not a chat): NRP task t1 needs you:"))
+        self.assertTrue(lines[2].startswith("*NRP monitor* (automated script, working with Sam; not a chat): NRP task alice-t1 needs you:"))
         self.assertNotIn("<!channel>", payload["text"])
         self.assertIn("&lt;!channel&gt;", payload["text"])
-        pushed = json.loads((self.state / "pushed.json").read_text())["task:t1:1"]
+        pushed = json.loads((self.state / "pushed.json").read_text())["task:alice-t1:1"]
         self.assertTrue(pushed["msg"].startswith("[fixture-sort-chat <&>] "))
         self.assertIn("fixture-sort-chat <&>", pushed["origin"][0])
 
     def test_slack_payload_without_origin_says_so_and_names_goal(self):
         text = self._text_for_unrecorded_task()
-        self.assertTrue(text.startswith("*origin not recorded* (task t1: test task t1)"), text)
+        self.assertTrue(text.startswith("*origin not recorded* (task alice-t1: test task alice-t1)"), text)
 
     def _text_for_unrecorded_task(self):
         self.add_unattributed(mode="watch")
         env = dict(self.env, NRP_MONITOR_STATE=str(self.state))
-        code = ("import sys;from pathlib import Path;sys.path.insert(0,str(Path(sys.argv[1]).parent));from nrp_monitor import wake as w;print(w.slack_text('boom', ['task:t1']))")
+        code = ("import sys;from pathlib import Path;sys.path.insert(0,str(Path(sys.argv[1]).parent));from nrp_monitor import wake as w;print(w.slack_text('boom', ['task:alice-t1']))")
         r = subprocess.run([sys.executable, "-c", code, SCRIPT], capture_output=True, text=True, env=env)
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout
@@ -277,10 +277,10 @@ class O(unittest.TestCase):
     def test_digest_labels_old_events_with_a_backfilled_origin(self):
         self.add_unattributed(mode="watch")
         rc, out, _ = self.wd("digest")
-        self.assertIn("[t1 · origin not recorded]", out)
-        self.wd("origin", "task", "t1", "--title", RT["title"], "--link", RT["link"], "--evidence", "verified")
+        self.assertIn("[alice-t1 · origin not recorded]", out)
+        self.wd("origin", "task", "alice-t1", "--title", RT["title"], "--link", RT["link"], "--evidence", "verified")
         rc, out, _ = self.wd("digest")
-        self.assertIn("[t1 · fixture-sort-chat]", out)
+        self.assertIn("[alice-t1 · fixture-sort-chat]", out)
         self.assertIn("not by one chat", out)
 
 

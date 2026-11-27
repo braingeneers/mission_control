@@ -13,7 +13,7 @@ override. A built-in copy of the shared file is the fallback (a test checks they
 
 A person or lab may add stricter rules without touching the shared file: `<state dir>/utilization-policy.local.json`
 (default `~/.local/state/nrp-monitor/`; set `NRP_UTIL_POLICY_LOCAL` for another path). It is read after the shared file.
-A key that is in neither file means that check is off, so with no local file only the GPU floor and the job cap apply.
+The shared policy supplies CPU and memory bands, the small-pod exemption, and the account threshold even without a local file.
 
 | Key | Effect |
 | --- | --- |
@@ -40,13 +40,22 @@ About `small_pod_exempt`: NRP's policy page says only that its CPU and memory re
 minutes; kubectl only for pod state. Memory is judged both ways: NRP's own namespace recording rules use RSS (no file cache, so
 it reads lower than the working set) and its violation counter is not readable, so a pod is outside a memory band if either
 measure is (Hunter 2026-11-18: "error on the side of caution"). A flagged memory line shows both (`rss X.XGi N%`). The
-cost is an occasional extra resize or "spiky" wake for a cache-heavy job. One line per flagged pod plus a summary (it counts the account's violating pods only when the local rules ask for that).
+cost is an occasional extra resize or "spiky" wake for a cache-heavy job. One line per flagged pod plus a summary (it counts the account's violating pods when the NRP username is configured).
 
 Each flagged line ends `[tag] rule=R`: `gpu` (any GPU flag), `nrp` (a CPU or memory band that NRP counts as a violation)
 or `lab` (only the lab floor flagged it; NRP does not count it). The monitor reads that token (an older line without it is
 read from its tag).
 
 ## Running task observations
+
+**Measured GPU flags (`rule=gpu`) trigger an automatic safety stop.** For a registered running stage, the monitor records one
+ramp-up event per flagged pod younger than 10 minutes. Set `gpu_ramp_up_minutes` in `config.json` or
+`NRP_MONITOR_GPU_RAMP_UP_MINUTES` to raise the ramp-up to at most 20 minutes. At or after that age, the monitor saves logs and
+descriptions, deletes the owned Job (including for watch-only tasks), records a util/gpu failure, and wakes the coordinator once
+with GPU %, pod age, GPU model and CPU % when reported. Redesign with CPU staging or prefetch, batching, several items per pod,
+or a CPU-only request. A retry with the same manifest and shipped code is refused. Progress, time left and resumability have no
+effect on the stop, and the stop bypasses the judge, fixer and waiver. Flags without a measured DCGM reading remain observations
+and cannot authorize deletion. The 1 h warning and 90 min stop remain backstops for jobs that alternate phases.
 
 An NRP CPU or memory band flag (`rule=nrp`, LOW or HIGH) waits through pod ramp-up:
 25% of measured stage runtime, capped at 15 minutes, or 10 minutes without measured history.

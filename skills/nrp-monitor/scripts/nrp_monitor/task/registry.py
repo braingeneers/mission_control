@@ -186,23 +186,26 @@ def manifest_check(path, ns, job):
         bad.append("metadata.name is %r, the stage's job is %r" % (md.get("name"), job))
     if md.get("namespace") not in (None, ns):
         bad.append("namespace must be %s" % ns)
-    if spec.get("backoffLimit") != 0:
+    if type(spec.get("backoffLimit")) is not int or spec["backoffLimit"] != 0:
         bad.append("spec.backoffLimit must be 0")
     if not spec.get("activeDeadlineSeconds"):
         bad.append("spec.activeDeadlineSeconds required (it counts queue time: include the expected wait)")
     ttl = spec.get("ttlSecondsAfterFinished")
-    if ttl is not None and ttl < 3600:
+    if type(ttl) is not int or ttl < 3600:
         bad.append("ttlSecondsAfterFinished %s: at least 3600, so the monitor sees the Job finish and saves its logs" % ttl)
     pod = ((spec.get("template") or {}).get("spec")) or {}
-    if pod.get("restartPolicy") not in ("Never", "OnFailure"):
+    if pod.get("restartPolicy") != "Never":
         bad.append("template.spec.restartPolicy must be Never")
-    for c in pod.get("containers") or []:
+    for c in pod["containers"] + (pod.get("initContainers") or []):
         res = c.get("resources") or {}
         if not res.get("requests") and not res.get("limits"):
             bad.append("container %s: resources.requests required" % c.get("name"))
         cmdtxt = " ".join(map(str, (c.get("command") or []) + (c.get("args") or [])))
-        if re.search(r"\bsleep\s+(inf|infinity|\d{4,})\b", cmdtxt):
-            bad.append("container %s: no long sleep (an idle pod is an NRP violation)" % c.get("name"))
+        if any(not (res.get(key) or {}).get("ephemeral-storage") for key in ("requests", "limits")):
+            bad.append("container %s: ephemeral-storage request and limit required" % c.get("name"))
+        if (re.search(r"\bsleep\s+(inf|infinity|\d{4,})\b", cmdtxt)
+                or re.search(r"""(?:^|[;&|\n(]|\bexec\s+|\b-c\s+)\s*(?:\S*/)?sleep\s+[^;&|\n)]+(?:[;)&\s]*$)""", cmdtxt)):
+            bad.append("container %s: no trailing or long sleep (an idle pod is an NRP violation)" % c.get("name"))
     return bad
 
 
@@ -240,22 +243,6 @@ def gpu_expired(s):
         return "GPU APPROVAL: the owner's GPU OK for stage %s ran through %s (today %s); a GPU retry needs their new OK " \
                "(`nrp-monitor task resume NAME --gpu-ok-until YYYY-MM-DD`)" % (s["id"], until, _m_state.today_iso())
     return None
-
-
-def pv3_spec_uri(path):
-    """The `--spec s3://...` argument of a pv3 Job's command, or None."""
-    try:
-        text = Path(path).read_text()
-        try:
-            import yaml
-            j = yaml.safe_load(text)
-        except ImportError:
-            j = json.loads(text)
-        c = j["spec"]["template"]["spec"]["containers"][0]
-        argv = [str(x) for x in (c.get("command") or []) + (c.get("args") or [])]
-        return next((argv[i + 1] for i, x in enumerate(argv[:-1]) if x == "--spec" and argv[i + 1].startswith("s3://")), None)
-    except Exception:
-        return None
 
 
 def manifest_mem(t, s):
@@ -311,21 +298,23 @@ def clone_code(name, code, warn):
     if r.returncode:
         raise _m_state.ChainError("code.commit %s not found in %s" % (code.get("commit"), repo))
     sha = r.stdout.strip()
-    extras, shipped_extras = [], []                                   # code dirs the task ships besides subdir: in this repo / as declared
+    extras, shipped_extras = [], []
     for x in code.get("extra_pkg_dirs") or []:
         if os.path.isabs(os.path.expanduser(x)):
-            shipped_extras.append(str(Path(x).expanduser()))             # another checkout: packed in place at reship, not cloned
+            shipped_extras.append(str(Path(x).expanduser()))  # Legacy external checkout
         else:
-            rel = str((given / x).relative_to(top)).strip(".").strip("/") if given != top else x.strip("/")
+            rel = (given / x).relative_to(top).as_posix()
             extras.append(rel)
             shipped_extras.append(rel)
+    dirs = [(given / x).relative_to(top).as_posix() for x in code.get("dirs") or []]
+    extras.extend(dirs)
     scope = [x for x in ([sub] + extras if sub else []) if x] or ["."]
     if not sub and not code.get("full_checkout"):                    # whole-repo clones were most of the task cache's disk
         size = checkout_bytes(repo, sha)
         if size > _m_state.CLONE_FULL_MAX:
             raise _m_state.ChainError(
                 "code.subdir is not set, so the task would check out all of %s (%d MiB at %s; limit %d MiB). Set code.subdir to the folder "
-                "the task runs from (and code.extra_pkg_dirs for other code it ships), or code.full_checkout: true if it really needs the "
+                "the task runs from (and code.dirs for other code it ships), or code.full_checkout: true if it really needs the "
                 "whole repo" % (repo, size >> 20, sha[:10], _m_state.CLONE_FULL_MAX >> 20))
     dest = _m_state.TASK_CACHE / name / "repo"
     checkout_into(repo, dest, scope if sub else None, "monitor/" + name, sha)
@@ -335,13 +324,13 @@ def clone_code(name, code, warn):
             a = git("apply", "--whitespace=nowarn", "-", cwd=str(dest), inp=diff)
             if a.returncode:
                 raise _m_state.ChainError("could not carry uncommitted changes into the clone: %s" % a.stderr.strip()[:200])
-            git("add", "-A", cwd=str(dest))
+            git("add", "-u", cwd=str(dest))
             git("commit", "-qm", "uncommitted state of %s at task add" % repo, cwd=str(dest))
             warn.append("uncommitted changes under %s were committed in the clone" % (sub or repo))
         copied, skipped, total = [], [], 0
         for rel in git("ls-files", "-z", "--others", "--exclude-standard", "--", *scope, cwd=str(repo)).stdout.split("\0"):
             src = repo / rel
-            if not rel or not src.is_file():
+            if not rel or not src.is_file() or src.resolve() != src:
                 continue
             if src.suffix not in _m_state.CLONE_SUFFIXES or src.stat().st_size > _m_state.CLONE_MAX_FILE or total + src.stat().st_size > _m_state.CODE_SNAPSHOT_MAX:
                 skipped.append(rel)
@@ -351,10 +340,8 @@ def clone_code(name, code, warn):
             total += src.stat().st_size
             copied.append(rel)
         if copied:
-            git("add", "-A", cwd=str(dest))
-            git("commit", "-qm", "untracked source files at task add (%d)" % len(copied), cwd=str(dest))
-            warn.append("%d untracked source file(s) under %s were copied into the clone and committed (e.g. %s)"
-                        % (len(copied), sub or repo, copied[0]))
+            warn.append("%d untracked source file(s) copied into the clone without committing (e.g. %s)"
+                        % (len(copied), copied[0]))
         if skipped:
             warn.append("%d untracked file(s) under %s are NOT in the clone (not source or over %d MiB; e.g. %s); commit them or set code.commit"
                         % (len(skipped), sub or repo, _m_state.CLONE_MAX_FILE >> 20, skipped[0]))
@@ -366,6 +353,11 @@ def clone_code(name, code, warn):
         out["pkg_dir"] = code["pkg_dir"]
     if shipped_extras:
         out["extra_pkg_dirs"] = shipped_extras
+    for key in ("adapter", "bundle_prefix", "branch_prefix"):
+        if key in code:
+            out[key] = code[key]
+    if dirs:
+        out["dirs"] = dirs
     return out
 
 
@@ -415,7 +407,8 @@ def ensure_clone(t, depth=0):
     if not repo.exists():
         raise _m_state.ChainError("cannot restore the clone of %s: its source repo %s is gone" % (t["name"], repo))
     sub = (code.get("subdir") or "").strip("/")
-    extras = [x.strip("/") for x in code.get("extra_pkg_dirs") or [] if not os.path.isabs(os.path.expanduser(x))]
+    extras = [x.strip("/") for x in (code.get("extra_pkg_dirs") or []) + (code.get("dirs") or [])
+              if not os.path.isabs(os.path.expanduser(x))]
     checkout_into(repo, dest, [x for x in [sub] + extras if x] if sub else None, code["branch"], code["base"])
     bundle = _m_state.task_dir(t["name"]) / "code.bundle"
     if bundle.exists():
@@ -440,8 +433,24 @@ def code_dir_problem(x, what):
 
 
 def code_dirs_check(code):
-    """Problems with code.pkg_dir / code.extra_pkg_dirs (what `nrp-task reship` packs besides the clone's own package)."""
+    """Validate code shipping settings on a new or updated registration."""
+    from .. import code_shipping
+
     bad = []
+    if code.get("adapter") not in (None, *code_shipping.ADAPTERS):
+        bad.append("code.adapter: use one of " + ", ".join(code_shipping.ADAPTERS))
+    if "bundle_prefix" in code:
+        try:
+            code_shipping.validate_prefix(code["bundle_prefix"])
+        except ValueError as exc:
+            bad.append(str(exc))
+    if "dirs" in code:
+        dirs = code["dirs"]
+        if not isinstance(dirs, list) or not dirs:
+            bad.append("code.dirs: a nonempty list of folders relative to the clone")
+        elif any(not isinstance(x, str) or not x.strip() or "\0" in x or Path(x).is_absolute()
+                 or x.startswith("~") or ".." in Path(x).parts for x in dirs):
+            bad.append("code.dirs: each folder must be relative to the clone, without .. or ~")
     if code.get("pkg_dir") is not None:
         pr = code_dir_problem(code["pkg_dir"], "code.pkg_dir")
         bad += [pr] if pr else []
@@ -494,7 +503,7 @@ def validate_task(raw, warn, plan_gpu=None):
             bad.append("postcheck: {cmd: [exact local read-only checker argv], expect: nonempty text}")
     code = raw.get("code")
     if code is not None and (not isinstance(code, dict) or not isinstance(code.get("repo"), str)):
-        bad.append("code: {repo: path, commit?: sha, subdir?: path, pkg_dir?: path, extra_pkg_dirs?: [path]}")
+        bad.append("code: {repo: path, commit?: sha, subdir?: path, dirs?: [path], bundle_prefix?: s3-uri}")
         code = None
     if code is not None:
         bad += code_dirs_check(code)
@@ -532,16 +541,10 @@ def validate_task(raw, warn, plan_gpu=None):
             d3 = []
         buckets |= {x[5:].split("/")[0] for x in d3}
         m = s.get("manifest")
-        if st0 != "done" and (mode == "auto" or st0 == "pending"):
-            if not isinstance(m, str) or not os.path.isfile(os.path.expanduser(m)):
-                bad.append("%s: manifest (path to the Job yaml) required and must exist" % w)
-            else:
-                bad += ["%s: %s" % (w, p) for p in manifest_check(os.path.expanduser(m), ns, job)]
-        elif isinstance(m, str) and os.path.isfile(os.path.expanduser(m)):
-            try:
-                bad += ["%s: %s" % (w, p) for p in manifest_configmap_problems(os.path.expanduser(m))]
-            except Exception as e:
-                bad.append("%s: %s" % (w, manifest_error(m, e)))
+        if isinstance(m, str) and os.path.isfile(os.path.expanduser(m)):
+            bad += ["%s: %s" % (w, p) for p in manifest_check(os.path.expanduser(m), ns, job)]
+        elif st0 != "done" and (mode == "auto" or st0 == "pending"):
+            bad.append("%s: manifest (path to the Job yaml) required and must exist" % w)
         purpose = str(s.get("purpose") or s.get("type") or s.get("kind") or sid).lower()
         smoke = s.get("smoke") is True or s.get("profile") is True or purpose in ("smoke", "profile")
         if smoke and isinstance(m, str) and os.path.isfile(os.path.expanduser(m)):
@@ -644,6 +647,30 @@ def cmd_task_add(a):
     return task_add_raw(raw, a.file, by="session")
 
 
+def run_preflight(task, warn):
+    override = os.environ.get("NRP_PREFLIGHT_PATH")
+    root = Path.home() / ".claude/plugins"
+    script = (Path(override).expanduser() if override else
+              next(iter(sorted(root.rglob("nrp_preflight.py"), reverse=True)), None))
+    manifests = sorted({stage["manifest"] for stage in task["stages"] if stage.get("manifest")})
+    if not manifests:
+        return
+    if script is None or not script.is_file():
+        warn.append("NRP preflight skipped: install the Claude NRP plugin or set NRP_PREFLIGHT_PATH")
+        return
+    from .. import state
+    env = dict(os.environ)
+    env.pop("NRP_PREFLIGHT_ALLOW", None)
+    for manifest in manifests:
+        result = subprocess.run([sys.executable, str(script), manifest], capture_output=True, text=True,
+                                timeout=120, env=env)
+        if result.returncode:
+            raise state.ChainError("NRP preflight failed for %s: %s" %
+                                   (manifest, (result.stderr or result.stdout).strip()[-400:]))
+        if "RESULT=warn" in result.stdout:
+            warn.append("NRP preflight warnings for %s: %s" % (manifest, result.stdout.strip()[-400:]))
+
+
 def task_add_raw(raw, src_file, by="session", parent=None):
     """Register a task. by = "session" (a person or chat: `task add`) or "continuation" (the plan agent, via `nrp-task next-add`)."""
     from .. import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
@@ -671,7 +698,12 @@ def task_add_raw(raw, src_file, by="session", parent=None):
             if group in h.get("retries", {}) and "max_retries" not in raw:
                 raw["max_retries"] = h["retries"][group]
         t = validate_task(raw, warn, plan_gpu=_m_plans.plan_gpu_cover(od))
-    except _m_state.ChainError as e:
+        prefix = _m_state.nrp_username() + "-"
+        for name in [t["name"], *(stage["job"] for stage in t["stages"])]:
+            if not name.startswith(prefix) or name == prefix:
+                raise _m_state.ChainError("task and Job names must start with %s (got %s)" % (prefix, name))
+        run_preflight(t, warn)
+    except (_m_state.ChainError, OSError, subprocess.TimeoutExpired) as e:
         sys.exit("task refused: %s" % e)
     if od:
         t["on_done"] = od

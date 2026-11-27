@@ -75,6 +75,8 @@ sys.addaudithook(_audit)
 
 def _kubectl_verb(argv):
     args = list(argv[1:])
+    if args[:1] == ["--context"]:
+        args = args[2:]
     # Only the audited wrapper shape; unknown flags before the verb fail closed.
     if args[:1] in (['-n'], ['--namespace']):
         args = args[2:]
@@ -83,6 +85,8 @@ def _kubectl_verb(argv):
 
 def _aws_op(argv):
     args = list(argv[1:])
+    if args[:1] == ["--context"]:
+        args = args[2:]
     # Only the monitor's own aws_cmd shape: global --endpoint-url/--profile, then the operation.
     while args[:1] in (['--endpoint-url'], ['--profile']):
         args = args[2:]
@@ -197,19 +201,17 @@ def isolated_pass():
             return original_log(message)
         patch(state, 'log', log)
         from . import stage_jobs, task_agents, agents, wake, cluster
-        original_kubectl = cluster.kubectl
-        def kubectl(*args, **kwargs):
-            # observe_task deletes a proven successful Job BEFORE logging done.
-            # Capture that decision before the IO gate; never infer it from the
-            # later state/log produced after a suppressed delete.
+        original_delete = cluster.delete_owned_job
+        def delete_owned_job(*args, **kwargs):
+            # Capture completion before the delete is suppressed by the I/O gate.
             caller = sys._getframe(1)
             if (caller.f_globals.get('__name__') == __package__ + '.ladder'
-                    and caller.f_code.co_name == 'observe_task'
-                    and len(args) > 2 and args[2] == 'delete'):
+                    and caller.f_code.co_name == 'observe_task'):
                 record('decision', category='mark_done', task=caller.f_locals['n'],
                        stage=caller.f_locals['s']['id'])
-            return original_kubectl(*args, **kwargs)
-        patch(cluster, 'kubectl', kubectl)
+            return original_delete(*args, **kwargs)
+        patch(cluster, 'delete_owned_job', delete_owned_job)
+
         def scoped(obj, method, stage_arg):
             original = getattr(obj, method)
             def wrapped(*args, **kwargs):

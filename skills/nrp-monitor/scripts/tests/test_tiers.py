@@ -306,6 +306,9 @@ class InstallSh(unittest.TestCase):
         for n in ("claude", "agy"):
             (self.bin / n).write_text("#!/bin/sh\nexit 0\n")
             (self.bin / n).chmod(0o755)
+        for n in ("launchctl", "systemctl"):
+            (self.bin / n).write_text("#!/bin/sh\nexit 1\n")
+            (self.bin / n).chmod(0o755)
         self.env = dict(os.environ, HOME=str(self.home), NRP_MONITOR_LABEL="test.nrp-monitor", PATH="%s:%s" % (self.bin, os.environ["PATH"]))
         self.env.update(wake_env(self.tmp, home=self.home))
         self.env.pop("NRP_MONITOR_STATE", None)

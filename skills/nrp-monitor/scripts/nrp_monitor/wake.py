@@ -581,7 +581,7 @@ def wake_text(t, event, harness="claude"):
         return ("[NRP monitor GPU ALARM: automated, from the monitor script, not from the owner. Highest priority: handle this before anything "
                 "else in this chat.]\n%s\nThis is not a judgment call: stopping the Job is required. After you have deleted it and recorded what "
                 "must change (LOG/PLAN beside the work), run `nrp-monitor wake-review %s --by coordinator --why TEXT`. Resubmit only with the "
-                "changed design and inside the plan's approval; if the redesign is a decision that is Hunter's, say so in one line and use "
+                "changed design and inside the plan's approval; if the redesign is the owner's decision, say so in one line and use "
                 "`nrp-monitor task needs-owner`." % (body, n))[:3000]
     if kind == "red_alert":
         return ("[NRP monitor RED ALERT: automated, from the monitor script, not from the owner. Highest priority: handle this before "
@@ -592,8 +592,8 @@ def wake_text(t, event, harness="claude"):
     tail = ("\nUse your judgment on what to do next. "
             "Usually you can and should keep going now, in this turn: no later turn follows this message, so work you defer will not happen "
             "until someone asks. After handling this wake, record `nrp-monitor wake-review %s --by rule|agent|coordinator --why TEXT`. Continue the plan's next steps inside its approved range and the task's approval (review outputs, fix, "
-            "resume, register the next step). Stop only at a stop_for_hunter step, a decision that is Hunter's, or a fix that needs "
-            "tools you do not have here; then say in one line what is needed, and use `nrp-monitor task needs-owner` only if he must act.\n" % n) + (
+            "resume, register the next step). Stop only at a stop_for_owner step, the owner's decision, or a fix that needs "
+            "tools you do not have here; then say in one line what is needed, and use `nrp-monitor task needs-owner` only if the owner must act.\n" % n) + (
                "This wake is a visible turn in the owner's T3 chat with this chat's normal tools: finish the whole fix yourself (rebuild and "
                "upload pinned code, edit the manifest, resume). If you still cannot finish, put \"NEEDS YOU:\" and the one thing needed at the "
                "top of your reply; the owner sees this chat." if harness == "t3-cli" else

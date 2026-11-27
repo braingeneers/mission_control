@@ -66,19 +66,19 @@ Ladder.setUp, Ladder.tearDown = _setUp, _tearDown
 
 class LadderTests(Ladder):
     # ---------------------------------------------------------------- helpers
-    def webhook(self, name="t1"):
+    def webhook(self, name="alice-t1"):
         p = self.state / "webhooks" / name
         p.parent.mkdir(exist_ok=True)
         p.write_text(json.dumps({"url": "http://127.0.0.1:%d/hook" % self.server.server_port, "workstream": "coord"}))
         p.chmod(0o600)
 
-    def write_task(self, fn, n="t1"):
+    def write_task(self, fn, n="alice-t1"):
         p = self.state / "tasks" / n / "task.json"
         t = json.loads(p.read_text())
         fn(t)
         p.write_text(json.dumps(t))
 
-    def inject_failure(self, cls="infra", sig="stuck:pod-x", detail="pod x STUCK creating 142 min", n="t1"):
+    def inject_failure(self, cls="infra", sig="stuck:pod-x", detail="pod x STUCK creating 142 min", n="alice-t1"):
         def f(t):
             t["stages"][0]["state"] = "failed"
             t["failure"] = {"stage": "a", "job": t["stages"][0]["job"], "cls": cls, "sig": sig, "detail": detail, "logs": None, "ts": time.time()}
@@ -96,7 +96,7 @@ class LadderTests(Ladder):
     def unknown_failure(self):
         """A real script-classified `unknown` failure: the Job failed with no traceback and no exit reason."""
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="worker finished item 17 then went quiet")
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "Error", "exitCode": 1}, log="worker finished item 17 then went quiet")
 
     def sonnet_plan_stop(self, line="STOPPED: cannot tell why the worker stopped"):
         self.plan({"cmds": [["nrp-task", "report", "STOPPED", line[9:]]], "result": line})
@@ -115,7 +115,7 @@ class LadderTests(Ladder):
         self.add()
         self.webhook()
         self.run_pass()
-        self.set_job("t1-a", state="running", started=time.time() - 120)
+        self.set_job("alice-t1-a", state="running", started=time.time() - 120)
         self.inject_failure()
         self.triage_says("CLOSE: the pod started 2 min ago and is writing logs")
         self.run_pass()
@@ -134,7 +134,7 @@ class LadderTests(Ladder):
     def test_no_fix_needed_also_closes_and_triage_is_read_only(self):
         self.add()
         self.run_pass()
-        self.set_job("t1-a", state="running", started=time.time() - 120)
+        self.set_job("alice-t1-a", state="running", started=time.time() - 120)
         self.inject_failure()
         self.triage_says("CLOSE: running normally")
         self.run_pass()
@@ -161,7 +161,7 @@ class LadderTests(Ladder):
         """Tier 2's UTIL_OK waiver is the util 'no fix needed' path; Haiku is not asked about NRP-counted utilization."""
         self.add()
         self.run_pass()
-        self.set_job("t1-a", state="running", started=time.time() - 120)
+        self.set_job("alice-t1-a", state="running", started=time.time() - 120)
         self.inject_failure(cls="util", sig="util:cpu@512Mi", detail="pod outside NRP utilization bands")
         self.triage_says("ESCALATE: resize needs review")
         self.sonnet_plan_stop("STOPPED: resize needed")
@@ -173,7 +173,7 @@ class LadderTests(Ladder):
         self.add()
         self.unknown_failure()
         self.triage_says("ESCALATE: the worker died after item 17 with no error; needs a look at the code")
-        self.plan({"cmds": [["nrp-task", "submit", "t1-a", "--reason", "worker hung -> resubmit"],
+        self.plan({"cmds": [["nrp-task", "submit", "alice-t1-a", "--reason", "worker hung -> resubmit"],
                             ["nrp-task", "report", "RESUBMITTED", "resubmitted"]], "result": "RESUBMITTED: worker hung"})
         self.run_pass()
         t = self.task()
@@ -200,7 +200,7 @@ class LadderTests(Ladder):
     def test_terminal_classified_failure_skips_tier_1(self):
         self.add()
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
         self.plan({"cmds": [["nrp-task", "report", "STOPPED", "x"]], "result": "STOPPED: x"})
         self.run_pass()
         self.assertEqual(self.agent_models(), ["sonnet"])
@@ -220,16 +220,16 @@ class LadderTests(Ladder):
         wake = [e for e in Relay.received if e["event_type"] == "escalation"]
         self.assertEqual(len(wake), 1, Relay.received)
         self.assertEqual(wake[0]["workstream"], "coord")
-        self.assertEqual(wake[0]["task"], "t1")
-        self.assertIn("nrp-monitor task show t1", wake[0]["summary"])
-        self.assertIn("task needs-owner t1", wake[0]["summary"])
-        self.assertIn("task resume t1", wake[0]["summary"])
+        self.assertEqual(wake[0]["task"], "alice-t1")
+        self.assertIn("nrp-monitor task show alice-t1", wake[0]["summary"])
+        self.assertIn("task needs-owner alice-t1", wake[0]["summary"])
+        self.assertIn("task resume alice-t1", wake[0]["summary"])
         self.assertLess(len(wake[0]["summary"]), 1700)
         self.assertFalse(any(e["event_type"] == "escalation" for e in t["webhook_outbox"]), "delivered, so acknowledged")
         rc, out, _ = self.wd("status", "--quiet")
         self.assertIn("wait on their coordinator chat", out)
         self.assertIn("this session's chat is unknown", out)
-        self.assertNotIn("t1", out, "unknown chat: a count only, no task names")
+        self.assertNotIn("alice-t1", out, "unknown chat: a count only, no task names")
         self.assertNotIn("need the owner", out)
         # The session-start notice is scoped to the chat it runs in.
         env = self.env
@@ -237,11 +237,11 @@ class LadderTests(Ladder):
             self.env = dict(env, T3CODE_THREAD_ID="abc")
             rc, out, _ = self.wd("status", "--quiet")
             self.assertIn("1 task(s) from this chat wait on you", out)
-            self.assertIn("t1:", out)
+            self.assertIn("alice-t1:", out)
             self.env = dict(env, T3CODE_THREAD_ID="some-other-thread")
             rc, out, _ = self.wd("status", "--quiet")
             self.assertNotIn("coordinator", out)
-            self.assertNotIn("t1", out)
+            self.assertNotIn("alice-t1", out)
         finally:
             self.env = env
         rc, out, _ = self.wd("digest")
@@ -252,8 +252,8 @@ class LadderTests(Ladder):
         self.add()
         self.webhook()
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
-        self.write_task(lambda t: t["attempts"].append({"stage": "a", "job": "t1-a", "cls": "resources", "sig": "oom@512Mi", "detail": "d",
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
+        self.write_task(lambda t: t["attempts"].append({"stage": "a", "job": "alice-t1-a", "cls": "resources", "sig": "oom@512Mi", "detail": "d",
                                                          "fix": "doubled memory", "by": "agent", "ts": time.time()}))
         self.run_pass()
         self.assertEqual(self.task()["status"], "WITH_COORDINATOR")
@@ -268,20 +268,20 @@ class LadderTests(Ladder):
         self.run_pass()
         self.assertEqual(self.task()["status"], "WITH_COORDINATOR")
         self.assertEqual(self.pushes(), [])
-        rc, out, err = self.wd("task", "needs-owner", "t1", "--reason", "the new filter changes the science: which threshold do you want?")
+        rc, out, err = self.wd("task", "needs-owner", "alice-t1", "--reason", "the new filter changes the science: which threshold do you want?")
         self.assertEqual(rc, 0, err)
         t = self.task()
         self.assertEqual(t["status"], "NEEDS_OWNER")
         self.assertIn("which threshold", t["reason"])
         self.assertEqual(len(self.pushes()), 1)
         self.assertIn("which threshold", self.pushes()[0])
-        rc, out, err = self.wd("task", "needs-owner", "t1", "--reason", "again, a second time")
+        rc, out, err = self.wd("task", "needs-owner", "alice-t1", "--reason", "again, a second time")
         self.assertNotEqual(rc, 0, "already NEEDS_OWNER")
         self.assertEqual(len(self.pushes()), 1, "one DM only")
 
     def test_needs_owner_refuses_short_reason_and_finished_tasks(self):
         self.add()
-        rc, _, err = self.wd("task", "needs-owner", "t1", "--reason", "x")
+        rc, _, err = self.wd("task", "needs-owner", "alice-t1", "--reason", "x")
         self.assertNotEqual(rc, 0)
         rc, _, err = self.wd("task", "needs-owner", "nosuch", "--reason", "a long enough reason here")
         self.assertNotEqual(rc, 0)
@@ -293,13 +293,13 @@ class LadderTests(Ladder):
         self.unknown_failure()
         self.sonnet_plan_stop()
         self.run_pass()
-        rc, out, err = self.wd("task", "resume", "t1", "--note", "patched the worker, resubmit")
+        rc, out, err = self.wd("task", "resume", "alice-t1", "--note", "patched the worker, resubmit")
         self.assertEqual(rc, 0, err)
         t = self.task()
         self.assertEqual(t["status"], "running")
         self.assertIn("resumed by the coordinator chat", self.events())
         self.run_pass()
-        self.assertEqual(self.cl()["t1-a"]["state"], "running", "the failed stage was resubmitted")
+        self.assertEqual(self.cl()["alice-t1-a"]["state"], "running", "the failed stage was resubmitted")
         self.assertEqual(self.pushes(), [])
 
     def test_wake_delivery_failure_falls_back_to_the_owner(self):
@@ -354,13 +354,13 @@ class LadderTests(Ladder):
         self.add(mode="watch")
         self.webhook()
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
+        self.set_job("alice-t1-a", state="FAILED", term={"reason": "OOMKilled", "exitCode": 137})
         self.run_pass()
         self.assertEqual(self.task()["status"], "WITH_COORDINATOR")
         self.assertEqual(len(self.pushes()), 0)
 
     def test_resumable_field_is_validated(self):
-        stages = [{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": ["s3://braingeneersdev/x/a"], "resumable": "yes"}]
+        stages = [{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": ["s3://braingeneersdev/x/a"], "resumable": "yes"}]
         rc, _, err = self.add(stages=stages)
         self.assertNotEqual(rc, 0)
         self.assertIn("resumable", err)
@@ -380,13 +380,13 @@ class LadderTests(Ladder):
     def test_progressing_job_near_its_deadline_is_extended_in_place(self):
         self.run_job()
         now = time.time()
-        self.set_job("t1-a", state="running", deadline=3600, start=now - 3000, started=now - 2900, log="item 100\nitem 101")
+        self.set_job("alice-t1-a", state="running", deadline=3600, start=now - 3000, started=now - 2900, log="item 100\nitem 101")
         self.run_pass()                                           # records pod_started and the first log sample
         self.assertEqual(self.patched(), [])
-        self.set_job("t1-a", log="item 100\nitem 101\nitem 102")
+        self.set_job("alice-t1-a", log="item 100\nitem 101\nitem 102")
         self.run_pass()                                           # the log advanced and 10 min remain
-        self.assertEqual(self.patched(), ["t1-a 7200"])
-        self.assertEqual(self.cl()["t1-a"]["deadline"], 7200)
+        self.assertEqual(self.patched(), ["alice-t1-a 7200"])
+        self.assertEqual(self.cl()["alice-t1-a"]["deadline"], 7200)
         self.assertIn("still progressing", self.events())
         self.assertIn("deadline-extended", (self.state / "digest.log").read_text())
         self.assertEqual(self.task()["status"], "running")
@@ -396,12 +396,12 @@ class LadderTests(Ladder):
     def test_extensions_are_capped(self):
         self.run_job()
         now = time.time()
-        self.set_job("t1-a", state="running", deadline=3600, start=now - 3000, started=now - 2900, log="a")
+        self.set_job("alice-t1-a", state="running", deadline=3600, start=now - 3000, started=now - 2900, log="a")
         self.run_pass()
         for i in range(5):
             # each extension adds one original deadline; move the clock so the Job is near its (new) deadline again
-            c = self.cl()["t1-a"]
-            self.set_job("t1-a", start=time.time() - (c["deadline"] - 600), log="line %d" % i)
+            c = self.cl()["alice-t1-a"]
+            self.set_job("alice-t1-a", start=time.time() - (c["deadline"] - 600), log="line %d" % i)
             self.run_pass()
         self.assertEqual(len(self.patched()), 2, self.patched())
         self.assertIn("extensions were used", self.events())
@@ -409,7 +409,7 @@ class LadderTests(Ladder):
     def test_job_that_is_not_progressing_is_left_to_expire(self):
         self.run_job()
         now = time.time()
-        self.set_job("t1-a", state="running", deadline=3600, start=now - 3000, started=now - 2900, log="stuck on item 7")
+        self.set_job("alice-t1-a", state="running", deadline=3600, start=now - 3000, started=now - 2900, log="stuck on item 7")
         self.run_pass()
         self.run_pass()                                           # same log tail twice: no progress
         self.assertEqual(self.patched(), [])
@@ -419,9 +419,9 @@ class LadderTests(Ladder):
         self.run_job()
         now = time.time()
         # 2 h deadline, the pod waited 30 min Pending and started 10 min ago
-        self.set_job("t1-a", state="running", deadline=7200, start=now - 2400, started=now - 600, log="x")
+        self.set_job("alice-t1-a", state="running", deadline=7200, start=now - 2400, started=now - 600, log="x")
         self.run_pass()
-        self.assertEqual(self.patched(), ["t1-a 9000"], "original 7200 s + 1800 s Pending")
+        self.assertEqual(self.patched(), ["alice-t1-a 9000"], "original 7200 s + 1800 s Pending")
         self.assertIn("credited 30 min", self.events())
         self.run_pass()
         self.assertEqual(len(self.patched()), 1, "credited once")
@@ -429,14 +429,14 @@ class LadderTests(Ladder):
     def test_short_queue_is_not_credited(self):
         self.run_job()
         now = time.time()
-        self.set_job("t1-a", state="running", deadline=7200, start=now - 400, started=now - 300, log="x")
+        self.set_job("alice-t1-a", state="running", deadline=7200, start=now - 400, started=now - 300, log="x")
         self.run_pass()
         self.assertEqual(self.patched(), [])
 
     def test_pending_job_near_deadline_is_kept_alive_and_then_credited(self):
         self.run_job()
         now = time.time()
-        self.set_job("t1-a", state="running", deadline=3600, start=now - 3000)     # no pod started: still Pending
+        self.set_job("alice-t1-a", state="running", deadline=3600, start=now - 3000)     # no pod started: still Pending
         self.run_pass()
         patched = self.patched()
         self.assertEqual(len(patched), 1, patched)
@@ -444,7 +444,7 @@ class LadderTests(Ladder):
         self.assertTrue(6600 <= new <= 6700, new)                 # elapsed 3000 s + one original deadline
         self.assertIn("still Pending", self.events())
         # the pod finally starts: the whole wait is credited on top of the original deadline, never double counted
-        self.set_job("t1-a", start=time.time() - 5000, started=time.time() - 100, deadline=new)
+        self.set_job("alice-t1-a", start=time.time() - 5000, started=time.time() - 100, deadline=new)
         self.run_pass()
         self.run_pass()
         want = 3600 + 4900
@@ -454,19 +454,19 @@ class LadderTests(Ladder):
     def test_pending_job_stuck_on_an_image_error_is_not_extended(self):
         self.run_job()
         now = time.time()
-        self.set_job("t1-a", state="running", deadline=3600, start=now - 3000, wait="ImagePullBackOff")
+        self.set_job("alice-t1-a", state="running", deadline=3600, start=now - 3000, wait="ImagePullBackOff")
         self.run_pass()
         self.assertEqual(self.patched(), [])
 
     def test_dead_resumable_stage_is_resubmitted_once_with_double_deadline(self):
-        stages = [{"id": "a", "job": "t1-a", "manifest": self.manifest("t1-a"), "done_s3": ["s3://braingeneersdev/x/a"], "resumable": True}]
+        stages = [{"id": "a", "job": "alice-t1-a", "manifest": self.manifest("alice-t1-a"), "done_s3": ["s3://braingeneersdev/x/a"], "resumable": True}]
         self.add(stages=stages)
         self.webhook()
         self.run_pass()
         now = time.time()
-        self.set_job("t1-a", started=now - 3500)
+        self.set_job("alice-t1-a", started=now - 3500)
         self.run_pass()                                           # records pod_started
-        self.set_job("t1-a", state="FAILED", reason="DeadlineExceeded", deadline=3600, start=time.time() - 3700)
+        self.set_job("alice-t1-a", state="FAILED", reason="DeadlineExceeded", deadline=3600, start=time.time() - 3700)
         self.run_pass()
         t = self.task()
         self.assertEqual(t["status"], "retrying")
@@ -479,9 +479,9 @@ class LadderTests(Ladder):
         self.assertEqual(t["stages"][0]["dl"]["resubmits"], 1)
         self.assertIn("deadline-resubmit", (self.state / "digest.log").read_text())
         # the second timeout of the same stage is not resubmitted again: it is a repeat after a fix, so Tier 3
-        self.set_job("t1-a", started=time.time() - 7000)
+        self.set_job("alice-t1-a", started=time.time() - 7000)
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", reason="DeadlineExceeded", deadline=7200, start=time.time() - 7300)
+        self.set_job("alice-t1-a", state="FAILED", reason="DeadlineExceeded", deadline=7200, start=time.time() - 7300)
         self.run_pass()
         t = self.task()
         self.assertEqual(t["status"], "WITH_COORDINATOR")
@@ -489,12 +489,12 @@ class LadderTests(Ladder):
         self.assertEqual(self.pushes(), [])
 
     def test_manifest_resume_flag_counts_as_resumable(self):
-        m = self.manifest("t1-a", **{'print(1)': 'print(1)", "--skip-existing'})
-        self.add(stages=[{"id": "a", "job": "t1-a", "manifest": m, "done_s3": ["s3://braingeneersdev/x/a"]}])
+        m = self.manifest("alice-t1-a", **{'print(1)': 'print(1)", "--skip-existing'})
+        self.add(stages=[{"id": "a", "job": "alice-t1-a", "manifest": m, "done_s3": ["s3://braingeneersdev/x/a"]}])
         self.run_pass()
-        self.set_job("t1-a", started=time.time() - 3500)
+        self.set_job("alice-t1-a", started=time.time() - 3500)
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", reason="DeadlineExceeded", deadline=3600, start=time.time() - 3700)
+        self.set_job("alice-t1-a", state="FAILED", reason="DeadlineExceeded", deadline=3600, start=time.time() - 3700)
         self.run_pass()
         self.assertEqual(self.task()["status"], "retrying")
         self.assertEqual(self.prompts(), [])
@@ -504,9 +504,9 @@ class LadderTests(Ladder):
         self.add()
         self.webhook()
         self.run_pass()
-        self.set_job("t1-a", started=time.time() - 3500)
+        self.set_job("alice-t1-a", started=time.time() - 3500)
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", reason="DeadlineExceeded", deadline=3600, start=time.time() - 3700)
+        self.set_job("alice-t1-a", state="FAILED", reason="DeadlineExceeded", deadline=3600, start=time.time() - 3700)
         self.sonnet_plan_stop("STOPPED: one node ran a pod 10x slower; rerunning redoes everything")
         self.run_pass()
         t = self.task()
@@ -520,7 +520,7 @@ class LadderTests(Ladder):
     def test_queue_class_deadline_is_untouched_by_the_timeout_rules(self):
         self.add()
         self.run_pass()
-        self.set_job("t1-a", state="FAILED", reason="DeadlineExceeded")
+        self.set_job("alice-t1-a", state="FAILED", reason="DeadlineExceeded")
         self.plan({"cmds": [["nrp-task", "report", "STOPPED", "need more info"]], "result": "STOPPED: need more info"})
         self.run_pass()
         self.assertIn("class queue", self.prompts()[-1].read_text())

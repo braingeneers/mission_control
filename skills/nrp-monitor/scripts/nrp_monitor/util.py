@@ -1,6 +1,7 @@
 """NRP monitor util (mechanical extraction; R3a)."""
 import json
 import re
+import subprocess
 from . import sizing as _m_sizing
 from datetime import datetime, timezone
 
@@ -136,8 +137,95 @@ def util_waive(n, f, claim, a):
     return True, ""
 
 
+def gpu_flag_action(n, sid, pod, line):
+    """Handle a measured GPU flag. Return False for observations without a usable measurement."""
+    from . import cluster as _m_cluster
+    from . import config as _m_config
+    from . import ladder as _m_ladder
+    from . import notify as _m_notify
+    from . import stage_jobs as _m_stage_jobs
+    from . import state as _m_state
+    from . import wake as _m_wake
+    from .task import registry as _m_registry
+
+    readings = re.findall(r"\bgpu (\d+(?:\.\d+)?)% \(gpu [^,]+, ([^)]*)\)", line)
+    if not readings or "no DCGM series" in line:
+        return False
+    pct, model = min(readings, key=lambda item: float(item[0]))
+    if float(pct) >= 100 * _m_config.gpu_floor():                       # only NRP's own floor authorizes a stop; a stricter lab floor goes to review
+        return False
+    t = _m_state.task_load(n)
+    stage = _m_state.tstage(t, sid)
+    if stage["state"] != "running":
+        return True
+    age_match = _m_state.AGE_RE.search(line)
+    age = int(age_match.group(1)) * 60 if age_match else _m_sizing.job_pod_ages(t, stage).get(pod)
+    ramp_up = 60 * _m_config.gpu_ramp_up_minutes()
+    if age is None or age < ramp_up:
+        def log_wait(cur):
+            seen = _m_state.tstage(cur, sid).setdefault("gpu_ramp_up_logged", [])
+            if pod not in seen:
+                seen.append(pod)
+                age_text = "unknown age" if age is None else "%gm old" % (age / 60)
+                _m_state.tev(cur, "GPU ramp-up wait for %s (%s, %gm required): %s" % (pod, age_text, ramp_up / 60, line))
+        _m_state.task_txn(n, log_wait)
+        return True
+
+    cpu = next((value + "%" for key, _, _, value, _ in _m_state.FLAG_RES.findall(line) if key == "cpu"), "unreported")
+    evidence = "pod %s at %gm: GPU %s%% (%s), CPU %s" % (pod, age / 60, pct, model, cpu)
+    logs = None
+    try:
+        saved = _m_stage_jobs.save_task_logs(t, stage, "NRP GPU safety stop: " + evidence)
+        logs = saved[0] if saved else None
+    except OSError as exc:
+        _m_state.log("GPU safety stop %s: could not save diagnostics: %s" % (pod, exc))
+    try:
+        result = _m_cluster.delete_owned_job(t["namespace"], stage["job"])
+        error = result.stderr.strip() if result.returncode and "NotFound" not in result.stderr else ""
+        if result.returncode and not result.stderr.strip():
+            error = "delete exited %s" % result.returncode
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        error = str(exc)
+    detail = ("NRP GPU safety stop for Job %s: %s. Redesign with a CPU staging stage or prefetch, batching, "
+              "several items per pod, or drop the GPU." % (stage["job"], evidence))
+    if error:
+        detail = "GPU safety stop DELETE FAILED (%s); stop Job now. " % error[:120] + detail
+    else:
+        fingerprint = stage.get("submitted_job_fingerprint")
+        if not fingerprint:
+            try:
+                fingerprint = _m_stage_jobs.job_fingerprint(_m_registry.manifest_doc(stage["manifest"]))
+            except Exception as exc:  # The Job is already gone; record the stop even when its manifest is unreadable.
+                _m_state.log("GPU safety stop %s: could not fingerprint manifest: %s" % (pod, exc))
+                fingerprint = None
+        _m_ladder.task_fail(n, sid, "util", "util:gpu", detail, logs, extra={"rule": "gpu", "pod": pod})
+
+    newly_notified = False
+
+    def record(cur):
+        nonlocal newly_notified
+        s = _m_state.tstage(cur, sid)
+        if not error:
+            s.update(state="failed", util_deleted=detail, gpu_stopped_fingerprint=fingerprint)
+            if (cur.get("util_event") or {}).get("stage") == sid:
+                cur.pop("util_event")
+        if s.get("gpu_stop_notified"):
+            return False if error else None
+        s["gpu_stop_notified"] = newly_notified = True
+        _m_state.tev(cur, detail)
+        cur.setdefault("util", []).append("%s [gpu] %s" % (_m_state.iso(), line))
+        del cur["util"][:-10]
+        if cur["status"] in _m_state.TASK_HELD:
+            _m_wake.queue_task_webhook(cur, "gpu_stop", summary=detail)
+    _m_state.task_txn(n, record)
+    if newly_notified:
+        _m_ladder.to_coordinator(n, detail, deputy=False)
+        _m_notify.digest("util-stop", detail, n)
+    return True
+
+
 def task_pod_flag(st, n, sid, pod, kind, line):
-    """Utilization is a judge event, never a stage failure. STUCK remains an infrastructure failure."""
+    """Route measured GPU and NRP band flags to safety rules, and other util flags to review."""
     from . import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import state as _m_state  # Local import breaks orchestration cycle; patches stay on the defining module.
     if kind == "STUCK":
@@ -149,6 +237,8 @@ def task_pod_flag(st, n, sid, pod, kind, line):
         return
     t = _m_state.task_load(n)
     stage = _m_state.tstage(t, sid)
+    if rule == "gpu" and gpu_flag_action(n, sid, pod, line):
+        return
     if rule == "nrp":
         utilization_band_action(n, sid, pod, line)
         return
@@ -192,6 +282,9 @@ def process_util_event(n, a):
     if event.get("rule") == "nrp":                                        # below NRP's own floor: the review may not end in "no change"
         _m_state.task_txn(n, lambda cur: cur.pop("util_event", None))
         return utilization_band_action(n, event["stage"], event.get("pod", ""), event["detail"])
+    if event.get("rule") == "gpu" and gpu_flag_action(n, event["stage"], event.get("pod", ""), event["detail"]):
+        _m_state.task_txn(n, lambda cur: cur.pop("util_event", None))
+        return
     prompt = _m_ladder.triage_prompt(context) + "\nMemory evidence (GiB): " + numbers + "\n" + _m_state.MEMORY_RULE
     line, _ = _m_task_agents.run_task_agent(n, prompt, a, kind="triage")
     if _m_agents.is_unavailable(line):

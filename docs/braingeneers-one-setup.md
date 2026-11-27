@@ -87,31 +87,23 @@ References: [login options](https://cli.github.com/manual/gh_auth_login),
 
 ## 4. Install for the correct assistant
 
-Use the matching identifier and user scope explicitly. The defaults may select
-a different assistant or install only into the current project.
-
-| Assistant | `AGENT` value | Usual skill directory under the user's home |
-| --- | --- | --- |
-| Codex | `codex` | `.codex/skills` |
-| Claude Code | `claude-code` | `.claude/skills` |
-| GitHub Copilot | `github-copilot` | `.copilot/skills` |
-| Gemini CLI | `gemini-cli` | `.gemini/skills` |
-| Cursor | `cursor` | `.cursor/skills` |
-
-Replace `AGENT` below with that identifier, then run:
+For Claude Code and Codex, install one shared copy under
+`~/.claude/skills/` and expose it to Codex through a link in
+[`~/.agents/skills/`](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills).
+This works on a Codex-only machine. Check both paths for an existing skill
+first and follow its maintenance instructions if present.
 
 ```bash
-gh skill install braingeneers/mission_control braingeneers-one@main --agent AGENT --scope user
+gh skill install braingeneers/mission_control braingeneers-one@main --agent claude-code --scope user
 ```
 
-For the reported Claude Code case, `AGENT` is `claude-code`. Read the resulting
-installation path; actual application configuration and CLI output take
-precedence over the usual directories above. Check for an existing skill first.
-If present, inspect it and use its maintenance instructions rather than forcing
-a replacement. Preserve pins, local edits, symlinks, unrelated skills, and
-project overrides. Do not install the whole repository's skill catalog.
+The verification step below makes the installed router discoverable by Codex.
 
-See [GitHub CLI's skill installation reference](https://cli.github.com/manual/gh_skill_install).
+For GitHub Copilot, Gemini CLI, or Cursor, use the first command with
+`--agent github-copilot`, `--agent gemini-cli`, or `--agent cursor`, respectively,
+and read the path reported by GitHub CLI. Preserve existing pins, local edits,
+symlinks, and project overrides. See the
+[GitHub CLI skill installation reference](https://cli.github.com/manual/gh_skill_install).
 
 ## 5. Verify the installed copy
 
@@ -128,6 +120,18 @@ is needed. If Python is unavailable, follow the installed
 [maintenance instructions](../skills/braingeneers-one/references/maintenance.md#requirements)
 to help with normal setup without changing the user's default Python or
 bypassing managed-machine restrictions.
+
+For the shared Claude Code and Codex setup, register the Codex link:
+
+```bash
+python3 ~/.claude/skills/braingeneers-one/scripts/suite.py install braingeneers-one
+```
+
+The same helper creates Codex links when installing or updating specialists.
+It reports any existing entry that points elsewhere and preserves it.
+
+For other assistants, use the same `install braingeneers-one` command with
+the router path reported by GitHub CLI to set up daily updates.
 
 Run the installed helper, substituting the actual interpreter and path:
 
@@ -183,3 +187,30 @@ GitHub access. A
 pending** when appropriate; do not keep reinstalling, changing accounts, or
 logging in again to solve organization membership. Direct the user to
 `#braingeneers-helpdesk` on UCSC GI Slack for lab access assistance.
+
+## Keep the installed instructions current
+
+On macOS and Linux, the installed helper sets up daily updates by default
+when you run its `install` or `update` command. Use the following commands to check the schedule
+or re-enable it after opting out.
+
+```bash
+python3 ~/.claude/skills/braingeneers-one/scripts/suite.py schedule enable
+python3 ~/.claude/skills/braingeneers-one/scripts/suite.py schedule status
+```
+
+The daily job updates unmodified managed copies from their source repositories.
+Claude and Codex share those copies through the Codex links. Use
+`schedule disable` to turn the job off and preserve your choice across future
+installs and updates. If the user scheduler is unavailable, the helper prints
+a crontab entry you can add or remove yourself.
+
+A modified managed copy is **stuck** because automatic and manual updates
+preserve local edits. Use `suite.py reset NAME` to back up the edited copy
+and reinstall from its source. The output includes the backup and a summary
+of the files you changed. Maintainers can also symlink a skill to a live Git
+checkout and update that checkout directly. The helper preserves those links.
+For a dangling link, restore the linked checkout or repair the link manually.
+
+See the [maintenance reference](../skills/braingeneers-one/references/maintenance.md)
+for scheduler and troubleshooting details.

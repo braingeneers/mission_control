@@ -171,6 +171,8 @@ def advance_task(n, jobs, a):
         return
     _m_util.process_util_event(n, a)
     t = _m_state.task_load(n)
+    if t["status"] in _m_state.TASK_HELD:
+        return
     if t.get("failure"):
         if not _m_tier0.tier0_fix(n, a):                                           # fixed rules first (no model); the agents only when none applies
             _m_ladder.handle_failure(n, a)
@@ -197,6 +199,9 @@ def advance_task(n, jobs, a):
                 _m_notify.digest("done", message, n)
                 continue
             ok, msg = _m_stage_jobs.do_submit(n, s["id"], "stage ready", "monitor")
+            if not ok and msg == _m_stage_jobs.GPU_REDESIGN_REQUIRED:
+                _m_ladder.to_coordinator(n, msg, deputy=False)
+                return
             if not ok and msg.startswith("GPU APPROVAL"):
                 _m_ladder.escalate(n, msg.split(". Report STOPPED")[0], a)
                 return

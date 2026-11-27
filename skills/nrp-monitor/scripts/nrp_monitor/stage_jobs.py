@@ -3,7 +3,10 @@
 Sizing evidence belongs to sizing.py; task state transitions stay in task/model.py.
 All destructive action guards retain fresh single-Job reads.
 """
+import hashlib
+import json
 import re
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -38,10 +41,27 @@ def save_task_logs(t, s, reason):
     return str(p), logtxt
 
 
+GPU_REDESIGN_REQUIRED = "GPU stage failed under NRP's 40% floor; resubmit needs a redesign"
+
+
+def job_fingerprint(doc):
+    """Digest of the parsed manifest, including the shipped code digest in its environment."""
+    return hashlib.sha256(json.dumps(doc, sort_keys=True).encode()).hexdigest()
+
+
+def gpu_retry_unchanged(stage, doc):
+    if "gpu_stopped_fingerprint" not in stage:
+        return False
+    stopped = stage["gpu_stopped_fingerprint"]
+    # None: the manifest could not be read at the stop, so there is nothing to compare; do not block a redesigned stage forever.
+    return stopped is not None and stopped == job_fingerprint(doc)
+
+
 def do_submit(n, sid, reason, by):
     """Submit a stage's manifest. A failed stage = a retry (budgets enforced here, whoever asks). Returns (ok, message)."""
     from .task import model as _m_model  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import cluster as _m_cluster  # Local import breaks orchestration cycle; patches stay on the defining module.
+    from . import code_shipping
     from . import decisions as _m_decisions  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import ladder as _m_ladder  # Local import breaks orchestration cycle; patches stay on the defining module.
     from . import red_alert as _m_red_alert  # Local import breaks orchestration cycle; patches stay on the defining module.
@@ -73,6 +93,10 @@ def do_submit(n, sid, reason, by):
     probs = _m_task_registry.manifest_check(s["manifest"], ns, s["job"])
     if probs:
         return False, "manifest refused: " + "; ".join(probs)
+    doc = _m_task_registry.manifest_doc(s["manifest"])
+    if gpu_retry_unchanged(s, doc):
+        return False, GPU_REDESIGN_REQUIRED
+    fingerprint = job_fingerprint(doc)
     gx = _m_task_registry.gpu_expired(s)
     if gx:
         return False, gx + ". Report STOPPED; do not resubmit."
@@ -95,12 +119,23 @@ def do_submit(n, sid, reason, by):
     st_ = _m_cluster.job_state(s["job"], ns)
     if st_ in ("running", "pending", "error"):
         return False, "Job %s is still %s" % (s["job"], st_)
+    try:
+        bundle = code_shipping.ensure_bundle(t, s, doc)
+    except (_m_state.ChainError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
+        return False, "code bundle refused: %s" % exc
+    if bundle:
+        _m_state.task_txn(n, lambda task: code_shipping.record_bundle(task, s["job"], bundle))
+    for resource in (doc, doc["spec"]["template"]):
+        metadata = resource.get("metadata") or {}
+        resource["metadata"] = metadata
+        labels = metadata.get("labels") or {}
+        metadata["labels"] = labels
+        labels.setdefault(_m_state.OWNER_LABEL_KEY, _m_state.OWNER_LABEL)
     if st_ in ("ok", "FAILED"):
         d = delete_stage_job(t, s, "before resubmit")
         if d.returncode and "NotFound" not in d.stderr:
             return False, "could not delete old Job %s: %s" % (s["job"], d.stderr.strip()[:150])
     # Shared exclusions live only in the submitted copy: expiry must restore capacity.
-    doc = _m_task_registry.manifest_doc(s["manifest"])
     for node in _m_cluster.bad_nodes():
         _m_tier0.exclude_node(doc, node)
     with tempfile.TemporaryDirectory(prefix="nrp-submit-") as td:
@@ -132,7 +167,19 @@ def do_submit(n, sid, reason, by):
                                   "resource_template": resource_template(doc) if f2["cls"] == "resources" else None})
             s2["attempt"] = s2.get("attempt", 1) + 1
             t["failure"] = None
-        s2.update(state="running", submitted=_m_state.now())
+        s2.update(state="running", submitted=_m_state.now(), submitted_job_fingerprint=fingerprint)
+        for key in ("gpu_stopped_fingerprint", "gpu_stop_notified", "gpu_ramp_up_logged"):
+            s2.pop(key, None)
+        history = s2.setdefault("submitted_code_history", [])
+        for info in (s2.get("submitted_code"), s2.get("done_code"), bundle):
+            if info and info not in history:
+                history.append(info)
+        if bundle:
+            s2["submitted_code"] = bundle
+        else:
+            s2.pop("submitted_code", None)
+        s2.pop("done_code", None)
+        s2.pop("done_ts", None)
         s2.pop("pod_started", None)
         s2["dl"] = {"resubmits": (s2.get("dl") or {}).get("resubmits", 0)}      # a new Job gets fresh deadline tracking (Tier 0, deadline_watch)
         for key in ("nrp_flag_since", "nrp_woken", "nrp_stopped"):
@@ -265,4 +312,4 @@ def delete_stage_job(t, s, reason):
     """Save stage diagnostics before deleting its registered Job; return raw kubectl result."""
     from . import cluster as _m_cluster
     save_task_logs(t, s, reason)
-    return _m_cluster.kubectl("-n", t["namespace"], "delete", "job", s["job"], "--wait=true", "--timeout=180s", timeout=240)
+    return _m_cluster.delete_owned_job(t["namespace"], s["job"], wait=True)

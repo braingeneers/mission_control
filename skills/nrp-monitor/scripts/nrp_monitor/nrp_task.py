@@ -1,17 +1,12 @@
 """NRP monitor nrp_task (mechanical extraction; R3a)."""
 import argparse
-import hashlib
 import json
 import os
-import re
-import shlex
 import subprocess
 import sys
-import tarfile
-import tempfile
 from pathlib import Path
 
-from . import agents as _m_agents
+from . import code_shipping as _m_code_shipping
 from . import cluster as _m_cluster
 from . import decisions as _m_decisions
 from . import ladder as _m_ladder
@@ -22,84 +17,6 @@ from .task import registry as _m_task_registry
 from . import timeouts as _m_timeouts
 
 # ---- nrp-task: the fix agent's only shell tool -------------------------------------------------------------------
-def reship_dirs(code):
-    """(primary package dir, [extra package dirs]) that `nrp-task reship` packs: everything the task's code declares.
-    Primary = code.pkg_dir, else code.subdir when it is the predictor_v3 folder, else <clone>/predictor_v3. Extras = code.extra_pkg_dirs
-    (relative = inside the clone, absolute = another checkout read in place). Raises ChainError when something declared is missing."""
-    clone = Path(code["clone"])
-
-    def res(x):
-        p = Path(os.path.expanduser(x))
-        return p if p.is_absolute() else clone / x
-    if code.get("pkg_dir"):
-        pkg = res(code["pkg_dir"])
-    else:
-        sub = clone / (code.get("subdir") or "")
-        pkg = sub if sub.name == "predictor_v3" else clone / "predictor_v3"
-    if not pkg.is_dir() or pkg.name != "predictor_v3":
-        raise _m_state.ChainError("needs the predictor_v3 package folder (code.subdir, <clone>/predictor_v3, or code.pkg_dir); got %s" % pkg)
-    extras = [res(x) for x in code.get("extra_pkg_dirs") or []]
-    for x in extras:
-        if not x.is_dir():
-            raise _m_state.ChainError("code.extra_pkg_dirs: %s does not exist in the clone (commit it, or check the path)" % x)
-    return pkg.resolve(), [x.resolve() for x in extras]
-
-
-def upload_code_archive(path, uri):
-    from . import config as _m_config
-    result = subprocess.run(_m_task_registry.aws_cmd() + ["s3", "cp", str(path), uri],
-                            capture_output=True, text=True, timeout=300, env=_m_config.aws_env())
-    if result.returncode:
-        sys.exit("upload of the code tarball failed: %s" % result.stderr.strip()[:200])
-
-
-def ship_code(task, args):
-    n = task["name"]
-    name = args.name
-    if not re.fullmatch(r"%s-[a-z0-9-]{1,40}" % re.escape(n), name):
-        sys.exit("ship NAME must be %s-<suffix> (lowercase)" % n)
-    code = task.get("code")
-    if not code:
-        sys.exit("this task has no code clone")
-    sub = args.from_dir or code.get("subdir") or "."
-    clone = Path(code["clone"]).resolve()
-    src = (clone / sub).resolve()
-    if not src.is_dir() or not src.is_relative_to(clone):
-        sys.exit("--from must be a folder inside the clone")
-    # Use the task's first declared output directory and the pv3 code/<hash>.tgz layout.
-    prefix = task["stages"][0]["done_s3"][0].rsplit("/", 1)[0]
-    excludes = [x for p in _m_state.CODE_SKIP for x in ("--exclude", p)]
-    excludes += [x for e in _m_state.CODE_SKIP_EXT for x in ("--exclude", "*" + e)]
-    limit = _m_state.CODE_SNAPSHOT_MAX
-    with tempfile.TemporaryDirectory(prefix="nrp-ship-") as tmp:
-        archive = Path(tmp) / "code.tgz"
-        result = subprocess.run(["tar", "czf", str(archive), *excludes, "-C", str(src), "."],
-                                capture_output=True, text=True, timeout=300)
-        if result.returncode:
-            sys.exit("could not pack the task's code: %s" % result.stderr.strip()[:200])
-        if archive.stat().st_size > limit:
-            sys.exit("code archive exceeds %d MiB" % (limit // 2**20))
-        with tarfile.open(archive, "r|gz") as bundle:
-            size = 0
-            for member in bundle:
-                size += member.size
-                if size > limit:
-                    sys.exit("unpacked code exceeds %d MiB" % (limit // 2**20))
-        sha = hashlib.sha256(archive.read_bytes()).hexdigest()[:16]
-        uri = "%s/code/%s/%s.tgz" % (prefix, name, sha)
-        upload_code_archive(archive, uri)
-    _m_state.task_txn(n, lambda t: _m_state.tev(t, "shipped code %s from %s -> %s" % (name, sub, uri)))
-    endpoint = shlex.quote(_m_state.S3_JOB_ENDPOINT)
-    print(uri)
-    print("Job startup prefix (shell, AWS CLI, tar, writable /work, and mounted S3 read credentials):")
-    print("mkdir -p /work/code &&")
-    print("aws --endpoint-url %s s3 cp %s /work/code.tgz &&" % (endpoint, shlex.quote(uri)))
-    print("tar -xzf /work/code.tgz -C /work/code &&")
-    print("rm /work/code.tgz &&")
-    print("cd /work/code && exec YOUR_JOB_COMMAND")
-    return 0
-
-
 def cmd_tool(a):
     from . import stage_jobs as _m_stage_jobs
     from . import s3 as _m_s3  # Local import avoids orchestration cycles.
@@ -108,7 +25,7 @@ def cmd_tool(a):
     if a.rest[:1] == ["configmap"]:
         sys.exit("Code bundles in ConfigMaps are banned on NRP. Use nrp-task ship.")
     if a.rest[:1] != ["ship"] and any(x in ("--help", "-h") for x in a.rest):
-        print("Usage: NRP_TASK=<name> nrp-task show|logs JOB|describe JOB|util JOB|s3 ls URI|ship NAME [--from SUBDIR]|reship JOB|submit JOB --reason TEXT\n"
+        print("Usage: NRP_TASK=<name> nrp-task show|logs JOB|describe JOB|util JOB|s3 ls URI|ship NAME [--from SUBDIR]|reship JOB [--allow-unpushed]|submit JOB --reason TEXT\n"
               "Coordinator chats must select a task with NRP_TASK; use nrp-monitor task list to find it.")
         return 0
     n = os.environ.get("NRP_TASK", "")
@@ -235,72 +152,57 @@ def cmd_tool(a):
         parser = argparse.ArgumentParser(prog="nrp-task ship")
         parser.add_argument("name")
         parser.add_argument("--from", dest="from_dir", metavar="SUBDIR")
-        return ship_code(t, parser.parse_args(rest))
+        parser.add_argument("--add", action="append", default=[], metavar="PATH")
+        parser.add_argument("--allow-unpushed", action="store_true", help="debug only")
+        return _m_code_shipping.ship_code(t, parser.parse_args(rest))
     if c == "reship":
-        # pv3 Jobs run code shipped through S3 (spec.json -> code.uri), not code baked into the manifest: a fix in the clone
-        # reaches the Job only when the clone's predictor_v3/ is packed like `--ship-code`, uploaded, and spec.json points at it.
-        j = need_job()
+        parser = argparse.ArgumentParser(prog="nrp-task reship")
+        parser.add_argument("job", choices=jobs)
+        parser.add_argument("--add", action="append", default=[], metavar="PATH")
+        parser.add_argument("--allow-unpushed", action="store_true", help="debug only")
+        opts = parser.parse_args(rest)
+        j = opts.job
         if not t.get("code"):
             sys.exit("this task has no code clone")
-        if _m_cluster.job_state(j, ns) in ("running", "pending"):
-            sys.exit("Job %s is still running; reship only for a finished, failed or deleted Job" % j)
-        spec_uri = _m_task_registry.pv3_spec_uri(jobs[j]["manifest"])
-        if not spec_uri:
-            sys.exit("Job %s does not run from an S3 spec (no `--spec s3://...` in its command): nothing to reship" % j)
+        job_state = _m_cluster.job_state(j, ns)
+        if job_state == "error":
+            sys.exit("could not verify Job %s has stopped" % j)
+        if job_state in ("running", "pending"):
+            sys.exit("Job %s is still running or pending; reship only for a finished, failed or deleted Job" % j)
+        manifest = jobs[j]["manifest"]
         try:
-            pkg, extras = reship_dirs(t["code"])
-        except _m_state.ChainError as e:
-            sys.exit("reship refused: %s" % e)
-        r = subprocess.run(_m_task_registry.aws_cmd() + ["s3", "cp", spec_uri, "-"], capture_output=True, text=True, timeout=180, env=_m_config.aws_env())
-        try:
-            spec = json.loads(r.stdout)
-            old = spec["code"]["uri"]
-        except Exception:
-            sys.exit("cannot read %s with a `code` entry (aws rc=%d %s)" % (spec_uri, r.returncode, r.stderr.strip()[:150]))
-        tgz = _m_state.WORK / "task" / ("%s-reship.tgz" % j)
-        tgz.parent.mkdir(parents=True, exist_ok=True)
-        py = os.environ.get("NRP_TASK_PYTHON") or (str(_m_state.CODE_PYTHON) if _m_state.CODE_PYTHON and _m_state.CODE_PYTHON.exists() else sys.executable)
-        # the same `codeship.build` the original --ship-code used, from the package's own checkout; extra dirs are packed beside
-        # predictor_v3/ exactly as at submission (PV3_CODE_EXTRA_PACKAGES layout), so the pod's imports resolve the same way
-        snippet = ("import json,sys,pathlib; pkg,out=sys.argv[1:3]; extras=[pathlib.Path(x) for x in sys.argv[3:]]; "
-                   "sys.path.insert(0,str(pathlib.Path(pkg).parent)); "
-                   "from predictor_v3.utils.jobs import codeship; "
-                   "b=codeship.build(pathlib.Path(pkg), **({'extra_pkg_dirs': tuple(extras)} if extras else {})); "
-                   "pathlib.Path(out).write_bytes(b.data); print(json.dumps({'sha256':b.sha256,'n':b.n_files,'skipped':list(b.skipped)}))")
-        b = subprocess.run([py, "-c", snippet, str(pkg), str(tgz), *map(str, extras)], capture_output=True, text=True, timeout=300,
-                           cwd=str(pkg.parent), env=dict(_m_agents.clean_env(), PYTHONPATH=str(pkg.parent)))
-        if b.returncode:
-            sys.exit("could not pack the task's code (%s): %s" % (", ".join(x.name for x in [pkg] + extras), (b.stderr.strip() or b.stdout.strip())[-400:]))
-        info = json.loads(b.stdout.strip().splitlines()[-1])
-        new_uri = old.rsplit("/", 1)[0] + "/%s.tgz" % info["sha256"][:16]
-        if info["sha256"] == spec["code"].get("sha256"):
-            print("the task's code (%s) is identical to what %s already runs (%s); nothing to reship"
-                  % (", ".join(x.name for x in [pkg] + extras), j, info["sha256"][:16]))
-            return 0
-        upload_code_archive(tgz, new_uri)
-        spec["code"] = {"uri": new_uri, "sha256": info["sha256"]}
-        u = subprocess.run(_m_task_registry.aws_cmd() + ["s3", "cp", "-", spec_uri], input=json.dumps(spec, sort_keys=True, indent=2),
-                           capture_output=True, text=True, timeout=180, env=_m_config.aws_env())
-        if u.returncode:
-            sys.exit("could not rewrite %s: %s" % (spec_uri, u.stderr.strip()[:200]))
-        _m_state.task_txn(n, lambda t: _m_state.tev(t, "reshipped code for %s: %s (%d files; dirs %s) -> %s" % (j, info["sha256"][:16], info["n"], ", ".join(x.name for x in [pkg] + extras), spec_uri)))
-        print("reshipped: %s now runs code %s (%d files from %s%s); spec %s rewritten. Resubmit with `nrp-task submit %s --reason ...`."
-              % (j, info["sha256"][:16], info["n"], ", ".join(x.name for x in [pkg] + extras), ", left out for size: %s" % ", ".join(info["skipped"]) if info["skipped"] else "", spec_uri, j))
-        return 0
+            adapter = _m_code_shipping.shipping_adapter(t["code"], manifest)
+            if adapter:
+                if opts.add:
+                    sys.exit("--add requires the generic code shipping adapter")
+                return adapter.reship(n, j, manifest, t["code"], _m_code_shipping.upload_code_archive)
+            return _m_code_shipping.reship_code(t, j, manifest, allow_unpushed=opts.allow_unpushed, additions=opts.add)
+        except (_m_state.ChainError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
+            sys.exit("reship refused: %s" % exc)
     if c == "commit":
         if not t.get("code") or not rest:
             sys.exit("nrp-task commit MESSAGE (task needs a code clone)")
         cl = t["code"]["clone"]
-        changed = _m_task_registry.git("status", "--porcelain", cwd=cl).stdout.splitlines()
-        py = [l[3:].strip() for l in changed if l[3:].strip().endswith(".py")]
+        diff = _m_task_registry.git("diff", "--no-renames", "--name-only", "-z", "--diff-filter=DMRTUXB",
+                                    "HEAD", cwd=cl)
+        if diff.returncode:
+            sys.exit("could not inspect tracked code changes")
+        changed = [name for name in diff.stdout.split("\0") if name]
+        if not changed:
+            sys.exit("nothing to commit")
+        try:
+            _m_code_shipping.reject_denied(changed)
+        except _m_state.ChainError as exc:
+            sys.exit(str(exc))
+        py = [name for name in changed if name.endswith(".py") and (Path(cl) / name).is_file()]
         for f in py:
             r = subprocess.run([sys.executable, "-m", "py_compile", str(Path(cl) / f)], capture_output=True, text=True)
             if r.returncode:
                 sys.exit("py_compile failed for %s: %s" % (f, r.stderr.strip()[-300:]))
-        if not changed:
-            sys.exit("nothing to commit")
-        _m_task_registry.git("add", "-A", cwd=cl)
-        r = _m_task_registry.git("commit", "-qm", "monitor fix (%s): %s" % (n, " ".join(rest)[:200]), cwd=cl)
+        r = _m_task_registry.git("--literal-pathspecs", "commit", "-qm",
+                                 "monitor fix (%s): %s" % (n, " ".join(rest)[:200]), "--only", "--", *changed, cwd=cl)
+        if r.returncode:
+            sys.exit(r.stderr.strip() or "could not commit tracked code changes")
         sha = _m_task_registry.git("rev-parse", "--short", "HEAD", cwd=cl).stdout.strip()
         _m_state.task_txn(n, lambda t: _m_state.tev(t, "fix commit %s: %s" % (sha, " ".join(rest)[:150])))
         print("committed %s on %s (%d file(s)); compiled: %s" % (sha, t["code"]["branch"], len(changed), ", ".join(py) or "none"))
@@ -315,20 +217,26 @@ def cmd_tool(a):
     if c == "delete":
         j = need_job()
         st_, f = _m_cluster.job_state(j, ns), t.get("failure") or {}
+        if st_ == "error":
+            sys.exit("could not verify Job %s state before deletion" % j)
         util = t.get("util_event") or {}
         util_retry = util.get("job") == j and st_ in ("running", "pending")
         if util_retry:
             evidence = util.get("evidence") or {}
             if util.get("rule") == "gpu":                                 # a GPU under NRP's floor is a policy violation, not a sizing question:
-                pass                                                      # stopping it never waits for "time left" or resumability
+                if not _m_state.GPU_PCT_RE.search(util["detail"]) or "no DCGM series" in util["detail"]:
+                    sys.exit("utilization review: a GPU observation without a measured DCGM flag cannot authorize deletion")
             elif not _m_timeouts.stage_resumable(jobs[j]) or (util.get("rule") != "nrp" and  # NRP floor: restart whenever it resumes
                                                   (evidence.get("remaining_seconds") or 0) - max(0, _m_state.now() - util.get("ts", _m_state.now())) <= 7200):
                 sys.exit("utilization review: leave running Job to finish; resubmit requires resumable stage and >2h measured time left")
             f = util
         if st_ in ("running", "pending") and not (f.get("job") == j and f.get("cls") in ("util", "infra")):
             sys.exit("Job %s is %s; only a finished Job, or one this task's failure says to stop (util/stuck), may be deleted" % (j, st_))
-        _m_stage_jobs.save_task_logs(t, jobs[j], "deleted by the fix agent")
-        rc = kc("delete", "job", j, "--wait=true", "--timeout=180s")
+        result = _m_stage_jobs.delete_stage_job(t, jobs[j], "deleted by the fix agent")
+        rc = result.returncode
+        if rc:
+            print(result.stderr, file=sys.stderr)
+            return rc
         if rc == 0 and util_retry:
             _m_ladder.task_fail(n, jobs[j]["id"], "util", util["sig"], util["detail"], extra={"evidence": util.get("evidence")})
         _m_state.task_txn(n, lambda t: _m_state.tev(t, "agent deleted Job %s (was %s)" % (j, st_)))

@@ -1,76 +1,54 @@
 ---
-description: Deploy a Kubernetes job to the NRP Nautilus cluster
+description: Render, validate, and submit a Braingeneers Kubernetes Job on Nautilus
 ---
 
-# Deploy Job to NRP
+# Deploy a Job to NRP
 
-## Pre-flight Checks
-
-1. Verify the Docker image is up to date. Ask the user if they want to rebuild:
-   - If yes, run the `/build-push` workflow first
-   - If no, continue
-
-2. Check that credentials required by this Job are available without printing
-   them. Use existing Kubernetes Secrets for credentials consumed by the pod
-   (see [NRP setup](../../references/nrp_setup.md)).
-
-3. Verify cluster connectivity:
-```powershell
-$env:Path = "$env:Path;$HOME\.kube\bin"; kubectl cluster-info 2>&1
-```
-
-## Configure the Job
-
-4. Ask the user for:
-   - **Job name** (the `NAME` variable in run_job.sh) — should be descriptive of this run
-   - **Resource requirements** — memory, CPU, storage (defaults: 400Gi, 16 CPU, 400Gi)
-   - **GPU needs** — if GPUs are needed, how many and what type
-
-5. Export the variables required by `jobdefinition.yaml` using the intended values from `run_job.sh`.
-
-6. If GPUs are requested, uncomment the GPU lines in `jobdefinition.yaml`.
-
-## Deploy
-
-7. Render and inspect the Job manifest. Use an image for code or pull a versioned
-   bundle from S3 at startup. Put model weights, data, and large artifacts in S3
-   or on a PVC (CephFS for shared access). If there is a legitimate small
-   ConfigMap, check its rendered manifest too and verify its cleanup plan.
-8. From Bash or WSL, run the [NRP preflight](https://nrp.ai/documentation/userdocs/ai/coding-agents/)
-   and a server-side dry run on the exact manifest you will apply. Set
-   `NRP_PREFLIGHT_SCRIPT` to the installed `nrp_preflight.py` path first.
-   Inspect preflight and dry-run output and fix warnings before applying.
+1. Verify connectivity with `kubectl --context=nautilus -n braingeneers cluster-info`.
+2. Use the intended `<user>-<purpose>` name with your NRP username, a [pinned image](build-push.md),
+   [measured resources](../../SKILL.md#smokeprofile-sizing), and the
+   [lab rules](../../SKILL.md#stricter-lab-rules). Confirm required Secret keys
+   exist without printing values. Set `activeDeadlineSeconds` from measured
+   runtime with queue margin. Extend the existing Job's deadline if needed
+   to retain its place in the queue.
+3. From Bash, export the intended template variables, then render using the project's `run_job.sh` settings and
+   `jobdefinition.yaml`. Pass only the template's non-secret variables to
+   `envsubst`. For example, when the template uses `NAME` and `IMAGE`:
 
 ```bash
-job_manifest=$(envsubst < jobdefinition.yaml)
-python3 "${NRP_PREFLIGHT_SCRIPT:?Set the path to nrp_preflight.py}" <(printf '%s\n' "$job_manifest") &&
-printf '%s\n' "$job_manifest" | kubectl --context=nautilus -n braingeneers apply --dry-run=server -f -
+job_dir=$(mktemp -d) &&
+  job_manifest="$job_dir/job.yaml" &&
+  envsubst '${NAME} ${IMAGE}' < jobdefinition.yaml > "$job_manifest"
 ```
 
-   Apply the same manifest after both checks pass.
+4. Inspect the file, then follow upstream `nrp-run` → Check, show, submit.
+   Set `NRP_PREFLIGHT_SCRIPT` to the approved plugin’s
+   `skills/nrp/scripts/nrp_preflight.py`. The example below uses the local
+   marketplace checkout from the [plugin installation instructions](../../SKILL.md#nrps-own-agent-tooling).
+   For a cached plugin or a different checkout, export the actual absolute
+   script path first. An exported `NRP_PREFLIGHT_PATH` serves both this workflow
+   and `nrp-monitor task add`. Preflight any legitimate small ConfigMap too and verify
+   its cleanup path. Repeat validation on the final render after any change.
 
 ```bash
-printf '%s\n' "$job_manifest" | kubectl --context=nautilus -n braingeneers apply -f -
+local_preflight="$HOME/.local/share/nrp-nautilus/sdsc-marketplace/plugins/nrp-nautilus/skills/nrp/scripts/nrp_preflight.py"
+NRP_PREFLIGHT_SCRIPT="${NRP_PREFLIGHT_SCRIPT:-${NRP_PREFLIGHT_PATH:-$local_preflight}}"
+if [[ -n "${NRP_PREFLIGHT_SCRIPT:-}" && -r "$NRP_PREFLIGHT_SCRIPT" ]]; then
+  python3 "$NRP_PREFLIGHT_SCRIPT" "$job_manifest"
+else
+  printf '%s\n' "NRP preflight skipped: script unavailable" >&2
+fi &&
+  kubectl --context=nautilus -n braingeneers apply --dry-run=server -f "$job_manifest"
 ```
 
-## Post-Deploy
+5. Fix blocks, denials, and warnings. Show the manifest and its pod count,
+   requests, GPUs, and deadline. Apply the same file after approval:
 
-9. Verify the job was created:
-```powershell
-$env:Path = "$env:Path;$HOME\.kube\bin"; kubectl get jobs -n braingeneers 2>&1
+```bash
+kubectl --context=nautilus -n braingeneers apply -f "$job_manifest"
+kubectl --context=nautilus -n braingeneers get job "$NAME"
+kubectl --context=nautilus -n braingeneers get pods -l "job-name=$NAME"
 ```
 
-10. Check pod status:
-```powershell
-$env:Path = "$env:Path;$HOME\.kube\bin"; kubectl get pods -n braingeneers 2>&1
-```
-
-11. Report back with pod name and status. Offer to run `/monitor-job` to track progress.
-
-## NRP Policy Reminders
-- Resource limits must be within 20% of requests
-- No `sleep infinity` in batch jobs (bannable offense)
-- Run `kubectl apply --dry-run=server -f <manifest>` before the real apply; never `kubectl delete --force --grace-period=0`
-- GPU utilization must be >40%
-- A100s require a reservation at nrp.ai/reservations
-- Max 400 concurrent jobs
+6. Report Job and pod status. Use [Monitor Job](monitor-job.md) for inspection
+   and [nrp-monitor](../../../nrp-monitor/SKILL.md) for unattended work.

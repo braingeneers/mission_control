@@ -462,42 +462,42 @@ class AddFlags(unittest.TestCase):
         return self.wd("task", "add", str(f), *flags)
 
     def test_codex_and_claude_origin_flags_are_recorded_and_the_wake_target_is_printed(self):
-        rc, out, err = self.add_with("t1", "--origin-title", "codex chat", "--origin-harness", "codex", "--origin-session", SID_X, "--origin-cwd", "/tmp")
+        rc, out, err = self.add_with("alice-t1", "--origin-title", "codex chat", "--origin-harness", "codex", "--origin-session", SID_X, "--origin-cwd", "/tmp")
         self.assertEqual(rc, 0, err)
-        o = self.task("t1")["origin"]
+        o = self.task("alice-t1")["origin"]
         self.assertEqual((o["harness"], o["session"], o["cwd"]), ("codex", SID_X, "/tmp"))
         self.assertIn("Wake: Codex session %s" % SID_X, out)
         self.assertIn("never a new thread", out)
         self.assertIn("HANDOFF:", out, "no handoff yet: told what to write in it")
         self.assertIn("last resort", out)
-        rc, out, err = self.add_with("t2", "--origin-title", "claude chat", "--origin-harness", "claude", "--origin-session", SID_C)
+        rc, out, err = self.add_with("alice-t2", "--origin-title", "claude chat", "--origin-harness", "claude", "--origin-session", SID_C)
         self.assertEqual(rc, 0, err)
         self.assertIn("Wake: Claude Code session %s" % SID_C, out)
-        self.assertTrue(self.task("t2")["origin"]["cwd"].startswith("/"), "defaults to the current directory")
+        self.assertTrue(self.task("alice-t2")["origin"]["cwd"].startswith("/"), "defaults to the current directory")
 
     def test_session_id_is_read_from_the_environment_when_only_the_harness_is_named(self):
         self.env["CLAUDE_CODE_SESSION_ID"] = SID_C
-        rc, out, err = self.add_with("t1", "--origin-title", "c", "--origin-harness", "claude")
+        rc, out, err = self.add_with("alice-t1", "--origin-title", "c", "--origin-harness", "claude")
         self.assertEqual(rc, 0, err)
-        self.assertEqual(self.task("t1")["origin"]["session"], SID_C)
+        self.assertEqual(self.task("alice-t1")["origin"]["session"], SID_C)
         del self.env["CLAUDE_CODE_SESSION_ID"]
-        rc, out, err = self.add_with("t2", "--origin-title", "c", "--origin-harness", "claude")
+        rc, out, err = self.add_with("alice-t2", "--origin-title", "c", "--origin-harness", "claude")
         self.assertEqual(rc, 1)
         self.assertIn("origin.harness claude needs origin.session", err)
-        self.assertFalse((self.state / "tasks" / "t2").exists())
+        self.assertFalse((self.state / "tasks" / "alice-t2").exists())
 
     def test_json_origin_may_carry_the_harness_and_t3_keeps_working(self):
-        rc, out, err = self.add_with("t1", origin={"title": "j", "harness": "codex", "session": SID_X})
+        rc, out, err = self.add_with("alice-t1", origin={"title": "j", "harness": "codex", "session": SID_X})
         self.assertEqual(rc, 0, err)
-        rc, out, err = self.add_with("t2", origin={"title": "t3 chat", "link": "t3-thread://v2/e/t", "harness": "t3"})
+        rc, out, err = self.add_with("alice-t2", origin={"title": "t3 chat", "link": "t3-thread://v2/e/t", "harness": "t3"})
         self.assertEqual(rc, 0, err)
         self.assertIn("T3 CLI thread t", out, "a T3 link is wakeable without a webhook")
 
     def test_origin_command_can_bind_the_session_later(self):
-        self.add("t1")
-        rc, out, err = self.wd("origin", "task", "t1", "--harness", "codex", "--session", SID_X, "--replace", "--evidence", "codex resume list 2026-11-11")
+        self.add("alice-t1")
+        rc, out, err = self.wd("origin", "task", "alice-t1", "--harness", "codex", "--session", SID_X, "--replace", "--evidence", "codex resume list 2026-11-11")
         self.assertEqual(rc, 0, err)
-        o = self.task("t1")["origin"]
+        o = self.task("alice-t1")["origin"]
         self.assertEqual((o["harness"], o["session"]), ("codex", SID_X))
         self.assertNotIn("title", o, "a new session clears the previous chat title")
 

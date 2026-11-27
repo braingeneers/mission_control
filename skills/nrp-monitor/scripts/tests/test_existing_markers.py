@@ -13,7 +13,7 @@ def test_existing_outputs_complete_task_and_release_dependents():
     h.setUp()
     try:
         uris = ['s3://braingeneersdev/test/a', 's3://braingeneersdev/test/b']
-        stages = [dict(id=sid, job='t1-'+sid, manifest=h.manifest('t1-'+sid),
+        stages = [dict(id=sid, job='alice-t1-'+sid, manifest=h.manifest('alice-t1-'+sid),
                        done_s3=[uri], after=[] if sid == 'a' else ['a'])
                   for sid, uri in zip(('a', 'b'), uris)]
         (h.fake/'s3.json').write_text(json.dumps(uris))

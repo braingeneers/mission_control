@@ -371,7 +371,7 @@ def tool_next_add(n, t, rest):
     o = t.get("origin") or {}
     raw["origin"] = {k: o[k] for k in _m_state.ORIGIN_FIELDS if o.get(k)} or None
     raw.pop("mode", None)
-    carry = {k: t["code"][k] for k in ("pkg_dir", "extra_pkg_dirs") if (t.get("code") or {}).get(k)}     # what reship packs stays declared
+    carry = {k: t["code"][k] for k in ("pkg_dir", "extra_pkg_dirs", "dirs", "adapter", "bundle_prefix", "branch_prefix") if (t.get("code") or {}).get(k)}     # what reship packs stays declared
     if t.get("code"):
         try:
             _m_task_registry.ensure_clone(t)                               # a finished task's clone may have been pruned

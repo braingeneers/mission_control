@@ -33,11 +33,11 @@ Files you may read and edit: the task dir {dir} (manifests/<job>.yaml is what ge
 {clone} (git branch {branch}; the job's code lives under {subdir}). Nothing else.
 Your ONLY shell command is nrp-task. Use one call at a time, with no pipes, `;`, `&&`, redirection or env prefixes:
   nrp-task show | logs JOB [--tail N] | describe JOB | util JOB | s3 ls s3://... | s3 cat s3://...
-  nrp-task ship NAME [--from SUBDIR]        uploads a clone folder to S3 and prints a Job startup command; NAME starts with {name}-
+  nrp-task ship NAME [--from SUBDIR]        publishes committed code and prints the Job env and verified startup command; NAME starts with {name}-
   nrp-task commit "message"                 runs py_compile on changed .py files, then git commits in the clone
-  nrp-task reship {job}                     pv3 Jobs only (command has `--spec s3://...`): packs the clone's predictor_v3/ like --ship-code,
-                                            uploads it and points the Job's spec.json at it. A code fix reaches such a Job ONLY this way:
-                                            commit, reship, then submit (the Job must be finished or deleted)
+  nrp-task reship {job}                     commits, pushes and ships declared code and updates the Job's NRP_CODE_URI,
+                                            NRP_CODE_SHA256 and Git provenance. Wait for the previous Job to finish.
+                                            The legacy adapter keeps existing S3 spec-based registrations working.
   nrp-task submit {job} --reason "cause -> fix"   checks the manifest, saves logs, deletes the old Job, runs a server dry-run, applies;
                                             the retry caps are enforced here
   nrp-task delete {job}                     only this task's Job (a running one only for a util or stuck failure)
@@ -64,7 +64,7 @@ What to do for each class:
   For CPU or GPU, diagnose the supplied numbers before changing anything. Resizing is part of your job: fit the request to
   what the stage can actually use. GPU use below 40% with CPU use near its request (about 80% or more, or the same op
   CPU-bound in a sibling CPU stage) means the stage is CPU-bound. First find out how many cores the code can use: check the
-  manifest env (OMP_NUM_THREADS, MKL_NUM_THREADS, OPENBLAS_NUM_THREADS, DataLoader workers, PV3_PARALLEL) and the code
+  manifest env (OMP_NUM_THREADS, MKL_NUM_THREADS, OPENBLAS_NUM_THREADS, DataLoader workers) and the code
   (torch.set_num_threads, a thread limiter). A stage pinned to one thread gains nothing from more cores, and cores it cannot
   use fall under the CPU 20% band, so do not add cores without setting the thread/worker count to match. Then raise the
   CPU request and limit (equal, within the 20% limit tolerance) to what the code will use, keep memory inside its band, and
@@ -77,14 +77,17 @@ What to do for each class:
   stage, another design), the code cannot use more cores, the stage was already resized and the gain was small, or
   `gpu_ok_until` has passed. The coordinator chat then decides whether to take it on itself or escalate to the owner.
   If you only prepared a manifest for later runs, report DONE with the change and why the running Job is left alone.
-  Historical util failures may use the checked UTIL_OK waiver below; new observations do not need a waiver to keep running.
+  Historical util failures may use the checked UTIL_OK waiver below; new CPU/memory lab-floor observations do not need a waiver to
+  keep running. The monitor handles measured GPU flags after ramp-up directly. Missing DCGM observations cannot authorize
+  deletion. A GPU stop requires a redesign before resubmission: use a CPU staging stage or prefetch, batch work, run several
+  items per pod, or drop the GPU. The submit command refuses the same manifest and shipped code after an automatic short-window stop.
 - queue (the deadline passed while the pod was Pending): raise activeDeadlineSeconds by the queue wait (GPU queues can take
   hours). Change nothing else.
 - infra (image pull, configmap missing, node trouble, a vanished Job, a transient network error): fix the manifest if the
   cause is in it (image tag, configmap name, a nodeAffinity NotIn for a bad node). Otherwise resubmit unchanged.
-- code (traceback): find the bug in the clone and fix it minimally, then `nrp-task commit`. For generic Jobs, run
-  `nrp-task ship NAME` and update the Job manifest to fetch and unpack the new S3 bundle at startup. Remove any old code
-  ConfigMap volume and mount from that Job manifest. For pv3 Jobs with `--spec s3://...`, run `nrp-task reship JOB`.
+- code (traceback): fix the bug in the clone, then `nrp-task reship JOB` for an existing shipped-code Job.
+  For a Job migrating from a code ConfigMap, use `nrp-task ship NAME`, install the printed env and startup
+  command, and remove the old code ConfigMap volume and mount before submitting.
   Never put code, data, or archives in a ConfigMap. Use ConfigMaps only for configuration of a few KB. Then resubmit. Never weaken what the task computes
   (lowering N, removing checks, dropping whole recordings or datasets) to make it pass.
 - one bad item (a single unit, file or record fails a validity check while the rest are fine; house rule "single-item

@@ -1,7 +1,8 @@
 """NRP monitor state (mechanical extraction; R3a)."""
 import contextlib
 import fcntl
-import getpass
+import subprocess
+from functools import lru_cache
 import json
 import os
 import re
@@ -29,6 +30,7 @@ STATE = Path(os.environ.get("NRP_MONITOR_STATE") or default_state_dir())   # env
 
 def _owner_cfg():
     """Who this installation works for: <state>/config.json, each key overridable by an environment variable. Keys:
+    nrp_username (NRP username for name prefixes), kube_context (default nautilus),
     nrp_user_annotation (the nrp.ai/username annotation value on your pods, e.g. http://cilogon.org/serverE/users/NNNN),
     slack_user_id (the Slack user who gets the one DM), owner_label (label value on the monitor's own check Jobs), owner_name (how messages and agent prompts name you),
     skip_limit_fraction (optional; the share of skipped items above which a failure goes to you; default 0.05),
@@ -46,7 +48,36 @@ OWNER = _owner_cfg()
 
 USER_ANN = os.environ.get("NRP_MONITOR_USER_ANNOTATION") or OWNER.get("nrp_user_annotation") or ""
 
-OWNER_LABEL = os.environ.get("NRP_MONITOR_OWNER_LABEL") or OWNER.get("owner_label") or getpass.getuser()
+OWNER_LABEL_KEY = "nrp-monitor/owner"
+KUBE_CONTEXT = os.environ.get("NRP_MONITOR_KUBE_CONTEXT") or OWNER.get("kube_context") or "nautilus"
+
+
+@lru_cache(maxsize=1)
+def kube_username():
+    try:
+        result = subprocess.run(["kubectl", "--context", KUBE_CONTEXT, "auth", "whoami", "-o", "json"],
+                                capture_output=True, text=True, timeout=15, check=True)
+        return json.loads(result.stdout)["status"]["userInfo"]["username"]
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+        return ""
+
+
+def nrp_identity():
+    """Return the exact cluster annotation value, which can be a CILogon URI."""
+    return USER_ANN or os.environ.get("NRP_MONITOR_NRP_USERNAME") or OWNER.get("nrp_username") or kube_username()
+
+
+def nrp_username():
+    """Return the NRP username used in DNS names, Git refs and S3 prefixes."""
+    name = os.environ.get("NRP_MONITOR_NRP_USERNAME") or OWNER.get("nrp_username") or nrp_identity()
+    if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", name):
+        raise ChainError("set nrp_username in %s/config.json to your NRP username "
+                         "(and nrp_user_annotation to the exact annotation if it differs)" % STATE)
+    return name
+
+
+OWNER_LABEL = (os.environ.get("NRP_MONITOR_OWNER_LABEL") or OWNER.get("owner_label")
+               or os.environ.get("NRP_MONITOR_NRP_USERNAME") or OWNER.get("nrp_username") or "nrp-monitor")
 
 OWNER_NAME = os.environ.get("NRP_MONITOR_OWNER_NAME") or OWNER.get("owner_name") or OWNER_LABEL      # how messages and agent prompts name the person
 
@@ -106,11 +137,12 @@ AUTH_TURNS, AUTH_BUDGET, AUTH_TIMEOUT = "45", "4.00", 2400   # authorized (debug
 
 APPROVED = STATE / "approved"                                # per task: manifest.yaml, code/, code.orig/, PATCH.diff
 
-CODE_SNAPSHOT_MAX = 30 * 1024 * 1024
+CODE_SNAPSHOT_MAX = 128 * 1024 * 1024   # unpacked tracked source (large curated CSVs are normal)
+CODE_ARCHIVE_MAX = 30 * 1024 * 1024     # compressed bundle uploaded to S3
 
 CODE_SKIP = (".git", "__pycache__", ".pytest_cache", "results", "node_modules")
 
-CLONE_SUFFIXES = frozenset({".py", ".yaml", ".yml", ".json", ".lock", ".txt", ".csv", ".ini", ".md", ".R", ".sh"})   # source and config; same idea as pv3 --ship-code
+CLONE_SUFFIXES = frozenset({".py", ".yaml", ".yml", ".json", ".lock", ".txt", ".csv", ".ini", ".md", ".R", ".sh"})   # source and config
 
 CLONE_MAX_FILE = 2 * 1024 * 1024
 CLONE_FULL_MAX = int(os.environ.get("NRP_CLONE_FULL_MAX_MB") or 200) << 20     # whole-repo task clone refused above this unless code.full_checkout
@@ -471,10 +503,15 @@ def task_txn(n, fn):
     from . import plan_wakes as _m_plan_wakes  # Local import breaks orchestration cycle; patches stay on the defining module.
     def modify(t):
         previous = t.get("status")
-        completed = set(t.get("completed_stages", [])) | {s["id"] for s in t.get("stages", []) if s["state"] == "done"}
+        previously_done = {s["id"] for s in t.get("stages", []) if s["state"] == "done"}
+        completed = set(t.get("completed_stages", [])) | previously_done
         r = fn(t)
         if r is False:
             return False
+        for stage in t.get("stages", []):
+            if (stage["state"] == "done" and stage["id"] not in previously_done
+                    and stage.get("done_ts") and stage.get("submitted_code")):
+                stage.setdefault("done_code", stage["submitted_code"])
         t["completed_stages"] = sorted(completed | {s["id"] for s in t.get("stages", []) if s["state"] == "done"})
         if t.get("status") != previous and t.get("status") in ("done", "failed", "cancelled"):
             t["terminal_at"] = now()
@@ -549,11 +586,11 @@ def tstage(t, sid):
     return next(s for s in t["stages"] if s["id"] == sid)
 
 
-def task_of_job(job):
+def task_of_job(job, namespace=None):
     """(task name, stage id) of a live task whose stage runs Job `job`."""
     for n in task_names():
         t = task_load(n)
-        if t and t["status"] in TASK_LIVE + TASK_HELD:
+        if t and t["status"] in TASK_LIVE + TASK_HELD and (namespace is None or t["namespace"] == namespace):
             for s in t["stages"]:
                 if s["job"] == job and s["state"] in ("running", "failed"):
                     return n, s["id"]
@@ -647,10 +684,11 @@ request <= 1.2*right is sized correctly; above it is oversized. If max/median >3
 through their whole life, split inputs into size groups. Missing peaks or incomparable pods require explicit review.
 Fixer: edit manifests structurally (load YAML, change, dump), never by text substitution; every edit is validated. Write right into the manifest for retries/later runs. Leave running work to finish unless measured time remaining >2h
 AND the stage is resumable; only then resubmit at right. Never shrink below OOM evidence. UTIL flags alone never hold a task.
-GPU (rule gpu) is different: NRP deletes GPU pods whose ~3 h average is under 40% and records a violation (three strikes suspend the
-account). For a GPU flag, judge the trend, not one sample: `nrp-util-check --window 60 POD`. If the 1 h mean is under 40%, the fixer
-stops the Job (`nrp-task delete`) and restructures before any resubmit (parallel items per pod, CPU phases in a CPU Job); the
-"leave running work to finish" rule does not apply to GPU flags. The monitor itself deletes a GPU Job whose 90-min mean is under 40%, 30 min after the 1 h warning."""
+GPU (rule gpu): at or after pod ramp-up (10 minutes by default, at most 20), the monitor stops a measured GPU flag and wakes
+the coordinator directly. Missing DCGM measurements require investigation and cannot authorize deletion. For a stopped stage,
+diagnose the GPU duty cycle (GPU seconds per item vs wall seconds per item) and redesign: CPU staging or prefetch, batching,
+several items per pod, or a CPU-only request. Submission refuses the same manifest and shipped code. The 1 h warning and
+90 min auto-delete are backstops for jobs that alternate phases."""
 
 # ---- plans: on_done continuation (feature flag, default OFF; design docs/agents/plan-run/WATCHDOG_ON_DONE.md) ----
 # A task may carry  "on_done": {"plan": "path/to/PLAN.md#plan-id", "from_step": "2"}.  `task add` copies that plan section

@@ -43,16 +43,24 @@ already available at a different application-recognized location, read it there
 instead of installing a duplicate. Use its containing directory with
 `--skills-dir` if the user requests maintenance there.
 
-Common user locations are `~/.codex/skills`, `~/.claude/skills`,
-`~/.copilot/skills`, `~/.gemini/skills`, and `~/.cursor/skills`. Project installs
-use `.agents/skills` for these apps except Claude Code's `.claude/skills`.
-Actual application configuration takes precedence over these examples.
+For Claude Code and Codex, bootstrap the router in `~/.claude/skills/`.
+When managing that root, `install` and `update` make each selected installed
+skill available to Codex through a link in
+[`~/.agents/skills/`](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills).
+Existing filesystem entries are preserved. For an existing direct install
+elsewhere, continue maintaining it in its own root.
+
+Common user locations for other hosts are `~/.copilot/skills`,
+`~/.gemini/skills`, and `~/.cursor/skills`. Actual application configuration
+takes precedence over these examples.
 
 ## Helper behavior
 
-- `status [--daily]` checks installed catalog members against their own `main`
-  branch. Missing members are listed, not installed. Network failure is reported
-  per member; a partial result never records a successful daily check. Failed
+- `status --table` lists local entries and absent catalog members with their
+  installation mode, source, update state, and Codex link status. `status --json`
+  gives the same fields in JSON, which is also the default. Both omit Claude's
+  `synced/` directory. `--daily` reuses a recent check when local entries are
+  unchanged. Network failures are reported per member. Failed
   daily attempts are throttled for one hour to avoid repeated offline checks;
   an explicit `status` always retries. A cached check is labeled with its time.
 - `install NAME` installs just a missing catalog member. Existing directories,
@@ -64,10 +72,17 @@ Actual application configuration takes precedence over these examples.
   their original immutable Git tree, including every file, before recording a
   local fingerprint. Source/path mismatch, unsupported objects, missing or
   changed files, added files, or changed instructions prevent enrollment.
-  Explicit pins and symlinks are skipped. The helper does not repair these
-  installations automatically.
+  A pristine installation made by GitHub CLI becomes managed once verified.
+  Explicit pins and symlinks remain under their owners' control. Maintainers
+  can link an installed skill name to a live Git checkout, then pull updates
+  in that checkout. If a link is dangling, restore its target or repair it.
+- A modified managed copy is **stuck** because future updates preserve its
+  edits. `reset NAME` moves it to a timestamped backup under the state
+  directory and reinstalls the catalog version. The output gives the backup
+  path and a diff summary listing files added, modified, or removed since the
+  last managed installation. Review the backup to recover or upstream edits.
 - Downloads are staged and verified before replacement. Failed downloads leave
-  the installed skill intact. Previous versions are retained beside the skills
+  the installed skill intact. Regular update backups are retained beside the skills
   root in `.braingeneers-one-backups/`; the helper reports their location. They are not
   automatically restored over subsequent local work.
 - Local state and fingerprints live under
@@ -92,5 +107,34 @@ structured statuses and technical reasons are diagnostics for the agent, not
 text to paste into the answer. Explain any necessary next step, preserve the
 installation, and offer the appropriate owner-managed update
 (for example, reviewing changes and pulling a clean symlinked checkout).
-Do not use force or clear a pin to silence a warning. No automatic background
-job or scheduled updater is created.
+Do not use force or clear a pin to silence a warning.
+
+## Manage daily updates
+
+Install and manual update set up daily updates when no job is active, unless
+the user previously ran `schedule disable`. Use the installed router to manage
+the schedule.
+
+```bash
+python3 "<ONE>/scripts/suite.py" schedule enable
+python3 "<ONE>/scripts/suite.py" schedule status
+python3 "<ONE>/scripts/suite.py" schedule disable
+```
+
+The per-user job runs daily at 9 a.m. local time. On macOS a LaunchAgent runs
+in the user's login session. On Linux a systemd user timer runs when the user
+manager is available. If the user scheduler is unavailable, the helper prints a
+line to add with `crontab -e`. Use `schedule disable` to record the opt-out and
+remove a manually installed cron entry with `crontab -e`. Run
+`schedule enable` to opt back in.
+
+The job runs `update --auto`, which updates only recorded, unmodified managed
+copies. Run `status` once after a new setup so it can verify and record any
+pristine GitHub CLI installs. After enrollment, each managed copy follows its
+own source repository. Codex links see the same installed files as Claude.
+The job is quiet when no copy changes and prints the skill names when it
+updates them. Check `auto-errors.log` in the state directory on macOS or
+`journalctl --user -u org.braingeneers.one-update.service` on Linux for errors.
+The job uses the Python interpreter and executable search path available at
+enable time. Set up GitHub CLI sign-in that works without an interactive prompt
+before enabling it.

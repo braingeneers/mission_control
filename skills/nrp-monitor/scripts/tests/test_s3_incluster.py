@@ -42,21 +42,25 @@ class Cluster:
         self.created.append(json.loads(kw["input"]))
         return cp(0, "job.batch/x created")
 
-    def kubectl(self, *a, timeout=120):
+    def kubectl(self, *a, timeout=120, **kwargs):
         self.calls.append(a)
         verb = a[2]
+        if verb == "create":
+            return self.run(["kubectl", *a], **kwargs)
         if verb == "get":
+            if "--ignore-not-found" in a:
+                return cp(0, json.dumps({"metadata": {"uid": "test-uid", "annotations": {"nrp.ai/username": "alice"}}}))
             return cp(0, self.finished)
         if verb == "logs":
             return cp(0, self.job_lines or "")
         return cp(0, "deleted")
 
     def deleted(self):
-        return [c[4] for c in self.calls if c[2] == "delete"]
+        return [c[4].rsplit("/", 1)[-1] for c in self.calls if c[2] == "delete"]
 
 
 def patched(cl, **env):
-    return (patch.object(WD.subprocess, "run", side_effect=cl.run), patch.object(WD, "kubectl", side_effect=cl.kubectl),
+    return (patch.object(WD, "USER_ANN", "alice"), patch.object(WD.subprocess, "run", side_effect=cl.run), patch.object(WD, "kubectl", side_effect=cl.kubectl),
             patch.object(WD.time, "sleep"), patch.object(WD, "log"), patch.dict(os.environ, env))
 
 
@@ -86,7 +90,7 @@ class Fallback(unittest.TestCase):
         self.assertEqual((env["AWS_SHARED_CREDENTIALS_FILE"], env["AWS_CONFIG_FILE"]), ("/.aws/credentials", "/.aws/.s3cfg"))
         self.assertEqual({(v["mountPath"], v["subPath"]) for v in ct["volumeMounts"]}, {("/.aws/credentials", "credentials"), ("/.aws/.s3cfg", ".s3cfg")})
         self.assertEqual(pod["volumes"][0]["secret"]["secretName"], "prp-s3-credentials")
-        self.assertEqual(m["metadata"]["labels"], {"pv3/user": WD.OWNER_LABEL, "nrp-monitor/kind": "s3check"})
+        self.assertEqual(m["metadata"]["labels"], {"nrp-monitor/owner": WD.OWNER_LABEL, "nrp-monitor/kind": "s3check"})
         self.assertEqual(pod["restartPolicy"], "Never")
         self.assertNotIn("gpu", json.dumps(m).lower())
 

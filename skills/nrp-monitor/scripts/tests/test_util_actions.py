@@ -29,7 +29,7 @@ def test_restart_without_failure_budget_or_wake(monitor, cpu, mem):
     m = monitor
     running(m)
     m.task_txn('sample', lambda t: t.update(webhook_outbox=[{'event_type': 'failure'}]))
-    with patch.object(m, 'save_task_logs') as logs, patch.object(m, 'kubectl', return_value=result([])) as kc, patch.object(m, 'push') as push:
+    with patch.object(m, 'save_task_logs') as logs, patch.object(m, 'delete_owned_job', return_value=result([])) as kc, patch.object(m, 'push') as push:
         assert m.utilization_restart('sample', 'a', cpu, mem)[0]
     t = m.task_load('sample')
     assert t['failure'] is None and t['attempts'] == [] and t['webhook_outbox'] == []
@@ -78,7 +78,7 @@ def test_violation_actions(monitor, resumable, elapsed, count, stop):
     m.task_txn('sample', lambda t: t['stages'][0].update(nrp_flag_since=10000-elapsed))
     evidence = {'right_gi': 10, 'need_gi': 6.1}
     line = 'LOW work-17-abc cpu 0.1/8 (1%) mem 1/32Gi (3%) rule=nrp'
-    with patch.object(m, 'job_pods', return_value=[]), patch.object(m, 'now', return_value=10000), patch.object(m, 'namespace_offenders', return_value=[{'ours': True}]*count), patch.object(m, 'memory_low_evidence', return_value=evidence), patch.object(m, 'thanos_query', return_value=[{'value': [0, '2']}]), patch.object(m, 'save_task_logs'), patch.object(m, 'kubectl', return_value=result([])) as kc, patch.object(m, 'utilization_restart', return_value=(True, 'ok')) as restart, patch.object(m, 'push') as push:
+    with patch.object(m, 'job_pods', return_value=[]), patch.object(m, 'now', return_value=10000), patch.object(m, 'namespace_offenders', return_value=[{'ours': True}]*count), patch.object(m, 'memory_low_evidence', return_value=evidence), patch.object(m, 'thanos_query', return_value=[{'value': [0, '2']}]), patch.object(m, 'save_task_logs'), patch.object(m, 'delete_owned_job', return_value=result([])) as kc, patch.object(m, 'utilization_restart', return_value=(True, 'ok')) as restart, patch.object(m, 'push') as push:
         m.utilization_band_action('sample', 'a', 'work-17-abc', line)
         m.utilization_band_action('sample', 'a', 'work-17-abc', line)
         if stop:
@@ -148,7 +148,7 @@ def test_zero_nodes_routes_without_apply_or_retry(monitor):
 
 def test_delete_failure_preserves_running_state(monitor):
     running(monitor)
-    with patch.object(monitor, 'save_task_logs'), patch.object(monitor, 'kubectl', return_value=SimpleNamespace(returncode=1, stderr='denied')):
+    with patch.object(monitor, 'save_task_logs'), patch.object(monitor, 'delete_owned_job', return_value=SimpleNamespace(returncode=1, stderr='denied')):
         assert not monitor.utilization_restart('sample', 'a', '2', '4Gi')[0]
         assert monitor.task_load('sample')['stages'][0]['state'] == 'running'
 
@@ -166,7 +166,7 @@ def test_band_flag_ramp_up(monitor, runtime, age, acted, kind):
            'status': {'startTime': datetime.fromtimestamp(10000-age, timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}}
     with patch.object(m, 'now', return_value=10000), patch.object(m, 'job_pods', return_value=[pod]), \
          patch.object(m, 'namespace_offenders', return_value=[{'ours': True}]*3) as offenders, \
-         patch.object(m, 'save_task_logs'), patch.object(m, 'kubectl', return_value=result([])) as kc, \
+         patch.object(m, 'save_task_logs'), patch.object(m, 'delete_owned_job', return_value=result([])) as kc, \
          patch.object(m, 'utilization_restart') as restart, patch.object(m, 'push'):
         for _ in range(2):
             m.task_pod_flag({}, 'sample', 'a', 'work-17-abc', kind, kind + ' work-17-abc cpu 12/2 (600%) rule=nrp')
@@ -191,7 +191,7 @@ def test_safety_stop_counts_only_our_account(monitor, ours, stop):
          patch.object(m, 'namespace_offenders', return_value=offenders), \
          patch.object(m, 'memory_low_evidence', return_value={'right_gi': 10, 'need_gi': 6.1}), \
          patch.object(m, 'thanos_query', return_value=[{'value': [0, '2']}]), \
-         patch.object(m, 'save_task_logs'), patch.object(m, 'kubectl', return_value=result([])) as kc, patch.object(m, 'push'):
+         patch.object(m, 'save_task_logs'), patch.object(m, 'delete_owned_job', return_value=result([])) as kc, patch.object(m, 'push'):
         m.utilization_band_action('sample', 'a', 'pod', 'LOW pod mem 1/32Gi (3%) rule=nrp')
     assert kc.called == stop
 
@@ -205,7 +205,7 @@ def test_coordinator_sized_wakes_once_then_stops_after_grace(monitor):
          patch.object(m, 'memory_low_evidence', return_value={'right_gi': 10, 'need_gi': 6.1}), \
          patch.object(m, 'thanos_query', return_value=[{'value': [0, '2']}]), \
          patch.object(m, 'utilization_restart') as restart, patch.object(m, 'save_task_logs'), \
-         patch.object(m, 'kubectl', return_value=result([])) as kc, patch.object(m, 'push'):
+         patch.object(m, 'delete_owned_job', return_value=result([])) as kc, patch.object(m, 'push'):
         for _ in range(2):
             m.utilization_band_action('sample', 'a', 'pod', 'LOW pod mem 1/32Gi (3%) rule=nrp')
         assert len(m.task_load('sample')['webhook_outbox']) == 1
@@ -239,7 +239,7 @@ def test_operator_resize_sets_coordinator_sized(monitor):
     cli_args = importlib.import_module(m._modules["state"].__package__ + ".cli_args")
     running(m)
     args = cli_args.monitor_parser().parse_args(['task', 'resize', 'sample', '--cpu', '2', '--mem', '4Gi'])
-    with patch.object(m, 'now', return_value=10000), patch.object(m, 'save_task_logs'), patch.object(m, 'kubectl', return_value=result([])):
+    with patch.object(m, 'now', return_value=10000), patch.object(m, 'save_task_logs'), patch.object(m, 'delete_owned_job', return_value=result([])):
         assert args.f(args) == 0
     assert m.task_load('sample')['stages'][0]['coordinator_sized'] == 10000
 
@@ -297,6 +297,6 @@ def test_ramp_up_age_from_line_or_unknown(monitor, line, pods, acted):
     kw = {'side_effect': pods} if isinstance(pods, Exception) else {'return_value': pods}
     with patch.object(m, 'now', return_value=10000), patch.object(m, 'job_pods', **kw), \
          patch.object(m, 'namespace_offenders', return_value=[{'ours': True}]*3), \
-         patch.object(m, 'save_task_logs'), patch.object(m, 'kubectl', return_value=result([])) as kc, patch.object(m, 'push'):
+         patch.object(m, 'save_task_logs'), patch.object(m, 'delete_owned_job', return_value=result([])) as kc, patch.object(m, 'push'):
         m.task_pod_flag({}, 'sample', 'a', 'work-17-abc', 'LOW', line)
     assert kc.called == acted

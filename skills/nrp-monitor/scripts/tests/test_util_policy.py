@@ -21,7 +21,9 @@ SHARED_CANDIDATES = [
     HERE.parents[1] / 'docs/agents/nrp-monitor-review/proposal/nrp-cluster/utilization-policy.json',
     Path.home() / '.claude/skills/nrp-cluster/references/utilization-policy.json',
 ]
-SHARED = {"gpu_floor": 0.40, "limit_to_request_tolerance": 0.20, "max_concurrent_jobs": 400, "smoke_max_jobs": 3}
+SHARED = {"gpu_floor": 0.40, "limit_to_request_tolerance": 0.20, "max_concurrent_jobs": 400, "smoke_max_jobs": 3,
+          "cpu_band": [0.2, 2.0], "memory_band": [0.2, 1.5],
+          "small_pod_exempt": {"cpu": 1, "memory_bytes": 2000000000}, "account_block_after_violating_pods": 4}
 OWNER_LOCAL = {"max_concurrent_jobs": 40, "lab_floor": 0.4, "cpu_band": [0.2, 2.0], "memory_band": [0.2, 1.5],
                "small_pod_exempt": {"cpu": 1, "memory_bytes": 2000000000}, "account_block_after_violating_pods": 4}
 
@@ -80,21 +82,21 @@ class Policy(unittest.TestCase):
         self.assertEqual(m.account_violations("ns", 10, {}, 300), (2, 0, 3))   # unknown start time: counted as settled
 
     # ---- shared numbers only
-    def test_shared_only_policy_raises_no_cpu_or_memory_flags(self):
+    def test_shared_only_policy_checks_cpu_memory_and_account(self):
         m = self.load()
         self.assertEqual(m.POLICY, SHARED)
         self.assertEqual(m.POLICY_WARNINGS, [])
-        self.assertEqual(m.nrp_bad(self.cpu_idle), [], 'no CPU band without a local override')
-        self.assertEqual(m.nrp_bad({"req": {"cpu": 4, "memory": 8e9}, "cpu": 20, "mem": 40e9, "gpus": []}), [])
+        self.assertEqual(m.nrp_bad(self.cpu_idle), ['cpu'])
+        self.assertEqual(m.nrp_bad({"req": {"cpu": 4, "memory": 8e9}, "cpu": 20, "mem": 40e9, "gpus": []}), ["cpu", "mem"])
         self.assertEqual(m.nrp_bad(self.gpu_idle), ['gpu'], 'the GPU floor is the skill\'s own rule')
         self.assertEqual(m.nrp_bad({"req": {"nvidia_com_gpu": 1}, "gpus": [("0", "A100", 50.0)]}), [])
-        self.assertIsNone(m.ACCT_MAX)
+        self.assertEqual(m.ACCT_MAX, 4)
 
-    def test_shared_only_cli_run_has_no_cpu_lines_and_no_account_check(self):
+    def test_shared_only_cli_reports_cpu_and_gpu_flags(self):
         m = self.load()
         a = type('A', (), {"frac": m.POLICY.get("lab_floor"), "n": "ns"})
         self.assertIsNone(a.frac)
-        self.assertEqual(m.pod_lines(a, "p1", 3600, dict(self.cpu_idle), 10), "")
+        self.assertTrue(m.pod_lines(a, "p1", 3600, dict(self.cpu_idle), 10).startswith("LOW p1"))
         self.assertTrue(m.pod_lines(a, "p2", 3600, dict(self.gpu_idle, cpu=1, mem=1e9), 10).startswith("LOW p2"))
 
     # ---- memory is judged on the stricter of working set and RSS (Hunter 2026-11-18)
@@ -139,9 +141,11 @@ class Policy(unittest.TestCase):
         # 2 GiB is above the policy's 2e9-byte exemption, so the same idle pod is an NRP-band violation
         big = m.pod_lines(a, "p", 3600, {"req": {"cpu": 1, "memory": 2 * 2 ** 30}, "cpu": 0.1, "mem": 1.9 * 2 ** 30, "gpus": []}, 10)
         self.assertTrue(big.endswith('[NRP violation] rule=nrp'), big)
-        gpu = m.pod_lines(a, "p", 3600, {"req": {"cpu": 4, "memory": 8e9, "nvidia_com_gpu": 1}, "cpu": 4, "mem": 8e9,
+        gpu = m.pod_lines(a, "p", 599, {"req": {"cpu": 4, "memory": 8e9, "nvidia_com_gpu": 1}, "cpu": 4, "mem": 8e9,
                                          "gpus": [("0", "A100", 5.0)]}, 10)
         self.assertTrue(gpu.endswith('rule=gpu'), gpu)
+        self.assertIn('age 9m', gpu)
+        self.assertIn('cpu 4.00/4.00 (100%)', gpu)
         both = m.pod_lines(a, "p", 3600, {"req": {"cpu": 4, "memory": 8e9, "nvidia_com_gpu": 1}, "cpu": 0.1, "mem": 8e9,
                                           "gpus": [("0", "A100", 5.0)]}, 10)
         self.assertTrue(both.endswith('rule=gpu'), 'a GPU flag always wins: ' + both)
@@ -152,11 +156,11 @@ class Policy(unittest.TestCase):
                                           "gpus": [("0", "A100", 50.0)]}, 10)
         self.assertTrue(g2.endswith('[lab 60% rule] rule=gpu'), g2)
 
-    def test_each_local_check_is_optional(self):
-        m = self.load(local={"cpu_band": [0.2, 2.0]})
+    def test_old_shared_policy_inherits_defaults(self):
+        m = self.load(shared={"gpu_floor": 0.4, "max_concurrent_jobs": 400})
         self.assertEqual(m.nrp_bad(self.cpu_idle), ['cpu'])
-        self.assertEqual(m.nrp_bad({"req": {"cpu": 4, "memory": 8e9}, "cpu": 2, "mem": 100, "gpus": []}), [], 'no memory band')
-        self.assertIsNone(m.ACCT_MAX)
+        self.assertEqual(m.nrp_bad({"req": {"cpu": 4, "memory": 8e9}, "cpu": 2, "mem": 100, "gpus": []}), ["mem"])
+        self.assertEqual(m.ACCT_MAX, 4)
 
     def test_local_override_cannot_loosen_shared_numbers(self):
         m = self.load(local={"gpu_floor": 0.2, "max_concurrent_jobs": 1000, "limit_to_request_tolerance": 0.5, "lab_floor": 0.4})
@@ -208,7 +212,7 @@ class Policy(unittest.TestCase):
         r = self.run_cli('--policy')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('local override: none', r.stdout)
-        self.assertIn('off (in neither file): lab_floor, cpu_band, memory_band, small_pod_exempt, account_block_after_violating_pods', r.stdout)
+        self.assertIn('off (in neither file): lab_floor', r.stdout)
         self.assertIn('max_concurrent_jobs', r.stdout)
 
     def test_default_local_file_is_in_the_state_dir(self):
@@ -252,8 +256,8 @@ class Policy(unittest.TestCase):
     def test_extra_keys_in_the_shared_file_are_not_shared_numbers(self):
         m = self.load(shared=dict(SHARED, cpu_band=[0.2, 2.0], lab_floor=0.4, version='x', description='y'))
         self.assertEqual(m.POLICY, SHARED)
-        self.assertEqual(m.nrp_bad(self.cpu_idle), [])
-        self.assertIn('cpu_band, lab_floor', m.POLICY_WARNINGS[0])
+        self.assertEqual(m.nrp_bad(self.cpu_idle), ['cpu'])
+        self.assertIn('lab_floor', m.POLICY_WARNINGS[0])
 
     def test_builtin_fallback_has_only_the_shared_numbers(self):
         m = self.load()
